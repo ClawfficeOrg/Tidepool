@@ -4,6 +4,7 @@
 //! progress (see `docs/TALO_API.md`).
 
 pub mod analytics_event;
+pub mod api_key;
 pub mod game_channel;
 pub mod game_setting;
 pub mod leaderboard;

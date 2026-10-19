@@ -1,5 +1,6 @@
 //! HTTP API handlers (scaffold)
 
+pub mod api_keys;
 pub mod auth;
 pub mod events;
 pub mod feedback;

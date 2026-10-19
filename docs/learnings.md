@@ -172,3 +172,9 @@ bullets over prose. Read the last few sections before starting a similar task.
 - Lock the whole member set in id order before checking a "last owner" rule;
   locking the target first and then the owners opens a deadlock between two
   owner actions.
+- MySQL `JSON` columns do not decode into `String` under sqlx: use
+  `sqlx::types::Json<T>` or store the serialized value in `TEXT` when the code
+  wants to round-trip it as a string.
+- A root actix scope such as `/v1` captures later sibling `/v1/...` routes; use
+  the exact module prefix (`/v1/setup`, `/v1/pool`) so independent route groups
+  cannot shadow each other.

@@ -21,6 +21,7 @@ use crate::entities::organization::OrganizationView;
 use crate::entities::pool_invitation::PoolInvitationView;
 use crate::entities::pool_user::{PoolRole, PoolUserView};
 use crate::middleware::auth::OperatorAuth;
+use crate::services::api_keys::{AuditActor, AuditEntry};
 use crate::services::auth as auth_svc;
 use crate::services::pool_identity::{
     self as identity_svc, INVITATION_TTL_SECS, NewOrganization, PoolIdentityError,
@@ -33,25 +34,22 @@ use validator::Validate;
 /// Register the setup and pool identity routes.
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/v1")
-            .service(
-                web::scope("/setup")
-                    .route("/status", web::get().to(setup_status))
-                    .route("", web::post().to(setup)),
-            )
-            .service(
-                web::scope("/pool")
-                    .route("/login", web::post().to(login))
-                    .route("/me", web::get().to(me))
-                    .route("/password", web::post().to(change_password))
-                    .route("/members", web::get().to(list_members))
-                    .route("/members/{id}", web::delete().to(remove_member))
-                    .route("/members/{id}", web::patch().to(change_member_role))
-                    .route("/invitations", web::get().to(list_invitations))
-                    .route("/invitations", web::post().to(invite_member))
-                    .route("/invitations/accept", web::post().to(accept_invitation))
-                    .route("/invitations/{id}", web::delete().to(revoke_invitation)),
-            ),
+        web::scope("/v1/setup")
+            .route("/status", web::get().to(setup_status))
+            .route("", web::post().to(setup)),
+    )
+    .service(
+        web::scope("/v1/pool")
+            .route("/login", web::post().to(login))
+            .route("/me", web::get().to(me))
+            .route("/password", web::post().to(change_password))
+            .route("/members", web::get().to(list_members))
+            .route("/members/{id}", web::delete().to(remove_member))
+            .route("/members/{id}", web::patch().to(change_member_role))
+            .route("/invitations", web::get().to(list_invitations))
+            .route("/invitations", web::post().to(invite_member))
+            .route("/invitations/accept", web::post().to(accept_invitation))
+            .route("/invitations/{id}", web::delete().to(revoke_invitation)),
     );
 }
 
@@ -373,10 +371,27 @@ async fn invite_member(
     )
     .await
     {
-        Ok((invitation, token)) => HttpResponse::Created().json(InviteResponse {
-            invitation: PoolInvitationView::from(&invitation),
-            token,
-        }),
+        Ok((invitation, token)) => {
+            crate::services::api_keys::audit(
+                pool.get_ref(),
+                AuditEntry {
+                    organization_id: auth.organization_id(),
+                    actor: AuditActor::member(&auth.operator.public_id, &auth.operator.email),
+                    action: "invitation.create",
+                    target_kind: Some("invitation"),
+                    target_public_id: Some(&invitation.public_id),
+                    detail: serde_json::json!({
+                        "email": invitation.email,
+                        "role": invitation.role.as_str(),
+                    }),
+                },
+            )
+            .await;
+            HttpResponse::Created().json(InviteResponse {
+                invitation: PoolInvitationView::from(&invitation),
+                token,
+            })
+        }
         Err(e) => map_error(e),
     }
 }
@@ -393,14 +408,24 @@ async fn revoke_invitation(
     let Some(pool) = pool else {
         return db_unavailable();
     };
-    match identity_svc::revoke_invitation(
-        pool.get_ref(),
-        auth.organization_id(),
-        &path.into_inner(),
-    )
-    .await
+    let public_id = path.into_inner();
+    match identity_svc::revoke_invitation(pool.get_ref(), auth.organization_id(), &public_id).await
     {
-        Ok(()) => HttpResponse::NoContent().finish(),
+        Ok(()) => {
+            crate::services::api_keys::audit(
+                pool.get_ref(),
+                AuditEntry {
+                    organization_id: auth.organization_id(),
+                    actor: AuditActor::member(&auth.operator.public_id, &auth.operator.email),
+                    action: "invitation.revoke",
+                    target_kind: Some("invitation"),
+                    target_public_id: Some(&public_id),
+                    detail: serde_json::Value::Null,
+                },
+            )
+            .await;
+            HttpResponse::NoContent().finish()
+        }
         Err(e) => map_error(e),
     }
 }
@@ -457,15 +482,30 @@ async fn change_member_role(
     let Some(pool) = pool else {
         return db_unavailable();
     };
+    let public_id = path.into_inner();
     match identity_svc::change_member_role(
         pool.get_ref(),
         auth.organization_id(),
-        &path.into_inner(),
+        &public_id,
         body.role,
     )
     .await
     {
-        Ok(user) => HttpResponse::Ok().json(PoolUserView::from(&user)),
+        Ok(user) => {
+            crate::services::api_keys::audit(
+                pool.get_ref(),
+                AuditEntry {
+                    organization_id: auth.organization_id(),
+                    actor: AuditActor::member(&auth.operator.public_id, &auth.operator.email),
+                    action: "member.role_change",
+                    target_kind: Some("member"),
+                    target_public_id: Some(&user.public_id),
+                    detail: serde_json::json!({ "role": user.role.as_str() }),
+                },
+            )
+            .await;
+            HttpResponse::Ok().json(PoolUserView::from(&user))
+        }
         Err(e) => map_error(e),
     }
 }

@@ -21,6 +21,7 @@ use crate::config::PoolBootstrapConfig;
 use crate::entities::organization::Organization;
 use crate::entities::pool_invitation::PoolInvitation;
 use crate::entities::pool_user::{PoolRole, PoolUser};
+use crate::services::api_keys::{self as audit_svc, AuditActor, AuditEntry};
 use crate::services::auth;
 use chrono::{Duration, Utc};
 use sqlx::MySqlPool;
@@ -201,6 +202,19 @@ pub async fn setup_pool(
     let user = fetch_owner_by_organization(&mut tx, org_id).await?;
     tx.commit().await.map_err(PoolIdentityError::Database)?;
 
+    audit_svc::audit(
+        pool,
+        AuditEntry {
+            organization_id: organization.id,
+            actor: AuditActor::System,
+            action: "pool.setup",
+            target_kind: Some("organization"),
+            target_public_id: Some(&organization.public_id),
+            detail: serde_json::json!({ "name": organization.name }),
+        },
+    )
+    .await;
+
     Ok((organization, user))
 }
 
@@ -273,6 +287,19 @@ pub async fn bootstrap_from_env(
     }
 
     tx.commit().await.map_err(PoolIdentityError::Database)?;
+
+    audit_svc::audit(
+        pool,
+        AuditEntry {
+            organization_id: org_id,
+            actor: AuditActor::System,
+            action: "pool.bootstrap",
+            target_kind: Some("organization"),
+            target_public_id: None,
+            detail: serde_json::json!({ "name": org_name }),
+        },
+    )
+    .await;
 
     Ok(BootstrapOutcome::Created {
         organization: org_name,
@@ -400,6 +427,20 @@ pub async fn change_password(
         // The hash changed underneath us (another concurrent change).
         return Err(PoolIdentityError::InvalidCredentials);
     }
+
+    audit_svc::audit(
+        pool,
+        AuditEntry {
+            organization_id: user.organization_id,
+            actor: AuditActor::member(&user.public_id, &user.email),
+            action: "member.password_change",
+            target_kind: Some("member"),
+            target_public_id: Some(&user.public_id),
+            detail: serde_json::Value::Null,
+        },
+    )
+    .await;
+
     Ok(())
 }
 
@@ -637,6 +678,20 @@ pub async fn accept_invitation(
     .map_err(PoolIdentityError::Database)?;
 
     tx.commit().await.map_err(PoolIdentityError::Database)?;
+
+    audit_svc::audit(
+        pool,
+        AuditEntry {
+            organization_id: invitation.organization_id,
+            actor: AuditActor::member(&user.public_id, &user.email),
+            action: "invitation.accept",
+            target_kind: Some("invitation"),
+            target_public_id: Some(&invitation.public_id),
+            detail: serde_json::json!({ "role": user.role.as_str() }),
+        },
+    )
+    .await;
+
     Ok(user)
 }
 

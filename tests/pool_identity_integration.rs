@@ -40,6 +40,14 @@ async fn pool() -> MySqlPool {
 }
 
 async fn reset(pool: &MySqlPool) {
+    sqlx::query("DELETE FROM audit_events")
+        .execute(pool)
+        .await
+        .expect("clear audit_events");
+    sqlx::query("DELETE FROM api_keys")
+        .execute(pool)
+        .await
+        .expect("clear api_keys");
     sqlx::query("DELETE FROM pool_invitations")
         .execute(pool)
         .await
@@ -763,4 +771,250 @@ async fn removing_a_member_invalidates_their_token_immediately() {
         test::call_service(&app, after).await.status(),
         StatusCode::UNAUTHORIZED
     );
+}
+
+// ── API keys and audit (task 1.1.3) ───────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn api_key_secret_is_shown_once_scopes_are_enforced_and_revocation_is_immediate() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::api_keys::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/api-keys")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "name": "CI",
+            "scopes": ["projects:read", "configuration:validate"]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, create).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    let secret = body["secret"]
+        .as_str()
+        .expect("one-time secret")
+        .to_string();
+    assert!(secret.starts_with("tpk_"));
+    let prefix = body["api_key"]["prefix"]
+        .as_str()
+        .expect("prefix")
+        .to_string();
+    assert!(secret.starts_with(&prefix));
+    assert_eq!(body["api_key"]["scopes"][0], "projects:read");
+    assert!(body["api_key"].get("secret_hash").is_none());
+    let key_id = body["api_key"]["id"].as_str().expect("key id").to_string();
+
+    // A second read exposes only the prefix.
+    let list = test::TestRequest::get()
+        .uri("/v1/api-keys")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let resp = test::call_service(&app, list).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let list_body = test::read_body(resp).await;
+    let list_json: Value = serde_json::from_slice(&list_body).expect("json");
+    let serialized = String::from_utf8_lossy(&list_body);
+    assert!(!serialized.contains(&secret));
+    assert!(!serialized.contains("secret_hash"));
+    assert_eq!(list_json["api_keys"][0]["prefix"], prefix);
+
+    // Correct scope: whoami is allowed.
+    let whoami = test::TestRequest::get()
+        .uri("/v1/api-keys/whoami")
+        .insert_header(("X-API-Key", secret.clone()))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, whoami).await.status(),
+        StatusCode::OK
+    );
+
+    // A valid key without projects:read is 403, not 401.
+    let narrow = test::TestRequest::post()
+        .uri("/v1/api-keys")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "name": "enroll only",
+            "scopes": ["daemons:enroll"]
+        }))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, narrow).await).await;
+    let narrow_secret = body["secret"].as_str().expect("narrow secret").to_string();
+    let denied = test::TestRequest::get()
+        .uri("/v1/api-keys/whoami")
+        .insert_header(("X-API-Key", narrow_secret))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, denied).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    // Revocation takes effect on the next request.
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/api-keys/{key_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoke).await.status(),
+        StatusCode::NO_CONTENT
+    );
+    let after = test::TestRequest::get()
+        .uri("/v1/api-keys/whoami")
+        .insert_header(("X-API-Key", secret))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, after).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn non_owner_cannot_manage_api_keys() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config)
+            .configure(api::api_keys::config),
+    )
+    .await;
+
+    let invite = test::TestRequest::post()
+        .uri("/v1/pool/invitations")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"email": "admin@example.com", "role": "admin"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, invite).await).await;
+    let invite_token = body["token"].as_str().expect("token").to_string();
+
+    let accept = test::TestRequest::post()
+        .uri("/v1/pool/invitations/accept")
+        .set_json(serde_json::json!({
+            "token": invite_token,
+            "display_name": "Admin",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, accept).await).await;
+    let admin_token = body["token"].as_str().expect("admin jwt").to_string();
+
+    let create = test::TestRequest::post()
+        .uri("/v1/api-keys")
+        .insert_header(("Authorization", format!("Bearer {admin_token}")))
+        .set_json(serde_json::json!({"name": "nope", "scopes": ["projects:read"]}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, create).await.status(),
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn hub_mutations_are_attributable_in_the_audit_trail() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config)
+            .configure(api::api_keys::config),
+    )
+    .await;
+
+    // Create an invitation (member actor).
+    let invite = test::TestRequest::post()
+        .uri("/v1/pool/invitations")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"email": "audit@example.com", "role": "member"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, invite).await).await;
+    let invite_token = body["token"].as_str().expect("token").to_string();
+
+    // Accept (the new member actor).
+    let accept = test::TestRequest::post()
+        .uri("/v1/pool/invitations/accept")
+        .set_json(serde_json::json!({
+            "token": invite_token,
+            "display_name": "Audit Member",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, accept).await).await;
+    let member_id = body["user"]["id"].as_str().expect("member id").to_string();
+
+    // Role change (owner actor).
+    let role = test::TestRequest::patch()
+        .uri(&format!("/v1/pool/members/{member_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"role": "viewer"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, role).await.status(),
+        StatusCode::OK
+    );
+
+    // Key create and revoke (owner actor).
+    let create = test::TestRequest::post()
+        .uri("/v1/api-keys")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"name": "audit key", "scopes": ["runs:dispatch"]}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let key_id = body["api_key"]["id"].as_str().expect("key id").to_string();
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/api-keys/{key_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoke).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    let actions: Vec<String> = sqlx::query_scalar("SELECT action FROM audit_events ORDER BY id")
+        .fetch_all(&pool)
+        .await
+        .expect("audit actions");
+    for expected in [
+        "pool.bootstrap",
+        "invitation.create",
+        "invitation.accept",
+        "member.role_change",
+        "api_key.create",
+        "api_key.revoke",
+    ] {
+        assert!(
+            actions.iter().any(|action| action == expected),
+            "missing audit action {expected}: {actions:?}"
+        );
+    }
+
+    let unattributed: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_events          WHERE actor_kind = 'member' AND (actor_public_id IS NULL OR actor_public_id = '')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("unattributed count");
+    assert_eq!(unattributed, 0);
 }

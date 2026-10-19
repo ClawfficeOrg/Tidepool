@@ -968,6 +968,17 @@ token is shown once. Single use is `accepted_at`, checked under `FOR UPDATE`.
 Removing a member deletes the row, which makes every old JWT fail the next
 operator lookup; there is no separate session table in v1.
 
+**API keys and audit:** keys are `<prefix>.<secret>`; the prefix is the lookup
+half and only an Argon2id hash of the secret is stored, so list/whoami can show
+a prefix without ever re-exposing a usable key. Scopes are an allow-list of
+named capabilities, and authentication (401) is kept separate from
+authorization (403). Revocation flips `status` and authentication selects only
+active rows, so it is immediate. The audit table records one row per hub
+mutation with `member`, `api_key` or `system` as actor; v1 writes it after the
+mutation rather than in the same transaction, and a write failure is logged.
+Daemon enrollment tokens are not part of this task; the future table must join
+back to `api_keys.status` so revoking a key kills its unconsumed tokens.
+
 ---
 
 ## Open Questions / Assumptions

@@ -42,6 +42,25 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Added `OperatorAuth`, which resolves the JWT subject to a `pool_users` row on
   every request; player tokens are refused.
 
+### API keys, scopes and audit (task 1.1.3)
+- Added `api_keys` and `audit_events` (migration
+  `20261019000003_create_api_keys_and_audit`). Keys are organization-scoped and
+  carry explicit scopes: `projects:read`, `configuration:validate`,
+  `configuration:install`, `runs:dispatch`, `daemons:enroll`.
+- `POST /v1/api-keys` returns the full `<prefix>.<secret>` exactly once; only the
+  prefix and an Argon2id hash of the secret are stored. List and whoami return
+  the prefix only.
+- `GET /v1/api-keys/whoami` authenticates an API key (`X-API-Key` or
+  `Authorization: Bearer tpk_...`) and requires `projects:read`. A valid key
+  without the scope gets 403; an unknown or revoked key gets 401.
+- Revocation (`DELETE /v1/api-keys/{id}`) sets the key to `revoked`, and
+  authentication only selects active rows, so the next request fails
+  immediately. Daemon enrollment tokens do not exist yet; when they land their
+  issuing key's status must invalidate them.
+- Every hub mutation now writes an `audit_events` row with a member, API-key or
+  system actor: setup/bootstrap, password change, invitations, role changes,
+  member removal, key creation and key revocation.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

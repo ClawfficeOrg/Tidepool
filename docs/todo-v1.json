@@ -278,7 +278,7 @@
         {
           "id": "1.1.3",
           "title": "API keys with scopes, one-time secrets and audit",
-          "status": "pending",
+          "status": "done",
           "goal": "Organization-scoped API keys for automation, with selectable scopes: projects:read, configuration:validate, configuration:install, runs:dispatch, daemons:enroll. The full secret is returned exactly once at creation and only a prefix plus a hash is stored. The pool records creation, selected scopes, last-used time and status, and refuses a valid key that lacks the scope an endpoint needs with 403. Revoking a key rejects its future requests immediately and expires any unconsumed enrollment token it issued.",
           "touches": [
             "migrations/",
@@ -301,7 +301,8 @@
           "agent": "pro_dev_agent",
           "security_notes": "Store only a hash plus a display prefix; never log a secret; scope names are part of the public API contract.",
           "changelog": "Added scoped pool API keys with one-time secrets and audit",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:30:23Z"
         },
         {
           "id": "1.1.4",

@@ -316,6 +316,42 @@ const ROUTES: &[RouteSpec] = &[
     },
     RouteSpec {
         method: HttpMethod::Get,
+        path: "/v1/api-keys",
+        tag: "pool",
+        summary: "List organization API keys (owner only; prefix only)",
+        secure: true,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/api-keys",
+        tag: "pool",
+        summary: "Create an API key; the full secret is shown once",
+        secure: true,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/api-keys/whoami",
+        tag: "pool",
+        summary: "Introspect an API key (requires projects:read)",
+        secure: true,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/api-keys/{id}",
+        tag: "pool",
+        summary: "Revoke an API key (owner only; effective immediately)",
+        secure: true,
+        has_body: false,
+        success: "204",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
         path: "/healthz",
         tag: "system",
         summary: "Liveness probe with DB status",
@@ -598,14 +634,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 34, "ROUTES must describe all 34 routes");
+        assert_eq!(ROUTES.len(), 38, "ROUTES must describe all 38 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            31,
-            "the 19 game route specs and 12 pool identity routes must stay under /v1/"
+            35,
+            "the 19 game route specs and 16 pool identity routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
