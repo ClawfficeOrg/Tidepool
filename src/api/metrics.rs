@@ -26,7 +26,7 @@ async fn metrics_handler(pool: Option<web::Data<MySqlPool>>) -> HttpResponse {
         .body(out)
 }
 
-/// Build `playzoid_db_pool_connections{state="..."}` gauges from a live pool.
+/// Build `tidepool_db_pool_connections{state="..."}` gauges from a live pool.
 ///
 /// Values are sampled at scrape time (no static collectors) so a pool that
 /// comes up or dies after boot still reports correctly.
@@ -40,7 +40,7 @@ fn render_pool_gauges(pool: &MySqlPool) -> String {
     for (state, value) in [("size", size), ("idle", idle), ("in_use", in_use)] {
         let gauge = IntGauge::with_opts(
             Opts::new(
-                "playzoid_db_pool_connections",
+                "tidepool_db_pool_connections",
                 "Database pool connection counts",
             )
             .const_label("state", state),
@@ -75,11 +75,11 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let body = awtest::read_body(res).await;
         let text = String::from_utf8_lossy(&body);
-        assert!(text.contains("playzoid_http_requests_total"));
-        assert!(text.contains("playzoid_http_request_duration_seconds_count"));
-        assert!(text.contains("playzoid_ws_connections"));
+        assert!(text.contains("tidepool_http_requests_total"));
+        assert!(text.contains("tidepool_http_request_duration_seconds_count"));
+        assert!(text.contains("tidepool_ws_connections"));
         // Without a pool no DB gauges are emitted.
-        assert!(!text.contains("playzoid_db_pool_connections"));
+        assert!(!text.contains("tidepool_db_pool_connections"));
     }
 
     #[test]
@@ -88,7 +88,7 @@ mod tests {
         // shape the handler depends on: IntGauge const labels render with the
         // expected state label.
         let gauge = IntGauge::with_opts(
-            Opts::new("playzoid_db_pool_connections", "db pool").const_label("state", "size"),
+            Opts::new("tidepool_db_pool_connections", "db pool").const_label("state", "size"),
         )
         .expect("opts valid");
         gauge.set(10);
@@ -97,6 +97,6 @@ mod tests {
             .encode(&gauge.collect(), &mut buf)
             .expect("encodes");
         let out = String::from_utf8_lossy(&buf);
-        assert!(out.contains("playzoid_db_pool_connections{state=\"size\"} 10"));
+        assert!(out.contains("tidepool_db_pool_connections{state=\"size\"} 10"));
     }
 }

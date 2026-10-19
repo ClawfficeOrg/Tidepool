@@ -6,7 +6,7 @@
 //! client.
 //!
 //! Key format: `player:<public_id>` (no namespace collision risk within a
-//! single Playzoid Redis instance; add a prefix if multi-tenant Redis is
+//! single Tidepool Redis instance; add a prefix if multi-tenant Redis is
 //! ever introduced).
 
 use redis::{AsyncCommands, aio::ConnectionManager};

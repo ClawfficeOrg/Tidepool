@@ -18,7 +18,7 @@
 //!
 //! Upstream Talo drives channel membership over HTTP and only fans out the
 //! membership changes and messages over sockets; `v1.channels.join` /
-//! `v1.channels.leave` / `v1.channels.message` are Playzoid request extensions
+//! `v1.channels.leave` / `v1.channels.message` are Tidepool request extensions
 //! (the only in-scope trigger while no channel persistence exists). The
 //! response envelopes stay Talo-verified and carry per-alias `playerAlias`
 //! ids — never the parent relationship.

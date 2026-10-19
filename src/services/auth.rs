@@ -1,6 +1,6 @@
 //! Authentication primitives: password hashing (Argon2id) and JWT issue/verify.
 //!
-//! See `memory/projects/playzoid-server/project.md` for the password-hash
+//! See `memory/projects/tidepool-server/project.md` for the password-hash
 //! decision (Argon2id, 2026-04-30) and `docs/TODO.md` Phase 0.2-1..0.2-3 for
 //! the consuming endpoints. This module is intentionally I/O-free so it can
 //! be unit-tested without a database or HTTP runtime.

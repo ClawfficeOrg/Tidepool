@@ -43,19 +43,19 @@ impl Metrics {
     pub fn new() -> Result<Self, prometheus::Error> {
         let registry = Registry::new();
         let http_requests = IntCounterVec::new(
-            Opts::new("playzoid_http_requests_total", "HTTP requests handled"),
+            Opts::new("tidepool_http_requests_total", "HTTP requests handled"),
             &["method", "status"],
         )?;
         let http_duration = HistogramVec::new(
             HistogramOpts::new(
-                "playzoid_http_request_duration_seconds",
+                "tidepool_http_request_duration_seconds",
                 "HTTP request latency",
             )
             .buckets(HTTP_DURATION_BUCKETS.to_vec()),
             &["method", "status"],
         )?;
         let ws_connections = IntGauge::new(
-            "playzoid_ws_connections",
+            "tidepool_ws_connections",
             "Current number of active WebSocket connections",
         )?;
         registry.register(Box::new(http_requests.clone()))?;
@@ -183,11 +183,11 @@ mod tests {
         m.record_request("GET", "200", 0.001);
         m.ws_connected();
         let out = m.render();
-        assert!(out.contains("playzoid_http_requests_total{method=\"GET\",status=\"200\"} 1"));
+        assert!(out.contains("tidepool_http_requests_total{method=\"GET\",status=\"200\"} 1"));
         assert!(out.contains(
-            "playzoid_http_request_duration_seconds_count{method=\"GET\",status=\"200\"} 1"
+            "tidepool_http_request_duration_seconds_count{method=\"GET\",status=\"200\"} 1"
         ));
-        assert!(out.contains("playzoid_ws_connections 1"));
+        assert!(out.contains("tidepool_ws_connections 1"));
     }
 
     #[test]
@@ -196,7 +196,7 @@ mod tests {
         m.ws_connected();
         m.ws_connected();
         m.ws_disconnected();
-        assert!(m.render().contains("playzoid_ws_connections 1"));
+        assert!(m.render().contains("tidepool_ws_connections 1"));
     }
 
     #[actix_web::test]
@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
 
         let before = metrics().render();
-        let labels_line = "playzoid_http_requests_total{method=\"GET\",status=\"200\"}";
+        let labels_line = "tidepool_http_requests_total{method=\"GET\",status=\"200\"}";
         assert!(before.contains(labels_line), "middleware must record ping");
 
         // /metrics requests are not recorded — the rendered output must not

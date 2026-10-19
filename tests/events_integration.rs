@@ -4,23 +4,23 @@
 //! Run with: `cargo test --test events_integration -- --ignored`
 //!
 //! Defaults to the Docker dev stack:
-//!   mysql://playzoid:password@127.0.0.1:3306/playzoid_dev
+//!   mysql://tidepool:password@127.0.0.1:3306/tidepool_dev
 //! Override with `DATABASE_URL` / `REDIS_URL` env vars.
 
 use actix_web::{App, http::StatusCode, test, web};
 use chrono::{DateTime, Utc};
-use playzoid_server::{
+use redis::aio::ConnectionManager;
+use serde_json::Value;
+use sqlx::MySqlPool;
+use tidepool::{
     api,
     config::{Config, RateLimitConfig},
     db,
     services::events::MAX_BATCH_EVENTS,
 };
-use redis::aio::ConnectionManager;
-use serde_json::Value;
-use sqlx::MySqlPool;
 use uuid::Uuid;
 
-const DEFAULT_DB_URL: &str = "mysql://playzoid:password@127.0.0.1:3306/playzoid_dev";
+const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";
 const JWT_SECRET: &str = "integration-test-jwt-secret-min-32-chars";
 
@@ -343,11 +343,12 @@ async fn boundary_exact_limits_accepted() {
     // exactly 4 KiB.
     let (pool, mgr, cfg) = test_fixtures().await;
     let prefix = run_prefix();
-    let props = serde_json::json!({ "d": "x".repeat(playzoid_server::services::events::MAX_PROPS_BYTES - 8) });
+    let props =
+        serde_json::json!({ "d": "x".repeat(tidepool::services::events::MAX_PROPS_BYTES - 8) });
     let serialized = serde_json::to_string(&props).expect("serialize");
     assert_eq!(
         serialized.len(),
-        playzoid_server::services::events::MAX_PROPS_BYTES
+        tidepool::services::events::MAX_PROPS_BYTES
     );
 
     let names: Vec<String> = (0..MAX_BATCH_EVENTS as u64)

@@ -3,7 +3,7 @@
 //! API; mapped in `docs/TALO_API.md` → domain models).
 //!
 //! Security invariant: this type is wire-facing and must never carry
-//! credential material — Playzoid keeps `password_hash` on the internal
+//! credential material — Tidepool keeps `password_hash` on the internal
 //! `players` row only (`src/entities/player.rs`). A unit test below pins
 //! that no `password` key can appear in a serialized `PlayerAuth`.
 

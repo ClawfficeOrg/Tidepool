@@ -79,7 +79,7 @@
         {
           "id": "1.0.2",
           "title": "Crate, binary and metrics namespace rename",
-          "status": "pending",
+          "status": "done",
           "goal": "Rename the Cargo package `playzoid_server` to `tidepool`, which renames the binary, the `use` paths in src/ and tests/, the Dockerfile COPY and ENTRYPOINT, the compose service, the CI openapi job's binary path, and the Prometheus metric prefixes `playzoid_http_requests_total`, `playzoid_http_request_duration_seconds`, `playzoid_ws_connections` and `playzoid_db_pool_connections` to `tidepool_*`. Metric names are a public contract for anyone scraping, so the rename is recorded as breaking in CHANGES.md.",
           "touches": [
             "Cargo.toml",
@@ -104,7 +104,8 @@
           "agent": "mid_dev_agent",
           "security_notes": "The metrics rename is observable by scrapers; note it as a breaking change rather than silently dropping old series.",
           "changelog": "Renamed the crate, binary and Prometheus metric prefix to tidepool",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T20:28:34Z"
         },
         {
           "id": "1.0.3",

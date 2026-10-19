@@ -4,21 +4,21 @@
 //! Run with: `cargo test --test leaderboards_integration -- --ignored`
 //!
 //! Defaults to the Docker dev stack:
-//!   mysql://playzoid:password@127.0.0.1:3306/playzoid_dev
+//!   mysql://tidepool:password@127.0.0.1:3306/tidepool_dev
 //! Override with `DATABASE_URL` / `REDIS_URL` env vars.
 
 use actix_web::{App, http::StatusCode, test, web};
-use playzoid_server::{
+use redis::aio::ConnectionManager;
+use serde_json::Value;
+use sqlx::MySqlPool;
+use tidepool::{
     api,
     config::{Config, RateLimitConfig},
     db,
 };
-use redis::aio::ConnectionManager;
-use serde_json::Value;
-use sqlx::MySqlPool;
 use uuid::Uuid;
 
-const DEFAULT_DB_URL: &str = "mysql://playzoid:password@127.0.0.1:3306/playzoid_dev";
+const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";
 const JWT_SECRET: &str = "integration-test-jwt-secret-min-32-chars";
 
@@ -635,7 +635,7 @@ async fn update_entry_keeps_props_when_omitted_and_replaces_when_supplied() {
 /// Mint an auth-bearing token for an arbitrary subject via the shared JWT
 /// secret — used to prove the unknown-player 404 path for leaderboard entries.
 fn token_for(cfg: &Config, player_public_id: &str) -> String {
-    playzoid_server::services::auth::issue_jwt(&cfg.jwt_secret, player_public_id, 3600)
+    tidepool::services::auth::issue_jwt(&cfg.jwt_secret, player_public_id, 3600)
         .expect("issue token")
 }
 
@@ -664,8 +664,10 @@ async fn submit_entry_rejects_oversized_props_returns_400() {
         register_and_login(pool.clone(), mgr.clone(), cfg.clone(), &unique_username()).await;
     let app = leaderboard_app!(pool, mgr, cfg);
 
-    let big = serde_json::Value::Array(vec![serde_json::Value::String("x".into());
-        playzoid_server::services::leaderboards::MAX_PROPS_BYTES]);
+    let big = serde_json::Value::Array(vec![
+        serde_json::Value::String("x".into());
+        tidepool::services::leaderboards::MAX_PROPS_BYTES
+    ]);
     let req = test::TestRequest::post()
         .uri("/v1/leaderboards/some-board/entries")
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -719,8 +721,10 @@ async fn update_entry_rejects_oversized_props_returns_400() {
         register_and_login(pool.clone(), mgr.clone(), cfg.clone(), &unique_username()).await;
     let app = leaderboard_app!(pool, mgr, cfg);
 
-    let big = serde_json::Value::Array(vec![serde_json::Value::String("x".into());
-        playzoid_server::services::leaderboards::MAX_PROPS_BYTES]);
+    let big = serde_json::Value::Array(vec![
+        serde_json::Value::String("x".into());
+        tidepool::services::leaderboards::MAX_PROPS_BYTES
+    ]);
     let req = test::TestRequest::put()
         .uri(&format!("/v1/leaderboards/some-board/entries/{pid}"))
         .insert_header(("Authorization", format!("Bearer {token}")))

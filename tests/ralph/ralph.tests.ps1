@@ -68,7 +68,7 @@ function Invoke-GetTaskDefinitionRow
 }
 
 # ── mock docs/TODO.md fixture ─────────────────────────────────────────────────
-# Mirrors the real TODO.md table format used by Playzoid-Server.
+# Mirrors the real TODO.md table format used by Tidepool.
 
 $script:MockTodo = @"
 ## Phase 0.2.0 — Authentication & Player Management

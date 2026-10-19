@@ -32,7 +32,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use playzoid_server::middleware::rate_limit::{RateLimiter, RateLimit};
+//! use tidepool::middleware::rate_limit::{RateLimiter, RateLimit};
 //!
 //! App::new()
 //!     .wrap(RateLimit)

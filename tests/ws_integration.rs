@@ -5,7 +5,7 @@
 //! tests in `src/sockets/ws.rs`.
 
 use actix_web::{App, http::header, test, web};
-use playzoid_server::sockets;
+use tidepool::sockets;
 
 #[actix_web::test]
 async fn ws_handshake_upgrades() {

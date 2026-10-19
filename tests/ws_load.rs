@@ -13,11 +13,9 @@
 //! public crate surface.
 
 use actix::prelude::*;
-use playzoid_server::sockets::channels::{
-    ChannelHub, ChannelMessage, ChannelNotification, JoinChannel,
-};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tidepool::sockets::channels::{ChannelHub, ChannelMessage, ChannelNotification, JoinChannel};
 
 /// A fan-out event a mock subscriber records.
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -3,7 +3,7 @@
 //! `v1.channels.player-left` envelope.
 //!
 //! Shapes verified against the game-channel API samples and the socket
-//! reference (see `docs/TALO_API.md` → domain models). Playzoid does not
+//! reference (see `docs/TALO_API.md` → domain models). Tidepool does not
 //! persist channels server-side yet (membership lives in the in-memory
 //! `ChannelHub`); these structs are the parity target for future endpoints.
 

@@ -11,15 +11,15 @@
 //! bucket within a 60s window.
 
 use actix_web::{App, http::StatusCode, test, web};
-use playzoid_server::{
-    config::{Config, RateLimitConfig},
-    middleware::rate_limit::{RateLimit, RateLimiter},
-};
 use redis::aio::ConnectionManager;
 use std::{
     net::SocketAddr,
     sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
+};
+use tidepool::{
+    config::{Config, RateLimitConfig},
+    middleware::rate_limit::{RateLimit, RateLimiter},
 };
 
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";

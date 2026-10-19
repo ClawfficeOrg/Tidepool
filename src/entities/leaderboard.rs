@@ -57,7 +57,7 @@ pub enum LeaderboardSortMode {
 /// Full upstream-parity `LeaderboardEntry` (verified against the leaderboard
 /// API samples; mapped in `docs/TALO_API.md` → domain models).
 ///
-/// Distinct from [`LeaderboardEntryView`] — the view is Playzoid's own
+/// Distinct from [`LeaderboardEntryView`] — the view is Tidepool's own
 /// implemented response shape (`{playerId, score, rank}`, `i64` scores from
 /// our BIGINT column), while this struct mirrors the upstream entry 1:1,
 /// including the nested [`PlayerAlias`] and upstream `props`. Not yet
@@ -66,7 +66,7 @@ pub enum LeaderboardSortMode {
 /// Divergences from upstream, kept deliberately:
 /// - `score` is `f64` here to deserialize upstream's numeric samples
 ///   (`593.21`) exactly; our persisted schema stays `BIGINT i64`.
-/// - `position` is upstream's 0-based index; Playzoid's own views expose a
+/// - `position` is upstream's 0-based index; Tidepool's own views expose a
 ///   1-based `rank` instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,7 +76,7 @@ pub struct LeaderboardEntry {
     /// 0-based position in the leaderboard's sort order.
     pub position: u64,
     /// Submitted score. `f64` for upstream parity (upstream samples carry
-    /// floats); Playzoid's own storage remains `i64`.
+    /// floats); Tidepool's own storage remains `i64`.
     pub score: f64,
     /// Display name of the owning leaderboard.
     pub leaderboard_name: String,

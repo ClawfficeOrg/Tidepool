@@ -22,10 +22,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/playzoid_server /app/playzoid_server
+COPY --from=builder /app/target/release/tidepool /app/tidepool
 
 EXPOSE 8080
 
 ENV RUST_LOG=info
 
-ENTRYPOINT ["/app/playzoid_server"]
+ENTRYPOINT ["/app/tidepool"]
