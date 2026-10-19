@@ -8,12 +8,15 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock ./
+# The workspace declares the reference host agent; copy its manifest/source so
+# Cargo can resolve the workspace, then build only the server package.
+COPY crates ./crates
 RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release && rm -rf src
+RUN cargo build --release -p tidepool && rm -rf src
 
 # Build actual application
 COPY src ./src
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --release -p tidepool
 
 # Runtime stage
 FROM debian:bookworm-slim AS runtime
