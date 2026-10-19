@@ -479,6 +479,35 @@ mod tests {
         }
     }
 
+    /// The game API is frozen: the rename must not move a route. Pin the exact
+    /// inventory so a changed prefix, a dropped route or an added system route
+    /// fails here before it reaches a client.
+    #[test]
+    fn game_routes_are_unmoved_under_v1() {
+        const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
+
+        assert_eq!(ROUTES.len(), 22, "ROUTES must describe all 22 routes");
+        assert_eq!(
+            ROUTES
+                .iter()
+                .filter(|route| route.path.starts_with("/v1/"))
+                .count(),
+            19,
+            "the 19 game route specs must stay under /v1/"
+        );
+
+        let system: std::collections::BTreeSet<&str> = ROUTES
+            .iter()
+            .map(|route| route.path)
+            .filter(|path| !path.starts_with("/v1/"))
+            .collect();
+        let expected: std::collections::BTreeSet<&str> = SYSTEM_PATHS.iter().copied().collect();
+        assert_eq!(
+            system, expected,
+            "only the three system routes may sit outside /v1/"
+        );
+    }
+
     #[test]
     fn document_has_expected_meta() {
         let doc = document();

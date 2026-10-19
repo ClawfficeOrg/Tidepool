@@ -115,7 +115,7 @@ pub struct Prop {
 
 ### `PlayerAuth` — `src/entities/player_auth.rs`
 
-Upstream nests this as the optional `Player.auth?` block. Playzoid keeps
+Upstream nests this as the optional `Player.auth?` block. Tidepool keeps
 `password_hash` on the internal `players` row only; no auth struct ever
 carries credential material (pinned by a unit test).
 
@@ -195,7 +195,7 @@ Divergences (documented, deliberate):
 | Upstream field | Handling | Why |
 |----------------|----------|-----|
 | `Player.aliases` | Omitted | Circular back-reference (`[Circular]` in every upstream sample) |
-| `Player.groups` | Not modelled yet | Playzoid has no player-group persistence |
+| `Player.groups` | Not modelled yet | Tidepool has no player-group persistence |
 | Alias-level timestamps `Option` | Liberal deserialize | Channel payloads carry them; leaderboard-entry samples omit them |
 | Socket-reference `Player.id: number` vs HTTP UUID string | Modelled as `String` | Every verified HTTP sample uses the UUID |
 
@@ -236,7 +236,7 @@ pub struct GameChannel {
 The `v1.channels.player-left` envelope carries `meta.reason` as an integer
 (`DEFAULT = 0`, `TEMPORARY_MEMBERSHIP = 1`); modelled as
 `GameChannelLeavingReason` with hand-written integer serde (variant `rename`
-would emit strings). Playzoid's in-memory channel hub currently emits only
+would emit strings). Tidepool's in-memory channel hub currently emits only
 reason `0`.
 
 ### Full `LeaderboardEntry` — `src/entities/leaderboard.rs`
@@ -282,13 +282,13 @@ pub struct LeaderboardEntry {
 ```
 
 Divergences vs our implemented surface: upstream exposes a 0-based
-`position` while Playzoid views expose a 1-based `rank`; upstream scores are
+`position` while Tidepool views expose a 1-based `rank`; upstream scores are
 numeric floats while our schema stores `BIGINT`. Neither migration nor the
 implemented view changes here.
 
 ---
 
-## Playzoid-Server Implemented Endpoints (Phases 0.2 & 0.3)
+## Tidepool Implemented Endpoints (Phases 0.2 & 0.3)
 
 The sections above document the upstream **Talo TypeScript** API shapes for reference.
 The sections below document what is **actually implemented** in this server.
@@ -872,7 +872,7 @@ save ids affect zero rows and return 404 (never leaks). Response 204 — empty b
 
 ## HTTP API: game settings (implemented, Phase 0.4)
 
-Auth: `Authorization: Bearer <token>` required on every route. A **Playzoid
+Auth: `Authorization: Bearer <token>` required on every route. A **Tidepool
 extension** — upstream Talo has no per-game settings endpoint (documented in
 `docs/memory.md`). `{game_id}` is the opaque route identifier (1..=64 chars).
 
@@ -1063,9 +1063,9 @@ pub struct SocketResponseEnvelope<T: Serialize> { pub res: String, pub data: T }
 | `req`                    | `data`                                   | Notes                                                     |
 |--------------------------|------------------------------------------|-----------------------------------------------------------|
 | `v1.players.identify`    | `{ "playerAliasId": 42 }`                | Must equal the ticket-bound alias (else `INVALID_INPUT`)  |
-| `v1.channels.join`       | `{ "channelId": 7 }`                     | Playzoid request extension (see note below)               |
-| `v1.channels.leave`      | `{ "channelId": 7 }`                     | Playzoid request extension (see note below)               |
-| `v1.channels.message`    | `{ "channelId": 7, "message": "hi" }`    | Message 1..=1000 chars; Playzoid request extension        |
+| `v1.channels.join`       | `{ "channelId": 7 }`                     | Tidepool request extension (see note below)               |
+| `v1.channels.leave`      | `{ "channelId": 7 }`                     | Tidepool request extension (see note below)               |
+| `v1.channels.message`    | `{ "channelId": 7, "message": "hi" }`    | Message 1..=1000 chars; Tidepool request extension        |
 | `v1.heartbeat`           | (bare token, not an envelope)            | Echoed verbatim as `v1.heartbeat`                         |
 
 `v1.channels.join` / `v1.channels.leave` / `v1.channels.message` must be preceded by a
@@ -1130,7 +1130,7 @@ chat; presence stays per-alias so subaccounts still appear as distinct users. Gr
 resolution is server-side from the ticket-bound alias only (immediate parent, one hop).
 
 Note: `v1.channels.join` / `v1.channels.leave` / `v1.channels.message` request tokens
-are Playzoid extensions — upstream Talo drives channel membership over HTTP and only
+are Tidepool extensions — upstream Talo drives channel membership over HTTP and only
 fans the membership changes out over sockets. The response envelopes stay Talo-verified.
 
 ---
