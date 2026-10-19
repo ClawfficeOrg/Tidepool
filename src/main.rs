@@ -120,6 +120,7 @@ async fn main() -> std::io::Result<()> {
             .configure(api::pool_identity::config)
             .configure(api::api_keys::config)
             .configure(api::hosts::config)
+            .configure(api::connections::config)
             .configure(api::players::config)
             .configure(api::leaderboards::config)
             .configure(api::saves::config)

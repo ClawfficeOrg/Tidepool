@@ -1033,6 +1033,15 @@ even when the host is offline. Output is appended only while queued/running, so
 a late `execution_output` after completion cannot duplicate the final text. The
 reference agent keeps completions in memory; Limpet must persist them.
 
+**Connections and credentials:** a connection stores `credential_ref`, never a
+secret. Resolution happens at validation time from the environment/secret
+store; reads expose only `credential_configured`. Provider behaviour lives
+behind a synchronous object-safe `ConnectionProvider` trait so save-time
+validation cannot depend on provider availability and adding a kind is one
+implementation. `TIDEPOOL_CONNECTIONS` is an overlay: environment entries win
+on slug, are labelled and are immutable through the API; the shadowed database
+row is preserved.
+
 ---
 
 ## Open Questions / Assumptions

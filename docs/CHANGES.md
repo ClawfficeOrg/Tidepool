@@ -158,6 +158,23 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   completions by execution id. It is excluded from production deployment and
   exists to test the pool before Limpet.
 
+### Connection model and provider registry (task 1.3.1)
+- Added `connections` and `connection_resources` (migration
+  `20261020000005_create_connections`): provider kind, slug, display name,
+  credential reference, status and the provider resource identities a
+  connection may deliver for.
+- Credentials are references to environment/secret-store entries, validated at
+  save time and never returned by a read; reads expose only
+  `credential_configured`.
+- Added the `ConnectionProvider` trait (credential validation, webhook
+  verification, resource resolution) and the GitHub/Slack/Discord
+  implementations. Adding a provider kind is one implementation plus one
+  registry arm.
+- `TIDEPOOL_CONNECTIONS` overlays complete environment-defined connections;
+  they win on slug, are labelled `managed_by: environment` and cannot be
+  mutated through the API.
+- Added `/v1/connections` CRUD, documented in `docs/CONNECTIONS.md`.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

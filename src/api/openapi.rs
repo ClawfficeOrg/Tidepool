@@ -399,6 +399,56 @@ const ROUTES: &[RouteSpec] = &[
         success: "201",
     },
     RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/connections",
+        tag: "pool",
+        summary: "List effective provider connections (environment overlay applied)",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/connections",
+        tag: "pool",
+        summary: "Create a provider connection from a credential reference",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/connections/{id}",
+        tag: "pool",
+        summary: "Fetch a connection by id or env:<slug>",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Patch,
+        path: "/v1/connections/{id}",
+        tag: "pool",
+        summary: "Rename, enable or disable a database connection",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/connections/{id}",
+        tag: "pool",
+        summary: "Delete a database connection",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "204",
+    },
+    RouteSpec {
         method: HttpMethod::Post,
         path: "/v1/hosts/{id}/execution",
         tag: "pool",
@@ -822,14 +872,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 50, "ROUTES must describe all 50 routes");
+        assert_eq!(ROUTES.len(), 55, "ROUTES must describe all 55 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            47,
-            "the 19 game route specs and 28 pool/host routes must stay under /v1/"
+            52,
+            "the 19 game route specs and 33 pool/host/connection routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -1009,6 +1059,7 @@ mod tests {
         let mut registered = parse_scope(include_str!("pool_identity.rs"));
         registered.extend(parse_scope(include_str!("api_keys.rs")));
         registered.extend(parse_scope(include_str!("hosts.rs")));
+        registered.extend(parse_scope(include_str!("connections.rs")));
 
         let documented: std::collections::BTreeSet<(String, String)> = ROUTES
             .iter()
@@ -1025,6 +1076,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 28, "expected 28 hub operations");
+        assert_eq!(registered.len(), 33, "expected 33 hub operations");
     }
 }

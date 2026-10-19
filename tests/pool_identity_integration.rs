@@ -1924,3 +1924,142 @@ async fn host_execution_output_completion_and_terminal_replay() {
         .expect("count");
     assert_eq!(count, 1);
 }
+
+// ── connections registry (task 1.3.1) ─────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn connections_crud_redacts_credentials_and_environment_wins() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    // SAFETY: these tests serialise on DB_LOCK.
+    unsafe {
+        std::env::set_var(
+            "TEST_GITHUB_CREDS",
+            r#"{"app_id":"1","private_key":"pk","webhook_secret":"whsec"}"#,
+        );
+        std::env::remove_var("TIDEPOOL_CONNECTIONS");
+    }
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::connections::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/connections")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "provider": "github",
+            "slug": "Acme GitHub",
+            "display_name": "Acme GitHub",
+            "credential_ref": "TEST_GITHUB_CREDS",
+            "resources": [
+                {"resource_kind": "repository", "external_id": "acme/repo", "display_name": "Acme Repo"}
+            ]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, create).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body_text = test::read_body(resp).await;
+    let serialized = String::from_utf8_lossy(&body_text);
+    assert!(!serialized.contains("TEST_GITHUB_CREDS"));
+    assert!(!serialized.contains("private_key"));
+    let body: Value = serde_json::from_slice(&body_text).expect("json");
+    assert_eq!(body["slug"], "acme-github");
+    assert_eq!(body["managed_by"], "database");
+    assert_eq!(body["credential_configured"], true);
+    assert_eq!(body["resources"][0]["external_id"], "acme/repo");
+    let connection_id = body["id"].as_str().expect("id").to_string();
+
+    // Missing credential reference is refused at save time.
+    let missing = test::TestRequest::post()
+        .uri("/v1/connections")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "provider": "github",
+            "slug": "missing-creds",
+            "display_name": "Missing",
+            "credential_ref": "NO_SUCH_CREDENTIAL_REF"
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, missing).await.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    // Rename and disable.
+    let update = test::TestRequest::patch()
+        .uri(&format!("/v1/connections/{connection_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"display_name": "Acme", "status": "disabled"}))
+        .to_request();
+    let resp = test::call_service(&app, update).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["display_name"], "Acme");
+    assert_eq!(body["status"], "disabled");
+
+    // Environment configuration wins on slug and is labelled.
+    // SAFETY: guarded by DB_LOCK.
+    unsafe {
+        std::env::set_var(
+            "TIDEPOOL_CONNECTIONS",
+            r#"[{"provider":"github","slug":"acme-github","display_name":"Env Acme","credential_ref":"TEST_GITHUB_CREDS","resources":[{"resource_kind":"repository","external_id":"env/repo"}]}]"#,
+        );
+    }
+    let list = test::TestRequest::get()
+        .uri("/v1/connections")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, list).await).await;
+    assert_eq!(
+        body["connections"].as_array().expect("connections").len(),
+        1
+    );
+    assert_eq!(body["connections"][0]["managed_by"], "environment");
+    assert_eq!(body["connections"][0]["id"], "env:acme-github");
+    assert_eq!(body["connections"][0]["display_name"], "Env Acme");
+
+    let env_get = test::TestRequest::get()
+        .uri("/v1/connections/env:acme-github")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, env_get).await.status(),
+        StatusCode::OK
+    );
+
+    // The shadowed database connection cannot be mutated through the API.
+    let shadowed_update = test::TestRequest::patch()
+        .uri(&format!("/v1/connections/{connection_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"display_name": "Should Fail"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, shadowed_update).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    // SAFETY: guarded by DB_LOCK.
+    unsafe {
+        std::env::remove_var("TIDEPOOL_CONNECTIONS");
+        std::env::remove_var("TEST_GITHUB_CREDS");
+    }
+
+    // With the environment overlay gone, delete the database connection.
+    let delete = test::TestRequest::delete()
+        .uri(&format!("/v1/connections/{connection_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, delete).await.status(),
+        StatusCode::NO_CONTENT
+    );
+}

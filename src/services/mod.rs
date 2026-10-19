@@ -6,6 +6,7 @@
 pub mod api_keys;
 pub mod auth;
 pub mod cache;
+pub mod connections;
 pub mod enrollment;
 pub mod events;
 pub mod feedback;

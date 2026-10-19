@@ -492,7 +492,7 @@
         {
           "id": "1.3.1",
           "title": "Connection model and provider registry",
-          "status": "pending",
+          "status": "done",
           "goal": "Migration and service for `connections`: provider kind, slug, display name, the provider resource identities it may deliver for, credentials (secret references, never inline in configuration), and status. A trait per provider kind covers transport, signature verification and resource resolution, so triggers can be validated against a connection before anything is live. A complete environment configuration takes precedence over a saved one and is labelled as managed by environment.",
           "touches": [
             "migrations/",
@@ -514,7 +514,8 @@
           "agent": "pro_dev_agent",
           "security_notes": "Credentials live in the environment or a secret store, not in the pool's configuration documents; a read endpoint never echoes a secret.",
           "changelog": "Added the connection model and provider registry",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:50:12Z"
         },
         {
           "id": "1.3.2",

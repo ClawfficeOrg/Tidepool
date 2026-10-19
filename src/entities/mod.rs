@@ -5,6 +5,7 @@
 
 pub mod analytics_event;
 pub mod api_key;
+pub mod connection;
 pub mod enrollment_token;
 pub mod game_channel;
 pub mod game_setting;
