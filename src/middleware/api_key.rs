@@ -11,13 +11,14 @@
 //!
 //! Handlers that need a capability call [`ApiKeyAuth::require_scope`].
 
+use crate::api::problem::{Problem, ProblemCode, ProblemError};
 use crate::entities::api_key::{ApiKey, ApiKeyScope};
+use crate::middleware::request_id::RequestId;
 use crate::services::api_keys::{self as api_key_svc, ApiKeyServiceError};
 use actix_web::{
     Error, FromRequest, HttpRequest,
     dev::Payload,
-    error::{ErrorForbidden, ErrorInternalServerError, ErrorServiceUnavailable, ErrorUnauthorized},
-    http::header,
+    http::{StatusCode, header},
     web,
 };
 use sqlx::MySqlPool;
@@ -31,13 +32,21 @@ use std::{
 pub struct ApiKeyAuth {
     /// Resolved key row (never carries the secret).
     pub key: ApiKey,
+    /// Correlation id for a 403 problem document.
+    pub request_id: String,
 }
 
 impl ApiKeyAuth {
     /// Require one scope, returning HTTP 403 when it is absent.
     pub fn require_scope(&self, scope: ApiKeyScope) -> Result<(), Error> {
         if !self.key.has_scope(scope) {
-            return Err(ErrorForbidden("API key lacks the required scope"));
+            let problem = Problem::new(
+                StatusCode::FORBIDDEN,
+                ProblemCode::MissingScope,
+                format!("API key lacks the required scope {}", scope.as_str()),
+                self.request_id.clone(),
+            );
+            return Err(ProblemError::new(problem).into());
         }
         Ok(())
     }
@@ -54,27 +63,50 @@ impl FromRequest for ApiKeyAuth {
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
         let pool = req.app_data::<web::Data<MySqlPool>>().cloned();
+        let request_id = RequestId::from_request(req);
         let token = match extract_key(req) {
             Some(token) => token.to_string(),
             None => {
-                return Box::pin(ready(Err(ErrorUnauthorized(
+                let problem = Problem::new(
+                    StatusCode::UNAUTHORIZED,
+                    ProblemCode::Unauthorized,
                     "API key required (X-API-Key or Bearer tpk_...)",
-                ))));
+                    request_id,
+                );
+                return Box::pin(ready(Err(ProblemError::new(problem).into())));
             }
         };
 
         Box::pin(async move {
             let Some(pool) = pool else {
-                return Err(ErrorServiceUnavailable("database unavailable"));
+                let problem = Problem::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ProblemCode::ServiceUnavailable,
+                    "database unavailable",
+                    request_id,
+                );
+                return Err(ProblemError::new(problem).into());
             };
             match api_key_svc::authenticate(pool.get_ref(), &token).await {
-                Ok(key) => Ok(ApiKeyAuth { key }),
+                Ok(key) => Ok(ApiKeyAuth { key, request_id }),
                 Err(ApiKeyServiceError::InvalidCredentials) => {
-                    Err(ErrorUnauthorized("invalid API key"))
+                    let problem = Problem::new(
+                        StatusCode::UNAUTHORIZED,
+                        ProblemCode::Unauthorized,
+                        "invalid API key",
+                        request_id,
+                    );
+                    Err(ProblemError::new(problem).into())
                 }
                 Err(error) => {
                     tracing::error!(error = %error, "API key authentication failed");
-                    Err(ErrorInternalServerError("internal error"))
+                    let problem = Problem::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ProblemCode::InternalError,
+                        "internal error",
+                        request_id,
+                    );
+                    Err(ProblemError::new(problem).into())
                 }
             }
         })
@@ -124,6 +156,7 @@ mod tests {
                 created_at: "2026-10-19T12:00:00Z".parse().expect("ts"),
                 updated_at: "2026-10-19T12:00:00Z".parse().expect("ts"),
             },
+            request_id: "req-test".into(),
         }
     }
 

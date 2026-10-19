@@ -19,6 +19,7 @@ use tidepool::{
     config::{Config, PoolBootstrapConfig, RateLimitConfig},
     db,
     entities::pool_user::PoolRole,
+    middleware::{problem::HubProblem, request_id::RequestIdMiddleware},
     services::{
         auth as auth_svc,
         pool_identity::{self, BootstrapOutcome, NewOrganization, PoolIdentityError},
@@ -183,7 +184,7 @@ async fn browser_setup_rejects_short_password() {
         .to_request();
     assert_eq!(
         test::call_service(&app, setup).await.status(),
-        StatusCode::BAD_REQUEST
+        StatusCode::UNPROCESSABLE_ENTITY
     );
     assert_eq!(org_count(&pool).await, 0);
 }
@@ -642,10 +643,10 @@ async fn viewer_is_refused_every_mutating_pool_route() {
             "new_password": "another-password-1"
         }))
         .to_request();
-    assert_eq!(
-        test::call_service(&app, password).await.status(),
-        StatusCode::FORBIDDEN
-    );
+    let resp = test::call_service(&app, password).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "forbidden");
 
     let invite_attempt = test::TestRequest::post()
         .uri("/v1/pool/invitations")
@@ -855,10 +856,10 @@ async fn api_key_secret_is_shown_once_scopes_are_enforced_and_revocation_is_imme
         .uri("/v1/api-keys/whoami")
         .insert_header(("X-API-Key", narrow_secret))
         .to_request();
-    assert_eq!(
-        test::call_service(&app, denied).await.status(),
-        StatusCode::FORBIDDEN
-    );
+    let resp = test::call_service(&app, denied).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "missing_scope");
 
     // Revocation takes effect on the next request.
     let revoke = test::TestRequest::delete()
@@ -1017,4 +1018,75 @@ async fn hub_mutations_are_attributable_in_the_audit_trail() {
     .await
     .expect("unattributed count");
     assert_eq!(unattributed, 0);
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn hub_failures_use_problem_details_with_a_request_id() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config)
+            .configure(api::api_keys::config)
+            .wrap(HubProblem)
+            .wrap(RequestIdMiddleware),
+    )
+    .await;
+
+    // Extractor failure: no token on a member route.
+    let req = test::TestRequest::post()
+        .uri("/v1/pool/password")
+        .insert_header(("x-request-id", "req-hub-1"))
+        .set_json(serde_json::json!({
+            "current_password": NEW_PASSWORD,
+            "new_password": "another-password-1"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap(),
+        "application/problem+json"
+    );
+    assert_eq!(resp.headers().get("x-request-id").unwrap(), "req-hub-1");
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "unauthorized");
+    assert_eq!(problem["requestId"], "req-hub-1");
+    assert_eq!(
+        problem["type"],
+        "https://tidepool.dev/problems/unauthorized"
+    );
+
+    // Unknown hub path.
+    let req = test::TestRequest::get()
+        .uri("/v1/pool/nope")
+        .insert_header(("x-request-id", "req-hub-2"))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "not_found");
+    assert_eq!(problem["requestId"], "req-hub-2");
+
+    // Field validation.
+    let req = test::TestRequest::post()
+        .uri("/v1/setup")
+        .insert_header(("x-request-id", "req-hub-3"))
+        .set_json(serde_json::json!({
+            "organization_name": "Rock Pool",
+            "email": "owner@example.com",
+            "display_name": "Owner",
+            "password": "short"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "validation_failed");
+    assert_eq!(problem["requestId"], "req-hub-3");
 }

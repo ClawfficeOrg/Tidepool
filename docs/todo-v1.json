@@ -307,7 +307,7 @@
         {
           "id": "1.1.4",
           "title": "Hub API error contract and OpenAPI extension",
-          "status": "pending",
+          "status": "done",
           "goal": "One error shape for the hub API: RFC 9457 problem details (type, title, status, detail, code, requestId) with application/problem+json, applied to every hub route, with a documented code taxonomy for the failures later phases return (unauthorized, missing scope, daemon_not_connected, configuration invalid, conflict). Extend the existing single `ROUTES` table and the OpenAPI job so hub routes and their required scopes are documented and drift still fails CI.",
           "touches": [
             "src/api/problem.rs",
@@ -328,7 +328,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added the RFC 9457 hub error contract and OpenAPI scope documentation",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:49:07Z"
         }
       ]
     },

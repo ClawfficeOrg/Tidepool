@@ -178,3 +178,9 @@ bullets over prose. Read the last few sections before starting a similar task.
 - A root actix scope such as `/v1` captures later sibling `/v1/...` routes; use
   the exact module prefix (`/v1/setup`, `/v1/pool`) so independent route groups
   cannot shadow each other.
+- Middleware that fills a request extension (request id) must be the outermost
+  wrap: an inner middleware cannot see extensions inserted by an outer one
+  because it owns the request first.
+- Actix `ServiceResponse::map_body` can replace an error body without reading
+  it; wrapping the response in `BoxBody` keeps the middleware response type
+  uniform while preserving already-correct problem documents.
