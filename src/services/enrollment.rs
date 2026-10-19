@@ -77,7 +77,7 @@ pub async fn mint_enrollment_token(
     actor: AuditActor,
 ) -> Result<(EnrollmentToken, String), EnrollmentError> {
     let host = sqlx::query_as::<_, Host>(
-        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, \
+        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, execution_granted, \
                 revoked_at, created_at, updated_at \
          FROM hosts WHERE public_id = ? AND organization_id = ? AND status <> 'revoked'",
     )
@@ -210,7 +210,7 @@ pub async fn enroll_host(
     }
 
     let host = sqlx::query_as::<_, Host>(
-        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, \
+        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, execution_granted, \
                 revoked_at, created_at, updated_at \
          FROM hosts WHERE id = ? AND status <> 'revoked' FOR UPDATE",
     )
@@ -265,7 +265,7 @@ pub async fn enroll_host(
     .await;
 
     sqlx::query_as::<_, Host>(
-        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, \
+        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, execution_granted, \
                 revoked_at, created_at, updated_at \
          FROM hosts WHERE id = ?",
     )
@@ -283,7 +283,7 @@ pub async fn authenticate_host(
 ) -> Result<Host, EnrollmentError> {
     let host = sqlx::query_as::<_, Host>(
         "SELECT h.id, h.public_id, h.organization_id, h.slug, h.display_name, h.hostname, \
-                h.status, h.revoked_at, h.created_at, h.updated_at \
+                h.status, h.execution_granted, h.revoked_at, h.created_at, h.updated_at \
          FROM hosts h JOIN host_credentials c ON c.host_id = h.id \
          WHERE h.public_id = ? AND h.status <> 'revoked' \
            AND c.revoked_at IS NULL",

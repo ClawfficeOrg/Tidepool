@@ -129,7 +129,7 @@ pub async fn list_hosts(
     organization_id: u64,
 ) -> Result<Vec<Host>, HostServiceError> {
     sqlx::query_as::<_, Host>(
-        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, \
+        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, execution_granted, \
                 revoked_at, created_at, updated_at \
          FROM hosts WHERE organization_id = ? AND status <> 'revoked' \
          ORDER BY slug",
@@ -147,7 +147,7 @@ pub async fn find_host(
     public_id: &str,
 ) -> Result<Option<Host>, HostServiceError> {
     sqlx::query_as::<_, Host>(
-        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, \
+        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, execution_granted, \
                 revoked_at, created_at, updated_at \
          FROM hosts WHERE public_id = ? AND organization_id = ? AND status <> 'revoked'",
     )
@@ -278,7 +278,7 @@ pub async fn resolve_for_activation(
 ) -> Result<Host, HostServiceError> {
     let slug = normalize_slug(slug);
     let host = sqlx::query_as::<_, Host>(
-        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, \
+        "SELECT id, public_id, organization_id, slug, display_name, hostname, status, execution_granted, \
                 revoked_at, created_at, updated_at \
          FROM hosts WHERE organization_id = ? AND slug = ? AND status <> 'revoked'",
     )

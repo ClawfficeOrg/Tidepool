@@ -390,6 +390,46 @@ const ROUTES: &[RouteSpec] = &[
     },
     RouteSpec {
         method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/execution",
+        tag: "pool",
+        summary: "Grant host.execute so the host may run agents",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/hosts/{id}/execution",
+        tag: "pool",
+        summary: "Revoke host.execute; the host becomes connected-only",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/hosts/{id}/capabilities",
+        tag: "pool",
+        summary: "Read the host's last capability report and offered providers",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/capabilities",
+        tag: "pool",
+        summary: "Host reports providers, models, modes and thinking options",
+        secure: false,
+        required_scope: None,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
         path: "/v1/hosts/enrollment-tokens",
         tag: "pool",
         summary: "Mint a ten-minute single-use host enrollment token",
@@ -589,7 +629,11 @@ fn build_operation(route: &RouteSpec) -> Operation {
         builder = builder.security(SecurityRequirement::new("bearerAuth", Vec::<String>::new()));
     }
     if route.tag == "pool" {
-        let auth = if route.required_scope.is_some() {
+        let host_authenticated =
+            route.method == HttpMethod::Post && route.path == "/v1/hosts/{id}/capabilities";
+        let auth = if host_authenticated {
+            "host"
+        } else if route.required_scope.is_some() {
             "api_key"
         } else if route.secure {
             "member"
@@ -768,14 +812,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 45, "ROUTES must describe all 45 routes");
+        assert_eq!(ROUTES.len(), 49, "ROUTES must describe all 49 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            42,
-            "the 19 game route specs and 23 pool/host routes must stay under /v1/"
+            46,
+            "the 19 game route specs and 27 pool/host routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -841,7 +885,11 @@ mod tests {
                 .extensions
                 .as_ref()
                 .unwrap_or_else(|| panic!("{} has no access extension", route.path));
-            let expected = if route.required_scope.is_some() {
+            let host_authenticated =
+                route.method == HttpMethod::Post && route.path == "/v1/hosts/{id}/capabilities";
+            let expected = if host_authenticated {
+                "host"
+            } else if route.required_scope.is_some() {
                 "api_key"
             } else if route.secure {
                 "member"
@@ -875,7 +923,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.required_scope.is_some())
                 .count(),
-            1
+            2
         );
 
         // Extensions are flattened onto the operation in the served JSON, as
@@ -899,6 +947,8 @@ mod tests {
         fn parse_scope(source: &str) -> std::collections::BTreeSet<(String, String)> {
             let mut routes = std::collections::BTreeSet::new();
             let mut scope: Option<String> = None;
+            let mut pending_route: Option<String> = None;
+            let mut pending_path_line = false;
             for line in source.lines() {
                 let line = line.trim();
                 if let Some(rest) = line.split_once("web::scope(\"")
@@ -909,22 +959,39 @@ mod tests {
                 let Some(scope_path) = scope.as_ref() else {
                     continue;
                 };
-                let Some(rest) = line.split_once(".route(\"") else {
+                if pending_route.is_none() {
+                    if let Some(rest) = line.split_once(".route(\"")
+                        && let Some((route_path, _)) = rest.1.split_once('"')
+                    {
+                        pending_route = Some(route_path.to_string());
+                        pending_path_line = false;
+                    } else if line.contains(".route(") {
+                        pending_path_line = true;
+                    } else if pending_path_line
+                        && let Some((route_path, _)) = line.trim_start_matches('"').split_once('"')
+                    {
+                        pending_route = Some(route_path.to_string());
+                        pending_path_line = false;
+                    }
+                }
+                let Some(route_path) = pending_route.clone() else {
                     continue;
                 };
-                let Some((route_path, rest)) = rest.1.split_once('"') else {
-                    continue;
-                };
-                let method = ["get", "post", "put", "patch", "delete"]
+                // The route and its method may be on the same line or split
+                // across lines by rustfmt.
+                let Some(method) = ["get", "post", "put", "patch", "delete"]
                     .into_iter()
-                    .find(|method| rest.contains(&format!("web::{method}()")))
-                    .unwrap_or_else(|| panic!("route {line} has no known method"));
+                    .find(|method| line.contains(&format!("web::{method}()")))
+                else {
+                    continue;
+                };
                 let full = if route_path.is_empty() {
                     scope_path.clone()
                 } else {
                     format!("{scope_path}{route_path}")
                 };
                 routes.insert((method.to_string(), full));
+                pending_route = None;
             }
             routes
         }
@@ -948,6 +1015,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 23, "expected 23 hub operations");
+        assert_eq!(registered.len(), 27, "expected 27 hub operations");
     }
 }

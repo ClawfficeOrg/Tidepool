@@ -71,6 +71,8 @@ pub struct Host {
     pub hostname: String,
     /// Lifecycle state.
     pub status: HostStatus,
+    /// Whether the separate `host.execute` grant has been made.
+    pub execution_granted: bool,
     /// When the relationship was revoked.
     pub revoked_at: Option<DateTime<Utc>>,
     /// When the host was registered.
@@ -99,6 +101,8 @@ pub struct HostView {
     pub hostname: String,
     /// Lifecycle state.
     pub status: HostStatus,
+    /// True when the host may execute agents (`host.execute` grant).
+    pub execution_enabled: bool,
     /// When revoked, if it is.
     pub revoked_at: Option<DateTime<Utc>>,
     /// When registered.
@@ -113,6 +117,7 @@ impl From<&Host> for HostView {
             display_name: host.display_name.clone(),
             hostname: host.hostname.clone(),
             status: host.status,
+            execution_enabled: host.execution_granted,
             revoked_at: host.revoked_at,
             created_at: host.created_at,
         }
@@ -132,6 +137,7 @@ mod tests {
             display_name: "Studio Mac".into(),
             hostname: "Studio-Mac.local".into(),
             status: HostStatus::PendingApproval,
+            execution_granted: false,
             revoked_at: None,
             created_at: "2026-10-20T00:00:00Z".parse().expect("ts"),
             updated_at: "2026-10-20T00:00:00Z".parse().expect("ts"),
@@ -156,6 +162,14 @@ mod tests {
         assert!(!json.contains("organization_id"));
         assert!(!json.contains("\"id\":1"));
         assert!(json.contains("studio-mac"));
+    }
+
+    #[test]
+    fn execution_grant_is_separate_from_enrollment() {
+        let host = sample();
+        assert!(!host.execution_granted);
+        let view = HostView::from(&host);
+        assert!(!view.execution_enabled);
     }
 
     #[test]

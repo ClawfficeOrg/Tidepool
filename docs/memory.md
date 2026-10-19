@@ -1017,6 +1017,14 @@ an offline host fails with `daemon_not_connected` and is not queued. The
 `tidepool_hosts_connected` gauge is updated on transitions and resynced when
 stale rows are swept.
 
+**Host execution is a second grant:** enrollment (identity) and the WebSocket
+connection (presence) never permit the pool to start agents. `host.execute` is a
+separate `execution_granted` flag, default false. A capability report is a flat
+list of provider/model/mode/thinking variants plus opaque provider-native
+options; re-reporting replaces the set. Validation happens at save time and
+names the first unavailable field. The pool only offers providers in the
+grantable allow-list for pooled execution, even if a host reports others.
+
 ---
 
 ## Open Questions / Assumptions

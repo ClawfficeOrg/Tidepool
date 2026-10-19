@@ -11,8 +11,11 @@
 
 use crate::api::problem::{Problem, ProblemCode};
 use crate::entities::host::HostView;
+use crate::entities::host_capability::AgentCapability;
 use crate::middleware::auth::OperatorAuth;
 use crate::services::api_keys::AuditActor;
+use crate::services::enrollment;
+use crate::services::host_capability::{self as capability_svc, HostCapabilityError};
 use crate::services::host_presence;
 use crate::services::hosts::{self as host_svc, HostServiceError, NewHost, RenameHost};
 use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
@@ -34,6 +37,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/enroll",
                 web::post().to(crate::api::enrollment::enroll_host),
             )
+            .route("/{id}/execution", web::post().to(grant_execution))
+            .route("/{id}/execution", web::delete().to(revoke_execution))
+            .route("/{id}/capabilities", web::get().to(get_capabilities))
+            .route("/{id}/capabilities", web::post().to(report_capabilities))
             .route("/{id}", web::get().to(get_host))
             .route("/{id}", web::patch().to(rename_host))
             .route("/{id}", web::delete().to(revoke_host)),
@@ -209,6 +216,215 @@ async fn revoke_host(
         }
         Err(e) => map_error(e, &req),
     }
+}
+
+/// Capability report payload sent by the host.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityReportRequest {
+    /// Reported variants; an empty list means the host can run nothing.
+    pub capabilities: Vec<AgentCapability>,
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn grant_execution(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = auth.require_mutating() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    match capability_svc::grant_execution(
+        pool.get_ref(),
+        auth.organization_id(),
+        &path.into_inner(),
+        actor(&auth),
+    )
+    .await
+    {
+        Ok(host) => HttpResponse::Ok().json(HostView::from(&host)),
+        Err(e) => map_capability_error(e, &req),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn revoke_execution(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = auth.require_mutating() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    match capability_svc::revoke_execution(
+        pool.get_ref(),
+        auth.organization_id(),
+        &path.into_inner(),
+        actor(&auth),
+    )
+    .await
+    {
+        Ok(host) => HttpResponse::Ok().json(HostView::from(&host)),
+        Err(e) => map_capability_error(e, &req),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn get_capabilities(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    match capability_svc::get_report(pool.get_ref(), auth.organization_id(), &path.into_inner())
+        .await
+    {
+        Ok(Some(report)) => HttpResponse::Ok().json(report),
+        Ok(None) => not_found(&req),
+        Err(e) => map_capability_error(e, &req),
+    }
+}
+
+/// Host-facing report. Authenticates with the relationship credential and
+/// requires the execution grant.
+#[tracing::instrument(skip(pool, req, body))]
+async fn report_capabilities(
+    pool: Option<web::Data<MySqlPool>>,
+    path: web::Path<String>,
+    body: web::Json<CapabilityReportRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    let host_id = path.into_inner();
+    let header_host = match req
+        .headers()
+        .get("x-host-id")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => value.to_string(),
+        None => return unauthorized(&req, "X-Host-Id is required"),
+    };
+    if header_host != host_id {
+        return unauthorized(&req, "X-Host-Id does not match the route");
+    }
+    let Some(credential) = req
+        .headers()
+        .get("x-host-credential")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return unauthorized(&req, "X-Host-Credential is required");
+    };
+
+    match enrollment::authenticate_host(pool.get_ref(), &host_id, credential).await {
+        Ok(_) => {}
+        Err(enrollment::EnrollmentError::InvalidCredentials) => {
+            return unauthorized(&req, "invalid host credential");
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "host capability report authentication failed");
+            return internal_error(&req);
+        }
+    }
+
+    // The host does not need a member organization; resolve it from the row.
+    let organization_id: u64 = match sqlx::query_scalar(
+        "SELECT organization_id FROM hosts WHERE public_id = ? AND status <> 'revoked'",
+    )
+    .bind(&host_id)
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(id)) => id,
+        Ok(None) => return not_found(&req),
+        Err(error) => {
+            tracing::error!(error = %error, "host organization lookup failed");
+            return internal_error(&req);
+        }
+    };
+
+    match capability_svc::report_capabilities(
+        pool.get_ref(),
+        organization_id,
+        &host_id,
+        body.capabilities.clone(),
+    )
+    .await
+    {
+        Ok(report) => HttpResponse::Ok().json(report),
+        Err(e) => map_capability_error(e, &req),
+    }
+}
+
+fn unauthorized(req: &HttpRequest, detail: &str) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::UNAUTHORIZED,
+        ProblemCode::Unauthorized,
+        detail,
+    )
+    .into_response()
+}
+
+fn internal_error(req: &HttpRequest) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        ProblemCode::InternalError,
+        "internal error",
+    )
+    .into_response()
+}
+
+fn map_capability_error(error: HostCapabilityError, req: &HttpRequest) -> HttpResponse {
+    let (status, code, detail) = match error {
+        HostCapabilityError::NotFound => (
+            StatusCode::NOT_FOUND,
+            ProblemCode::NotFound,
+            "host not found".to_string(),
+        ),
+        HostCapabilityError::NotGranted => (
+            StatusCode::FORBIDDEN,
+            ProblemCode::Forbidden,
+            "host.execute: execution has not been granted for this host".to_string(),
+        ),
+        HostCapabilityError::Invalid(message) => (
+            StatusCode::BAD_REQUEST,
+            ProblemCode::InvalidRequest,
+            message,
+        ),
+        HostCapabilityError::Unavailable { field, value } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ProblemCode::ValidationFailed,
+            format!("{field}: host cannot run '{value}'"),
+        ),
+        HostCapabilityError::Database(error) => {
+            tracing::error!(error = %error, "host capability operation failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ProblemCode::InternalError,
+                "internal error".to_string(),
+            )
+        }
+    };
+    Problem::from_request(req, status, code, detail).into_response()
 }
 
 fn db_unavailable(req: &HttpRequest) -> HttpResponse {

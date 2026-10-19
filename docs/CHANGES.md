@@ -125,6 +125,22 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   rows to offline on process startup. Revoking a host forgets its connections
   and the gauge immediately.
 
+### Host execution grant and capabilities (task 1.2.4)
+- Added `hosts.execution_granted` (default false) and `host_capabilities`
+  (migration `20261020000003_create_host_capabilities`). Enrollment alone is
+  connected-only; `POST /v1/hosts/{id}/execution` makes the separate
+  `host.execute` grant and `DELETE` revokes it. `HostView.execution_enabled`
+  labels the state.
+- With the grant, the host reports providers, models, execution modes, thinking
+  options and provider-native option objects at
+  `POST /v1/hosts/{id}/capabilities`, authenticated with the relationship
+  credential. `GET` returns the report and the offered provider set.
+- Only the grantable provider set is offered for pooled execution. Save-time
+  validation (`validate_agent_for_host`) names the unavailable
+  `provider`, `model`, `execution_mode` or `thinking_option` field instead of
+  failing at first dispatch.
+- Grant, revoke and report actions are audited.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

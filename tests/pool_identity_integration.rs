@@ -1613,3 +1613,188 @@ async fn host_presence_moves_online_offline_and_blocks_dispatch() {
         Err(host_presence::HostPresenceError::NotFound)
     ));
 }
+
+// ── host execution grant and capabilities (task 1.2.4) ────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_execution_grant_and_capability_validation() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "capability-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register host");
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint");
+    let credential = "capability-host-credential-0123456789abcdef";
+    enrollment_svc::enroll_host(&pool, &token, credential)
+        .await
+        .expect("enroll");
+
+    // Enrollment alone is connected-only.
+    let get = test::TestRequest::get()
+        .uri(&format!("/v1/hosts/{}", host.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, get).await).await;
+    assert_eq!(body["execution_enabled"], false);
+    assert_eq!(body["status"], "offline");
+
+    let selection = tidepool::entities::host_capability::AgentSelection {
+        provider: "anthropic".into(),
+        model: "claude".into(),
+        execution_mode: "default".into(),
+        thinking_option: None,
+    };
+    assert!(matches!(
+        tidepool::services::host_capability::validate_agent_for_host(
+            &pool,
+            organization_id,
+            &host.public_id,
+            &selection
+        )
+        .await,
+        Err(tidepool::services::host_capability::HostCapabilityError::NotGranted)
+    ));
+
+    // Reporting before the grant is refused.
+    let report = test::TestRequest::post()
+        .uri(&format!("/v1/hosts/{}/capabilities", host.public_id))
+        .insert_header(("X-Host-Id", host.public_id.clone()))
+        .insert_header(("X-Host-Credential", credential))
+        .set_json(serde_json::json!({
+            "capabilities": [{
+                "provider": "anthropic",
+                "model": "claude",
+                "execution_mode": "default"
+            }]
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, report).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    // Grant host.execute from the control plane.
+    let grant = test::TestRequest::post()
+        .uri(&format!("/v1/hosts/{}/execution", host.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let resp = test::call_service(&app, grant).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["execution_enabled"], true);
+
+    // The host reports providers, models, modes and provider-native options.
+    let report = test::TestRequest::post()
+        .uri(&format!("/v1/hosts/{}/capabilities", host.public_id))
+        .insert_header(("X-Host-Id", host.public_id.clone()))
+        .insert_header(("X-Host-Credential", credential))
+        .set_json(serde_json::json!({
+            "capabilities": [
+                {
+                    "provider": "anthropic",
+                    "model": "claude",
+                    "execution_mode": "default",
+                    "options": {"max_tokens": 8192}
+                },
+                {
+                    "provider": "anthropic",
+                    "model": "claude",
+                    "execution_mode": "plan",
+                    "thinking_option": "high"
+                },
+                {
+                    "provider": "openai",
+                    "model": "gpt",
+                    "execution_mode": "default"
+                },
+                {
+                    "provider": "not-grantable",
+                    "model": "x",
+                    "execution_mode": "default"
+                }
+            ]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, report).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["offered_providers"][0], "anthropic");
+    assert_eq!(body["offered_providers"][1], "openai");
+    assert_eq!(body["offered_providers"].as_array().unwrap().len(), 2);
+
+    // Saving a trigger with a valid selection succeeds; an unavailable model
+    // or provider is refused with the field named.
+    tidepool::services::host_capability::validate_agent_for_host(
+        &pool,
+        organization_id,
+        &host.public_id,
+        &selection,
+    )
+    .await
+    .expect("valid selection");
+
+    let mut bad_model = selection.clone();
+    bad_model.model = "missing".into();
+    let error = tidepool::services::host_capability::validate_agent_for_host(
+        &pool,
+        organization_id,
+        &host.public_id,
+        &bad_model,
+    )
+    .await
+    .expect_err("bad model");
+    assert_eq!(error.to_string(), "model: host cannot run 'missing'");
+
+    // Revoking the grant removes the execution target but keeps the host.
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/hosts/{}/execution", host.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let resp = test::call_service(&app, revoke).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["execution_enabled"], false);
+    assert!(matches!(
+        tidepool::services::host_capability::validate_agent_for_host(
+            &pool,
+            organization_id,
+            &host.public_id,
+            &selection
+        )
+        .await,
+        Err(tidepool::services::host_capability::HostCapabilityError::NotGranted)
+    ));
+}
