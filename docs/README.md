@@ -11,5 +11,35 @@ This docs/ directory contains design and implementation plans for the Playzoid-S
 - TALO_API.md — API reference and serde examples
 - CHANGES.md — changelog (append-only)
 
+## Dev database rename (Playzoid → Tidepool)
+
+The dev stack in `config/docker-compose.dev.yml` now uses database
+`tidepool_dev` and user `tidepool`. Migration files are forward-only and are
+**not** rewritten; only the database and user names changed.
+
+A fresh stack picks the new names up automatically. To carry an existing
+`playzoid_dev` volume over without losing data:
+
+```sh
+# 1. Dump the old database from the running stack.
+docker compose -f config/docker-compose.dev.yml exec -T db \
+  mysqldump -uroot -prootpassword --databases playzoid_dev > /tmp/playzoid_dev.sql
+
+# 2. Rewrite the database name in the dump (portable, no in-place sed).
+sed 's/`playzoid_dev`/`tidepool_dev`/g; s/^CREATE DATABASE.*playzoid_dev.*/CREATE DATABASE IF NOT EXISTS `tidepool_dev`;/; s/^USE `playzoid_dev`;/USE `tidepool_dev`;/' \
+  /tmp/playzoid_dev.sql > /tmp/tidepool_dev.sql
+
+# 3. Create the new user and restore into the new database.
+docker compose -f config/docker-compose.dev.yml exec -T db \
+  mysql -uroot -prootpassword -e "CREATE USER IF NOT EXISTS 'tidepool'@'%' IDENTIFIED BY 'password'; GRANT ALL PRIVILEGES ON tidepool_dev.* TO 'tidepool'@'%'; FLUSH PRIVILEGES;"
+docker compose -f config/docker-compose.dev.yml exec -T db \
+  mysql -uroot -prootpassword < /tmp/tidepool_dev.sql
+```
+
+Then update `DATABASE_URL` in `.env` to
+`mysql://tidepool:password@localhost:3306/tidepool_dev` and restart the stack.
+Do **not** run `docker compose down -v` — that deletes the volume, including
+the copy you just made. Keep `playzoid_dev` until the new database is verified.
+
 
 Benchmarking: add a follow-up task for gpt-5-mini to research a benchmarking harness to compare similar backend implementations and publish results in README. See todo.md #benchmark for details.
