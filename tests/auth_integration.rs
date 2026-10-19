@@ -39,6 +39,7 @@ async fn test_fixtures() -> (sqlx::MySqlPool, ConnectionManager, Config) {
         jwt_secret: JWT_SECRET.into(),
         jwt_expiry_secs: 3600,
         rate_limit: RateLimitConfig::default(),
+        pool_bootstrap: None,
     };
     (pool, mgr, cfg)
 }

@@ -160,3 +160,21 @@ bullets over prose. Read the last few sections before starting a similar task.
 - `cargo audit` gating requires curating `.cargo/audit.toml`: bump deps to
   clear what's fixable (validator 0.20 cleared idna), and ignore the rest with
   an explicit rationale so the gate stays meaningful.
+- A "one row only" invariant is cheapest as a `TINYINT` column fixed to 1 with
+  a `UNIQUE` key: it closes the check-then-insert race in the database instead
+  of relying on the service to lock an empty table range.
+- Bootstrap secrets need an explicit redacted `Debug` when they live inside a
+  `#[derive(Debug)]` config tree; otherwise a single `?config` in a log line
+  prints the temporary password.
+- A salted hash cannot be looked up, so a one-time token needs a clear lookup
+  half: `<public_id>.<secret>` lets acceptance fetch the row by public id and
+  verify only the secret, while storing just the secret's hash.
+- Lock the whole member set in id order before checking a "last owner" rule;
+  locking the target first and then the owners opens a deadlock between two
+  owner actions.
+- MySQL `JSON` columns do not decode into `String` under sqlx: use
+  `sqlx::types::Json<T>` or store the serialized value in `TEXT` when the code
+  wants to round-trip it as a string.
+- A root actix scope such as `/v1` captures later sibling `/v1/...` routes; use
+  the exact module prefix (`/v1/setup`, `/v1/pool`) so independent route groups
+  cannot shadow each other.

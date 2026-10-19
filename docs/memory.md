@@ -926,6 +926,61 @@ in its `docs/paseo-notes.md`.
 
 ---
 
+## 2026-10-19 — Pool identity is single-tenant in v1
+
+**Decision:** one `organizations` row per pool. The table carries a constant
+`singleton` column with a `UNIQUE` key, and the identity service refuses setup
+when an organization already exists. There is no organization-id in any v1
+route: the pool *is* the tenant.
+
+**Why:** every later phase authorizes against one owner and one org; inventing
+tenant scoping now would add a column to every future table for a case nobody
+has asked to run. Multi-tenancy is deferred, not rejected: a future migration
+drops the singleton constraint and adds `organization_id` to the remaining hub
+tables.
+
+**Bootstrap semantics:** `TIDEBOOT_*` is applied once at startup by `main`.
+`bootstrap_from_env` only inserts — it returns `AlreadyBootstrapped` when the
+organization exists and never touches the operator row. The temporary password
+is hashed with Argon2id exactly like any other; `password_change_required` is
+true until `POST /v1/pool/password` replaces the hash and clears the flag. A
+restart cannot re-apply the password, and after the first change the old
+password fails verification because the hash changed. The bootstrap secret is
+never logged; `PoolBootstrapConfig`'s `Debug` prints `<redacted>`.
+
+**Operator tokens:** operators use the same JWT issuer and secret as players;
+the subject is `pool_users.public_id`. Pool handlers resolve that subject to an
+operator row, so a player token is refused with 401. Task 1.1.4's problem
+contract and 1.1.2's session invalidation will build on this; if a token kind
+becomes necessary it is an additive claim, not a second secret.
+
+**Security:** the bootstrap credential is a privileged secret and is only safe
+over TLS. Any deployment that exposes setup or operator sign-in must terminate
+TLS in front of the pool; the compose/deploy task (1.6.x) owns that.
+
+**Team roles and invitations:** owners manage members and invitations, admins
+will change configuration, members operate, viewers read. Role checks live in
+`OperatorAuth` (`require_mutating` / `require_owner`) and read the role from the
+database on every request, so a demotion is effective immediately. Invitation
+tokens are `<public_id>.<secret>`; only an Argon2id hash of the secret is
+stored, so the database cannot be used to accept an invitation and the raw
+token is shown once. Single use is `accepted_at`, checked under `FOR UPDATE`.
+Removing a member deletes the row, which makes every old JWT fail the next
+operator lookup; there is no separate session table in v1.
+
+**API keys and audit:** keys are `<prefix>.<secret>`; the prefix is the lookup
+half and only an Argon2id hash of the secret is stored, so list/whoami can show
+a prefix without ever re-exposing a usable key. Scopes are an allow-list of
+named capabilities, and authentication (401) is kept separate from
+authorization (403). Revocation flips `status` and authentication selects only
+active rows, so it is immediate. The audit table records one row per hub
+mutation with `member`, `api_key` or `system` as actor; v1 writes it after the
+mutation rather than in the same transaction, and a write failure is logged.
+Daemon enrollment tokens are not part of this task; the future table must join
+back to `api_keys.status` so revoking a key kills its unconsumed tokens.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

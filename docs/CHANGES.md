@@ -7,6 +7,60 @@
 Documentation and planning change plus the first implementation task. The plan
 is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 
+### Pool identity (task 1.1.1)
+- Added `organizations` and `pool_users` (migration
+  `20261019000001_create_pool_identity`). One organization per pool in v1 is
+  enforced by a `UNIQUE` key on a constant `singleton` column; multi-tenancy is
+  deferred and recorded in `docs/memory.md`.
+- Added first-run setup: `GET /v1/setup/status` and `POST /v1/setup` create the
+  organization and owner in the browser, and refuse a second organization.
+- Unattended installs bootstrap the first owner from `TIDEBOOT_ORGANIZATION_NAME`,
+  `TIDEBOOT_OWNER_EMAIL`, `TIDEBOOT_OWNER_PASSWORD` (at least 12 characters) and
+  optional `TIDEBOOT_OWNER_NAME`. The bootstrap is insert-only, so a restart
+  never re-applies the temporary password.
+- Operators sign in at `POST /v1/pool/login`; `POST /v1/pool/password` replaces
+  the bootstrap password and clears `password_change_required`. After the
+  change the old password no longer authenticates. Passwords are Argon2id PHC
+  strings and the bootstrap secret is never logged (its `Debug` is redacted).
+- `GET /v1/pool/me` returns the signed-in operator and organization. Player
+  tokens are refused because the subject must resolve to a `pool_users` row.
+
+### Team members, roles and invitations (task 1.1.2)
+- Added `pool_invitations` (migration `20261019000002_create_pool_invitations`)
+  with single-use, revocable, seven-day tokens. Only an Argon2id hash of the
+  token's secret half is stored; the raw token is returned once by
+  `POST /v1/pool/invitations`.
+- Members accept at `POST /v1/pool/invitations/accept`, choosing their password.
+  Replays are refused (409), as are expired and revoked invitations (410).
+- Roles are `owner`, `admin`, `member`, `viewer`. Owners manage the team and
+  invitations; viewers are read-only. Every mutating pool handler checks the
+  role, so a viewer receives 403.
+- The last owner cannot be removed or demoted (409); member mutations lock the
+  organization's rows in id order so concurrent owner actions cannot race.
+- Removing a member deletes the row, so their existing JWT stops resolving on
+  the next request — revocation is immediate.
+- Added `OperatorAuth`, which resolves the JWT subject to a `pool_users` row on
+  every request; player tokens are refused.
+
+### API keys, scopes and audit (task 1.1.3)
+- Added `api_keys` and `audit_events` (migration
+  `20261019000003_create_api_keys_and_audit`). Keys are organization-scoped and
+  carry explicit scopes: `projects:read`, `configuration:validate`,
+  `configuration:install`, `runs:dispatch`, `daemons:enroll`.
+- `POST /v1/api-keys` returns the full `<prefix>.<secret>` exactly once; only the
+  prefix and an Argon2id hash of the secret are stored. List and whoami return
+  the prefix only.
+- `GET /v1/api-keys/whoami` authenticates an API key (`X-API-Key` or
+  `Authorization: Bearer tpk_...`) and requires `projects:read`. A valid key
+  without the scope gets 403; an unknown or revoked key gets 401.
+- Revocation (`DELETE /v1/api-keys/{id}`) sets the key to `revoked`, and
+  authentication only selects active rows, so the next request fails
+  immediately. Daemon enrollment tokens do not exist yet; when they land their
+  issuing key's status must invalidate them.
+- Every hub mutation now writes an `audit_events` row with a member, API-key or
+  system actor: setup/bootstrap, password change, invitations, role changes,
+  member removal, key creation and key revocation.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

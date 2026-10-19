@@ -223,7 +223,7 @@
         {
           "id": "1.1.1",
           "title": "Organization, operator accounts and pool bootstrap",
-          "status": "pending",
+          "status": "done",
           "goal": "Migration and service for `organizations` and `pool_users` (email, password_hash via Argon2id, display name, role). First run offers browser setup; an unattended deployment can instead bootstrap the first operator from TIDEBOOT_* environment variables (organization name, owner email, temporary password of at least 12 characters) and the password must be changed on first sign-in. One organization per pool in v1; multi-tenancy is deferred and recorded.",
           "touches": [
             "migrations/",
@@ -244,12 +244,13 @@
           "agent": "pro_dev_agent",
           "security_notes": "Bootstrap credential is a privileged secret: never log it, never store it after first change, and require TLS in any deployment that exposes it.",
           "changelog": "Added pool organizations, operator accounts and environment bootstrap",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:15:56Z"
         },
         {
           "id": "1.1.2",
           "title": "Team members, roles and invitations",
-          "status": "pending",
+          "status": "done",
           "goal": "Members belong to the organization with a role (owner, admin, member, viewer) and an invitation flow: invite by email, single-use expiring token, accept sets the password. Roles decide what the control plane and the API allow; a viewer may read, an admin may change configuration, an owner may manage members and keys.",
           "touches": [
             "migrations/",
@@ -271,12 +272,13 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added pool members, roles and invitations",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:23:46Z"
         },
         {
           "id": "1.1.3",
           "title": "API keys with scopes, one-time secrets and audit",
-          "status": "pending",
+          "status": "done",
           "goal": "Organization-scoped API keys for automation, with selectable scopes: projects:read, configuration:validate, configuration:install, runs:dispatch, daemons:enroll. The full secret is returned exactly once at creation and only a prefix plus a hash is stored. The pool records creation, selected scopes, last-used time and status, and refuses a valid key that lacks the scope an endpoint needs with 403. Revoking a key rejects its future requests immediately and expires any unconsumed enrollment token it issued.",
           "touches": [
             "migrations/",
@@ -299,7 +301,8 @@
           "agent": "pro_dev_agent",
           "security_notes": "Store only a hash plus a display prefix; never log a secret; scope names are part of the public API contract.",
           "changelog": "Added scoped pool API keys with one-time secrets and audit",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:30:23Z"
         },
         {
           "id": "1.1.4",

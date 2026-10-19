@@ -39,11 +39,19 @@ docker compose -f config/docker-compose.dev.yml up -d   # MySQL + Redis
 cargo run                                               # tidepool on :8080
 ```
 
+First run needs an organization. Open the pool's setup page and `POST
+/v1/setup`, or set `TIDEBOOT_ORGANIZATION_NAME`, `TIDEBOOT_OWNER_EMAIL` and
+`TIDEBOOT_OWNER_PASSWORD` (at least 12 characters) for an unattended install;
+the temporary password must be changed on first sign-in.
+
 | Endpoint | Purpose |
 |---|---|
 | `GET /healthz` | Liveness; reports database reachability |
 | `GET /metrics` | Prometheus metrics, all series prefixed `tidepool_` |
 | `GET /openapi.json` | Generated OpenAPI 3.1 document |
+| `/v1/setup` | First-run organization and owner setup (browser installs) |
+| `/v1/pool/...` | Operator sign-in, profile and password change |
+| `/v1/api-keys` | Organization API keys and scoped automation |
 | `/v1/...` | Game API (see `docs/TALO_API.md`) |
 
 The Prometheus prefix is `tidepool_`, not the old name: dashboards and alerts

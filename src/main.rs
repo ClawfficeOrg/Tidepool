@@ -41,6 +41,31 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // Apply the unattended first-run bootstrap, if configured. This only ever
+    // inserts: an existing organization is left untouched, so a restart cannot
+    // re-apply the temporary password.
+    if let (Some(pool), Some(bootstrap)) = (pool.as_ref(), cfg.pool_bootstrap.as_ref()) {
+        match services::pool_identity::bootstrap_from_env(pool, bootstrap).await {
+            Ok(services::pool_identity::BootstrapOutcome::Created {
+                organization,
+                owner_email,
+            }) => {
+                info!(
+                    organization = %organization,
+                    owner_email = %owner_email,
+                    "Pool organization bootstrapped from TIDEBOOT_*"
+                );
+            }
+            Ok(services::pool_identity::BootstrapOutcome::AlreadyBootstrapped) => {
+                info!("Pool already initialized; TIDEBOOT_* bootstrap skipped");
+            }
+            Ok(services::pool_identity::BootstrapOutcome::Disabled) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "Pool bootstrap from TIDEBOOT_* failed");
+            }
+        }
+    }
+
     // Build the Redis connection manager — caching disabled if unavailable.
     // `services::redis::connect` bounds the handshake; a bare
     // `ConnectionManager::new` can retry forever against an unreachable server
@@ -83,6 +108,8 @@ async fn main() -> std::io::Result<()> {
         app = app
             .configure(api::healthz::config)
             .configure(api::auth::config)
+            .configure(api::pool_identity::config)
+            .configure(api::api_keys::config)
             .configure(api::players::config)
             .configure(api::leaderboards::config)
             .configure(api::saves::config)
