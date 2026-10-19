@@ -59,6 +59,16 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   Dashboards, alerts and recording rules matching the old names must be updated.
   The HTTP API surface is unchanged.
 
+### Dev stack, CI and deploy identifiers (task 1.0.3)
+- `config/docker-compose.dev.yml`: database `playzoid_dev` → `tidepool_dev`, user
+  `playzoid` → `tidepool`, and the server's `DATABASE_URL` follows.
+- `.github/workflows/ci.yml`: the sqlx job's `MYSQL_DATABASE` and
+  `DATABASE_URL` use `tidepool`, and the Docker smoke image tag is `tidepool:ci`.
+- `.env.example` uses the new database URL and `RUST_LOG=…,tidepool=debug`.
+- Migration files are **not** rewritten — they are forward-only and already
+  applied. `docs/README.md` documents how to carry an existing `playzoid_dev`
+  volume over to `tidepool_dev` without losing data.
+
 ## [0.4.0] — 2026-08-27 — Analytics, Config, Feedback & Production Hardening
 
 Release of the full Phase 0.4 line (tasks 0.4.1–0.4.13). Highlights:

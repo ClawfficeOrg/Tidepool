@@ -142,7 +142,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: playzoid
+          MYSQL_DATABASE: tidepool
         ports:
           - 3306:3306
         options: >-
@@ -151,7 +151,7 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
-      DATABASE_URL: mysql://root:root@127.0.0.1:3306/playzoid
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/tidepool
     steps:
       - uses: actions/checkout@v4
 
@@ -203,4 +203,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: playzoid-server:ci
+          tags: tidepool:ci
