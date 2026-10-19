@@ -2,9 +2,11 @@
 //!
 //! The [`RateLimit`] middleware is registered globally but only enforces on
 //! configured public path prefixes (default: `/v1/auth`, `/auth`, `/ws`).
+//! Setup and operator sign-in are always treated as credential endpoints.
 //! Two request classes exist:
 //!
-//! - **auth** — credential endpoints (`/v1/auth/**`, legacy `/auth/**`),
+//! - **auth** — credential endpoints (`/v1/auth/**`, legacy `/auth/**`,
+//!   `/v1/setup/**`, `/v1/pool/login`),
 //!   with a tight budget to slow brute-force attempts.
 //! - **default** — every other rate-limited public route (e.g. the `/ws`
 //!   handshake).
@@ -85,7 +87,8 @@ pub enum RateLimitError {
 /// Request classification used to pick the applicable budget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateLimitClass {
-    /// Credential endpoints (`/v1/auth/**`, `/auth/**`) — tightest budget.
+    /// Credential endpoints (`/v1/auth/**`, `/auth/**`, `/v1/setup/**`,
+    /// `/v1/pool/login`) — tightest budget.
     Auth,
     /// Every other rate-limited public route — general budget.
     Default,
@@ -112,7 +115,7 @@ impl RateLimitClass {
 /// Path prefixes that always classify as [`RateLimitClass::Auth`], regardless
 /// of what `RATE_LIMIT_PUBLIC_PREFIXES` contains. Both the canonical upstream
 /// spelling and the 0.4.1 legacy alias are listed.
-const AUTH_PREFIXES: &[&str] = &["/v1/auth", "/auth"];
+const AUTH_PREFIXES: &[&str] = &["/v1/auth", "/auth", "/v1/setup", "/v1/pool/login"];
 
 /// Outcome of classifying a request path against the limiter configuration.
 ///
@@ -496,6 +499,7 @@ mod tests {
             jwt_secret: SECRET.into(),
             jwt_expiry_secs: 3600,
             rate_limit: RateLimitConfig::default(),
+            pool_bootstrap: None,
         }
     }
 
@@ -648,6 +652,18 @@ mod tests {
         );
         // Segment boundary: must not swallow /v1/authentication-style paths.
         assert_eq!(classify_path("/v1/authentication", &cfg), None);
+        // First-run setup and operator sign-in are credential endpoints too.
+        assert_eq!(
+            classify_path("/v1/setup/status", &cfg),
+            Some(RateLimitClass::Auth)
+        );
+        assert_eq!(classify_path("/v1/setup", &cfg), Some(RateLimitClass::Auth));
+        assert_eq!(
+            classify_path("/v1/pool/login", &cfg),
+            Some(RateLimitClass::Auth)
+        );
+        // Authenticated reads are not part of the auth budget.
+        assert_eq!(classify_path("/v1/pool/me", &cfg), None);
         assert_eq!(classify_path("/ws", &cfg), Some(RateLimitClass::Default));
         // Liveness probes are never limited.
         assert_eq!(classify_path("/healthz", &cfg), None);

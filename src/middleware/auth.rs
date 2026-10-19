@@ -115,6 +115,7 @@ mod tests {
             jwt_secret: SECRET.into(),
             jwt_expiry_secs: 3600,
             rate_limit: RateLimitConfig::default(),
+            pool_bootstrap: None,
         }
     }
 

@@ -208,6 +208,51 @@ const ROUTES: &[RouteSpec] = &[
     },
     RouteSpec {
         method: HttpMethod::Get,
+        path: "/v1/setup/status",
+        tag: "pool",
+        summary: "Report whether the pool still needs first-run setup",
+        secure: false,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/setup",
+        tag: "pool",
+        summary: "Create the organization and first owner from the browser",
+        secure: false,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/pool/login",
+        tag: "pool",
+        summary: "Sign an operator in and issue a JWT",
+        secure: false,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/pool/me",
+        tag: "pool",
+        summary: "Fetch the signed-in operator and organization",
+        secure: true,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/pool/password",
+        tag: "pool",
+        summary: "Replace the operator's password (clears first-sign-in requirement)",
+        secure: true,
+        has_body: true,
+        success: "204",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
         path: "/healthz",
         tag: "system",
         summary: "Liveness probe with DB status",
@@ -486,14 +531,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 22, "ROUTES must describe all 22 routes");
+        assert_eq!(ROUTES.len(), 27, "ROUTES must describe all 27 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            19,
-            "the 19 game route specs must stay under /v1/"
+            24,
+            "the 19 game route specs and 5 pool identity routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES

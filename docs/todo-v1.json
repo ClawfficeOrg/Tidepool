@@ -223,7 +223,7 @@
         {
           "id": "1.1.1",
           "title": "Organization, operator accounts and pool bootstrap",
-          "status": "pending",
+          "status": "done",
           "goal": "Migration and service for `organizations` and `pool_users` (email, password_hash via Argon2id, display name, role). First run offers browser setup; an unattended deployment can instead bootstrap the first operator from TIDEBOOT_* environment variables (organization name, owner email, temporary password of at least 12 characters) and the password must be changed on first sign-in. One organization per pool in v1; multi-tenancy is deferred and recorded.",
           "touches": [
             "migrations/",
@@ -244,7 +244,8 @@
           "agent": "pro_dev_agent",
           "security_notes": "Bootstrap credential is a privileged secret: never log it, never store it after first change, and require TLS in any deployment that exposes it.",
           "changelog": "Added pool organizations, operator accounts and environment bootstrap",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:15:56Z"
         },
         {
           "id": "1.1.2",

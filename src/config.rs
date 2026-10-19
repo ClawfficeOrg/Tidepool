@@ -148,6 +148,125 @@ fn parse_bool(var: &str) -> Result<bool> {
     }
 }
 
+/// Minimal email shape check used before an address reaches the database.
+///
+/// API payloads additionally carry `#[validate(email)]`; this helper covers
+/// values loaded from the environment and service-level callers.
+pub(crate) fn is_valid_email(email: &str) -> bool {
+    let email = email.trim();
+    if email.is_empty() || email.len() > 255 || email.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let mut parts = email.split('@');
+    let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+}
+
+/// First-run operator bootstrap loaded from `TIDEBOOT_*` (task 1.1.1).
+///
+/// The three required variables are all-or-nothing: setting one without the
+/// others is a startup error, so a typo cannot silently leave an unattended
+/// pool without an owner.
+///
+/// `TIDEBOOT_OWNER_PASSWORD` is a privileged secret. The custom [`Debug`]
+/// implementation redacts it so it cannot leak through a `tracing` field or a
+/// panic message.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PoolBootstrapConfig {
+    /// Organization name (`TIDEBOOT_ORGANIZATION_NAME`).
+    pub organization_name: String,
+    /// Owner login email (`TIDEBOOT_OWNER_EMAIL`).
+    pub owner_email: String,
+    /// Temporary owner password (`TIDEBOOT_OWNER_PASSWORD`), at least 12 chars.
+    pub owner_password: String,
+    /// Display name (`TIDEBOOT_OWNER_NAME`, defaults to `Owner`).
+    pub owner_display_name: String,
+}
+
+impl std::fmt::Debug for PoolBootstrapConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PoolBootstrapConfig")
+            .field("organization_name", &self.organization_name)
+            .field("owner_email", &self.owner_email)
+            .field("owner_password", &"<redacted>")
+            .field("owner_display_name", &self.owner_display_name)
+            .finish()
+    }
+}
+
+impl PoolBootstrapConfig {
+    /// Minimum temporary-password length accepted for bootstrap.
+    pub const MIN_PASSWORD_LEN: usize = 12;
+
+    /// Load `TIDEBOOT_*` from the environment.
+    ///
+    /// Returns `Ok(None)` when none of the required variables are set, so a
+    /// browser setup install needs no bootstrap configuration.
+    pub fn from_env() -> Result<Option<Self>> {
+        const ORG: &str = "TIDEBOOT_ORGANIZATION_NAME";
+        const EMAIL: &str = "TIDEBOOT_OWNER_EMAIL";
+        const PASSWORD: &str = "TIDEBOOT_OWNER_PASSWORD";
+        const NAME: &str = "TIDEBOOT_OWNER_NAME";
+
+        let org = std::env::var(ORG).ok();
+        let email = std::env::var(EMAIL).ok();
+        let password = std::env::var(PASSWORD).ok();
+
+        let any = org.is_some() || email.is_some() || password.is_some();
+        if !any {
+            return Ok(None);
+        }
+
+        let organization_name = org
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| anyhow!("{ORG} is required when TIDEBOOT_* is configured"))?
+            .trim()
+            .to_string();
+        let owner_email = email
+            .filter(|v| !v.trim().is_empty())
+            .ok_or_else(|| anyhow!("{EMAIL} is required when TIDEBOOT_* is configured"))?
+            .trim()
+            .to_string();
+        let owner_password = password
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| anyhow!("{PASSWORD} is required when TIDEBOOT_* is configured"))?;
+
+        if owner_password.len() < Self::MIN_PASSWORD_LEN {
+            return Err(anyhow!(
+                "{PASSWORD} must be at least {} characters",
+                Self::MIN_PASSWORD_LEN
+            ));
+        }
+        if !is_valid_email(&owner_email) {
+            return Err(anyhow!("{EMAIL} must be a valid email address"));
+        }
+
+        let owner_display_name = std::env::var(NAME)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "Owner".to_string());
+
+        Ok(Some(Self {
+            organization_name,
+            owner_email,
+            owner_password,
+            owner_display_name,
+        }))
+    }
+
+    /// True when every field is empty (only used by callers that construct
+    /// this type directly, e.g. tests).
+    pub fn is_empty(&self) -> bool {
+        self.organization_name.trim().is_empty()
+            && self.owner_email.trim().is_empty()
+            && self.owner_password.is_empty()
+            && self.owner_display_name.trim().is_empty()
+    }
+}
+
 /// Runtime configuration loaded from environment variables (and optionally
 /// an `.env` file via [`dotenvy::dotenv`]).
 ///
@@ -163,6 +282,8 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiry_secs: u64,
     pub rate_limit: RateLimitConfig,
+    /// Unattended first-run bootstrap; `None` means browser setup.
+    pub pool_bootstrap: Option<PoolBootstrapConfig>,
 }
 
 impl Config {
@@ -197,6 +318,7 @@ impl Config {
             .context("JWT_EXPIRY_SECONDS must be a valid u64")?;
 
         let rate_limit = RateLimitConfig::from_env()?;
+        let pool_bootstrap = PoolBootstrapConfig::from_env()?;
 
         Ok(Self {
             host,
@@ -206,6 +328,7 @@ impl Config {
             jwt_secret,
             jwt_expiry_secs,
             rate_limit,
+            pool_bootstrap,
         })
     }
 
@@ -233,6 +356,22 @@ mod tests {
             std::env::remove_var("PORT");
             std::env::remove_var("JWT_EXPIRY_SECONDS");
             clear_rate_limit_env();
+            clear_bootstrap_env();
+        }
+    }
+
+    /// Clear every `TIDEBOOT_*` variable so browser setup is the default.
+    fn clear_bootstrap_env() {
+        // SAFETY: all callers hold ENV_LOCK.
+        unsafe {
+            for var in [
+                "TIDEBOOT_ORGANIZATION_NAME",
+                "TIDEBOOT_OWNER_EMAIL",
+                "TIDEBOOT_OWNER_PASSWORD",
+                "TIDEBOOT_OWNER_NAME",
+            ] {
+                std::env::remove_var(var);
+            }
         }
     }
 
@@ -409,5 +548,76 @@ mod tests {
 
         let err = Config::from_env().expect_err("bad bool should fail");
         assert!(err.to_string().contains("RATE_LIMIT_TRUST_XFF"));
+    }
+
+    // ── TIDEBOOT_* bootstrap ───────────────────────────────────────────────
+
+    #[test]
+    fn bootstrap_absent_means_browser_setup() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        set_required("a".repeat(32).as_str());
+
+        let cfg = Config::from_env().expect("config loads");
+        assert!(cfg.pool_bootstrap.is_none());
+    }
+
+    #[test]
+    fn bootstrap_parses_complete_environment() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        set_required("a".repeat(32).as_str());
+        // SAFETY: guarded by ENV_LOCK
+        unsafe {
+            std::env::set_var("TIDEBOOT_ORGANIZATION_NAME", " Rock Pool ");
+            std::env::set_var("TIDEBOOT_OWNER_EMAIL", "owner@example.com");
+            std::env::set_var("TIDEBOOT_OWNER_PASSWORD", "twelve-chars!");
+        }
+
+        let cfg = Config::from_env().expect("config loads");
+        let boot = cfg.pool_bootstrap.expect("bootstrap configured");
+        assert_eq!(boot.organization_name, "Rock Pool");
+        assert_eq!(boot.owner_email, "owner@example.com");
+        assert_eq!(boot.owner_password, "twelve-chars!");
+        assert_eq!(boot.owner_display_name, "Owner");
+    }
+
+    #[test]
+    fn bootstrap_rejects_partial_environment() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        set_required("a".repeat(32).as_str());
+        // SAFETY: guarded by ENV_LOCK
+        unsafe {
+            std::env::set_var("TIDEBOOT_ORGANIZATION_NAME", "Rock Pool");
+        }
+
+        let err = Config::from_env().expect_err("partial bootstrap must fail");
+        assert!(err.to_string().contains("TIDEBOOT_OWNER_EMAIL"));
+    }
+
+    #[test]
+    fn bootstrap_rejects_short_temporary_password() {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        set_required("a".repeat(32).as_str());
+        // SAFETY: guarded by ENV_LOCK
+        unsafe {
+            std::env::set_var("TIDEBOOT_ORGANIZATION_NAME", "Rock Pool");
+            std::env::set_var("TIDEBOOT_OWNER_EMAIL", "owner@example.com");
+            std::env::set_var("TIDEBOOT_OWNER_PASSWORD", "too-short");
+        }
+
+        let err = Config::from_env().expect_err("short bootstrap password must fail");
+        assert!(err.to_string().contains("at least 12 characters"));
+    }
+
+    #[test]
+    fn bootstrap_debug_redacts_password() {
+        let boot = PoolBootstrapConfig {
+            organization_name: "Rock Pool".into(),
+            owner_email: "owner@example.com".into(),
+            owner_password: "super-secret-bootstrap".into(),
+            owner_display_name: "Owner".into(),
+        };
+        let rendered = format!("{boot:?}");
+        assert!(!rendered.contains("super-secret-bootstrap"));
+        assert!(rendered.contains("<redacted>"));
     }
 }

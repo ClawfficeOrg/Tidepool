@@ -7,6 +7,24 @@
 Documentation and planning change plus the first implementation task. The plan
 is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 
+### Pool identity (task 1.1.1)
+- Added `organizations` and `pool_users` (migration
+  `20261019000001_create_pool_identity`). One organization per pool in v1 is
+  enforced by a `UNIQUE` key on a constant `singleton` column; multi-tenancy is
+  deferred and recorded in `docs/memory.md`.
+- Added first-run setup: `GET /v1/setup/status` and `POST /v1/setup` create the
+  organization and owner in the browser, and refuse a second organization.
+- Unattended installs bootstrap the first owner from `TIDEBOOT_ORGANIZATION_NAME`,
+  `TIDEBOOT_OWNER_EMAIL`, `TIDEBOOT_OWNER_PASSWORD` (at least 12 characters) and
+  optional `TIDEBOOT_OWNER_NAME`. The bootstrap is insert-only, so a restart
+  never re-applies the temporary password.
+- Operators sign in at `POST /v1/pool/login`; `POST /v1/pool/password` replaces
+  the bootstrap password and clears `password_change_required`. After the
+  change the old password no longer authenticates. Passwords are Argon2id PHC
+  strings and the bootstrap secret is never logged (its `Debug` is redacted).
+- `GET /v1/pool/me` returns the signed-in operator and organization. Player
+  tokens are refused because the subject must resolve to a `pool_users` row.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

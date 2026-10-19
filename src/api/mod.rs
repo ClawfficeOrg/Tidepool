@@ -9,5 +9,6 @@ pub mod leaderboards;
 pub mod metrics;
 pub mod openapi;
 pub mod players;
+pub mod pool_identity;
 pub mod saves;
 pub mod socket_ticket;
