@@ -25,6 +25,23 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - `GET /v1/pool/me` returns the signed-in operator and organization. Player
   tokens are refused because the subject must resolve to a `pool_users` row.
 
+### Team members, roles and invitations (task 1.1.2)
+- Added `pool_invitations` (migration `20261019000002_create_pool_invitations`)
+  with single-use, revocable, seven-day tokens. Only an Argon2id hash of the
+  token's secret half is stored; the raw token is returned once by
+  `POST /v1/pool/invitations`.
+- Members accept at `POST /v1/pool/invitations/accept`, choosing their password.
+  Replays are refused (409), as are expired and revoked invitations (410).
+- Roles are `owner`, `admin`, `member`, `viewer`. Owners manage the team and
+  invitations; viewers are read-only. Every mutating pool handler checks the
+  role, so a viewer receives 403.
+- The last owner cannot be removed or demoted (409); member mutations lock the
+  organization's rows in id order so concurrent owner actions cannot race.
+- Removing a member deletes the row, so their existing JWT stops resolving on
+  the next request — revocation is immediate.
+- Added `OperatorAuth`, which resolves the JWT subject to a `pool_users` row on
+  every request; player tokens are refused.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

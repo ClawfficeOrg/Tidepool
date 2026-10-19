@@ -11,6 +11,7 @@ pub mod organization;
 pub mod player;
 pub mod player_alias;
 pub mod player_auth;
+pub mod pool_invitation;
 pub mod pool_user;
 pub mod prop;
 pub mod save;

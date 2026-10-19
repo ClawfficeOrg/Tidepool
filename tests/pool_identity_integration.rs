@@ -19,7 +19,10 @@ use tidepool::{
     config::{Config, PoolBootstrapConfig, RateLimitConfig},
     db,
     entities::pool_user::PoolRole,
-    services::pool_identity::{self, BootstrapOutcome, NewOrganization, PoolIdentityError},
+    services::{
+        auth as auth_svc,
+        pool_identity::{self, BootstrapOutcome, NewOrganization, PoolIdentityError},
+    },
 };
 
 const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
@@ -37,6 +40,10 @@ async fn pool() -> MySqlPool {
 }
 
 async fn reset(pool: &MySqlPool) {
+    sqlx::query("DELETE FROM pool_invitations")
+        .execute(pool)
+        .await
+        .expect("clear pool_invitations");
     sqlx::query("DELETE FROM pool_users")
         .execute(pool)
         .await
@@ -409,4 +416,351 @@ async fn service_setup_refuses_a_second_organization() {
         .expect_err("second setup must fail");
     assert!(matches!(err, PoolIdentityError::AlreadyInitialized));
     assert_eq!(org_count(&pool).await, 1);
+}
+
+// ── invitations, roles and removal (task 1.1.2) ───────────────────────────
+
+/// Bootstrap an owner and return their public id plus a valid operator JWT.
+async fn bootstrap_owner(pool: &MySqlPool) -> (String, String) {
+    let cfg = bootstrap_config();
+    pool_identity::bootstrap_from_env(pool, &cfg)
+        .await
+        .expect("bootstrap");
+    let owner = pool_identity::authenticate(pool, &cfg.owner_email, BOOTSTRAP_PASSWORD)
+        .await
+        .expect("owner auth");
+    let token = auth_svc::issue_jwt(JWT_SECRET, &owner.public_id, 3600).expect("jwt");
+    (owner.public_id, token)
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn invitation_flow_is_owner_only_and_single_use() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let invite = test::TestRequest::post()
+        .uri("/v1/pool/invitations")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "email": "Member@Example.com",
+            "role": "member"
+        }))
+        .to_request();
+    let resp = test::call_service(&app, invite).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["invitation"]["email"], "member@example.com");
+    assert_eq!(body["invitation"]["role"], "member");
+    let token = body["token"]
+        .as_str()
+        .expect("invitation token")
+        .to_string();
+
+    let accept = test::TestRequest::post()
+        .uri("/v1/pool/invitations/accept")
+        .set_json(serde_json::json!({
+            "token": token,
+            "display_name": "New Member",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    let resp = test::call_service(&app, accept).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["user"]["email"], "member@example.com");
+    assert_eq!(body["user"]["role"], "member");
+    assert!(!body["user"]["password_change_required"].as_bool().unwrap());
+    let member_token = body["token"].as_str().expect("member jwt").to_string();
+
+    // Single use: the same token is refused on replay.
+    let replay = test::TestRequest::post()
+        .uri("/v1/pool/invitations/accept")
+        .set_json(serde_json::json!({
+            "token": token,
+            "display_name": "Replay",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, replay).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    let members = test::TestRequest::get()
+        .uri("/v1/pool/members")
+        .insert_header(("Authorization", format!("Bearer {member_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, members).await).await;
+    assert_eq!(body["members"].as_array().expect("members").len(), 2);
+
+    // The accepted member can sign in with the password chosen at acceptance.
+    let login = test::TestRequest::post()
+        .uri("/v1/pool/login")
+        .set_json(serde_json::json!({
+            "email": "member@example.com",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, login).await.status(),
+        StatusCode::OK
+    );
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn expired_and_revoked_invitations_are_refused() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (owner_public_id, _owner_token) = bootstrap_owner(&pool).await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("organization id");
+    let owner_internal_id: u64 =
+        sqlx::query_scalar("SELECT id FROM pool_users WHERE public_id = ?")
+            .bind(&owner_public_id)
+            .fetch_one(&pool)
+            .await
+            .expect("owner id");
+
+    let (_, expired_token) = pool_identity::create_invitation(
+        &pool,
+        organization_id,
+        Some(owner_internal_id),
+        "expired@example.com",
+        PoolRole::Member,
+        -1,
+    )
+    .await
+    .expect("create expired invitation");
+    let err = pool_identity::accept_invitation(&pool, &expired_token, "Expired", NEW_PASSWORD)
+        .await
+        .expect_err("expired invitation must fail");
+    assert!(matches!(err, PoolIdentityError::InvitationExpired));
+
+    let (invitation, revoked_token) = pool_identity::create_invitation(
+        &pool,
+        organization_id,
+        Some(owner_internal_id),
+        "revoked@example.com",
+        PoolRole::Viewer,
+        pool_identity::INVITATION_TTL_SECS,
+    )
+    .await
+    .expect("create invitation");
+    pool_identity::revoke_invitation(&pool, organization_id, &invitation.public_id)
+        .await
+        .expect("revoke");
+    let err = pool_identity::accept_invitation(&pool, &revoked_token, "Revoked", NEW_PASSWORD)
+        .await
+        .expect_err("revoked invitation must fail");
+    assert!(matches!(err, PoolIdentityError::InvitationRevoked));
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn viewer_is_refused_every_mutating_pool_route() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let invite = test::TestRequest::post()
+        .uri("/v1/pool/invitations")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "email": "viewer@example.com",
+            "role": "viewer"
+        }))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, invite).await).await;
+    let invite_token = body["token"].as_str().expect("token").to_string();
+
+    let accept = test::TestRequest::post()
+        .uri("/v1/pool/invitations/accept")
+        .set_json(serde_json::json!({
+            "token": invite_token,
+            "display_name": "Read Only",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, accept).await).await;
+    let viewer_token = body["token"].as_str().expect("viewer jwt").to_string();
+    let viewer_id = body["user"]["id"].as_str().expect("viewer id").to_string();
+
+    // Reads are allowed.
+    let me = test::TestRequest::get()
+        .uri("/v1/pool/me")
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .to_request();
+    assert_eq!(test::call_service(&app, me).await.status(), StatusCode::OK);
+    let members = test::TestRequest::get()
+        .uri("/v1/pool/members")
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, members).await.status(),
+        StatusCode::OK
+    );
+
+    // Every mutating route refuses the viewer with 403.
+    let password = test::TestRequest::post()
+        .uri("/v1/pool/password")
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .set_json(serde_json::json!({
+            "current_password": NEW_PASSWORD,
+            "new_password": "another-password-1"
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, password).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    let invite_attempt = test::TestRequest::post()
+        .uri("/v1/pool/invitations")
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .set_json(serde_json::json!({"email": "x@example.com"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, invite_attempt).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    let remove_attempt = test::TestRequest::delete()
+        .uri(&format!("/v1/pool/members/{viewer_id}"))
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, remove_attempt).await.status(),
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn last_owner_cannot_be_removed_or_demoted() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let demote = test::TestRequest::patch()
+        .uri(&format!("/v1/pool/members/{owner_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"role": "admin"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, demote).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    let remove = test::TestRequest::delete()
+        .uri(&format!("/v1/pool/members/{owner_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, remove).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    let owners: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pool_users WHERE role = 'owner'")
+        .fetch_one(&pool)
+        .await
+        .expect("count owners");
+    assert_eq!(owners, 1);
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn removing_a_member_invalidates_their_token_immediately() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let invite = test::TestRequest::post()
+        .uri("/v1/pool/invitations")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"email": "temp@example.com", "role": "member"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, invite).await).await;
+    let invite_token = body["token"].as_str().expect("token").to_string();
+
+    let accept = test::TestRequest::post()
+        .uri("/v1/pool/invitations/accept")
+        .set_json(serde_json::json!({
+            "token": invite_token,
+            "display_name": "Temporary",
+            "password": NEW_PASSWORD
+        }))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, accept).await).await;
+    let member_token = body["token"].as_str().expect("member jwt").to_string();
+    let member_id = body["user"]["id"].as_str().expect("member id").to_string();
+
+    let before = test::TestRequest::get()
+        .uri("/v1/pool/me")
+        .insert_header(("Authorization", format!("Bearer {member_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, before).await.status(),
+        StatusCode::OK
+    );
+
+    let remove = test::TestRequest::delete()
+        .uri(&format!("/v1/pool/members/{member_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, remove).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    let after = test::TestRequest::get()
+        .uri("/v1/pool/me")
+        .insert_header(("Authorization", format!("Bearer {member_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, after).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
 }

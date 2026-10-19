@@ -18,10 +18,13 @@
 
 use crate::config::Config;
 use crate::entities::organization::OrganizationView;
-use crate::entities::pool_user::PoolUserView;
-use crate::middleware::auth::AuthenticatedUser;
+use crate::entities::pool_invitation::PoolInvitationView;
+use crate::entities::pool_user::{PoolRole, PoolUserView};
+use crate::middleware::auth::OperatorAuth;
 use crate::services::auth as auth_svc;
-use crate::services::pool_identity::{self as identity_svc, NewOrganization, PoolIdentityError};
+use crate::services::pool_identity::{
+    self as identity_svc, INVITATION_TTL_SECS, NewOrganization, PoolIdentityError,
+};
 use actix_web::{HttpResponse, web};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
@@ -40,7 +43,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 web::scope("/pool")
                     .route("/login", web::post().to(login))
                     .route("/me", web::get().to(me))
-                    .route("/password", web::post().to(change_password)),
+                    .route("/password", web::post().to(change_password))
+                    .route("/members", web::get().to(list_members))
+                    .route("/members/{id}", web::delete().to(remove_member))
+                    .route("/members/{id}", web::patch().to(change_member_role))
+                    .route("/invitations", web::get().to(list_invitations))
+                    .route("/invitations", web::post().to(invite_member))
+                    .route("/invitations/accept", web::post().to(accept_invitation))
+                    .route("/invitations/{id}", web::delete().to(revoke_invitation)),
             ),
     );
 }
@@ -200,39 +210,206 @@ async fn login(
     }
 }
 
-#[tracing::instrument(skip(pool, user))]
-async fn me(pool: Option<web::Data<MySqlPool>>, user: AuthenticatedUser) -> HttpResponse {
+#[tracing::instrument(skip(pool, auth))]
+async fn me(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
     let Some(pool) = pool else {
         return db_unavailable();
     };
 
-    match identity_svc::find_by_public_id(pool.get_ref(), &user.player_public_id).await {
-        Ok(Some(operator)) => {
-            match identity_svc::find_organization(pool.get_ref(), operator.organization_id).await {
-                Ok(Some(organization)) => HttpResponse::Ok().json(MeResponse {
-                    organization: OrganizationView::from(&organization),
-                    user: PoolUserView::from(&operator),
-                }),
-                Ok(None) => {
-                    tracing::error!(
-                        organization_id = operator.organization_id,
-                        "operator organization missing"
-                    );
-                    HttpResponse::InternalServerError().json(error_body("internal error"))
-                }
-                Err(e) => map_error(e),
-            }
+    match identity_svc::find_organization(pool.get_ref(), auth.organization_id()).await {
+        Ok(Some(organization)) => HttpResponse::Ok().json(MeResponse {
+            organization: OrganizationView::from(&organization),
+            user: PoolUserView::from(&auth.operator),
+        }),
+        Ok(None) => {
+            tracing::error!(
+                organization_id = auth.organization_id(),
+                "operator organization missing"
+            );
+            HttpResponse::InternalServerError().json(error_body("internal error"))
         }
-        Ok(None) => HttpResponse::Unauthorized().json(error_body("operator account required")),
+        Err(e) => map_error(e),
+    }
+}
+#[tracing::instrument(skip(pool, auth, body))]
+async fn change_password(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    body: web::Json<ChangePasswordRequest>,
+) -> HttpResponse {
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    if let Err(e) = auth.require_mutating() {
+        return error_response(e);
+    }
+    if let Err(e) = body.validate() {
+        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+    }
+
+    match identity_svc::change_password(
+        pool.get_ref(),
+        &auth.operator.public_id,
+        &body.current_password,
+        &body.new_password,
+    )
+    .await
+    {
+        Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => map_error(e),
     }
 }
 
-#[tracing::instrument(skip(pool, user, body))]
-async fn change_password(
+/// Member list response.
+#[derive(Debug, Serialize)]
+pub struct MembersResponse {
+    /// Operators in the organization.
+    pub members: Vec<PoolUserView>,
+}
+
+/// Invitation list response.
+#[derive(Debug, Serialize)]
+pub struct InvitationsResponse {
+    /// Invitations still awaiting acceptance.
+    pub invitations: Vec<PoolInvitationView>,
+}
+
+/// Invite payload.
+#[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct InviteRequest {
+    /// Invitee email.
+    #[validate(email)]
+    pub email: String,
+    /// Role granted on acceptance; defaults to `member`.
+    #[serde(default)]
+    pub role: PoolRole,
+}
+
+/// Invitation creation response: the raw token is shown exactly once.
+#[derive(Debug, Serialize)]
+pub struct InviteResponse {
+    /// Invitation metadata (never carries the token hash).
+    pub invitation: PoolInvitationView,
+    /// One-time acceptance token. Not stored in plaintext.
+    pub token: String,
+}
+
+/// Invitation acceptance payload.
+#[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct AcceptInvitationRequest {
+    /// The one-time token from the invitation.
+    #[validate(length(min = 1, max = 512))]
+    pub token: String,
+    /// Display name for the new member.
+    #[validate(length(min = 1, max = 128))]
+    pub display_name: String,
+    /// Chosen password; at least 12 characters.
+    #[validate(length(min = 12, max = 1024))]
+    pub password: String,
+}
+
+/// Request body for changing a member's role.
+#[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateRoleRequest {
+    /// New role.
+    pub role: PoolRole,
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn list_members(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    match identity_svc::list_members(pool.get_ref(), auth.organization_id()).await {
+        Ok(members) => HttpResponse::Ok().json(MembersResponse {
+            members: members.iter().map(PoolUserView::from).collect(),
+        }),
+        Err(e) => map_error(e),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn list_invitations(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
+    if let Err(e) = auth.require_owner() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    match identity_svc::list_pending_invitations(pool.get_ref(), auth.organization_id()).await {
+        Ok(invitations) => HttpResponse::Ok().json(InvitationsResponse {
+            invitations: invitations.iter().map(PoolInvitationView::from).collect(),
+        }),
+        Err(e) => map_error(e),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth, body))]
+async fn invite_member(
     pool: Option<web::Data<MySqlPool>>,
-    user: AuthenticatedUser,
-    body: web::Json<ChangePasswordRequest>,
+    auth: OperatorAuth,
+    body: web::Json<InviteRequest>,
+) -> HttpResponse {
+    if let Err(e) = auth.require_owner() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    if let Err(e) = body.validate() {
+        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+    }
+
+    match identity_svc::create_invitation(
+        pool.get_ref(),
+        auth.organization_id(),
+        Some(auth.operator.id),
+        &body.email,
+        body.role,
+        INVITATION_TTL_SECS,
+    )
+    .await
+    {
+        Ok((invitation, token)) => HttpResponse::Created().json(InviteResponse {
+            invitation: PoolInvitationView::from(&invitation),
+            token,
+        }),
+        Err(e) => map_error(e),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn revoke_invitation(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+) -> HttpResponse {
+    if let Err(e) = auth.require_owner() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    match identity_svc::revoke_invitation(
+        pool.get_ref(),
+        auth.organization_id(),
+        &path.into_inner(),
+    )
+    .await
+    {
+        Ok(()) => HttpResponse::NoContent().finish(),
+        Err(e) => map_error(e),
+    }
+}
+
+#[tracing::instrument(skip(pool, body))]
+async fn accept_invitation(
+    pool: Option<web::Data<MySqlPool>>,
+    cfg: web::Data<Config>,
+    body: web::Json<AcceptInvitationRequest>,
 ) -> HttpResponse {
     let Some(pool) = pool else {
         return db_unavailable();
@@ -241,13 +418,72 @@ async fn change_password(
         return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
     }
 
-    match identity_svc::change_password(
+    match identity_svc::accept_invitation(
         pool.get_ref(),
-        &user.player_public_id,
-        &body.current_password,
-        &body.new_password,
+        &body.token,
+        &body.display_name,
+        &body.password,
     )
     .await
+    {
+        Ok(user) => {
+            match auth_svc::issue_jwt(&cfg.jwt_secret, &user.public_id, cfg.jwt_expiry_secs) {
+                Ok(token) => HttpResponse::Created().json(LoginResponse {
+                    token,
+                    expires_in: cfg.jwt_expiry_secs,
+                    must_change_password: false,
+                    user: PoolUserView::from(&user),
+                }),
+                Err(e) => {
+                    tracing::error!(error = %e, "invitation JWT issue failed");
+                    HttpResponse::InternalServerError().json(error_body("internal error"))
+                }
+            }
+        }
+        Err(e) => map_error(e),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth, body))]
+async fn change_member_role(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+    body: web::Json<UpdateRoleRequest>,
+) -> HttpResponse {
+    if let Err(e) = auth.require_owner() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    match identity_svc::change_member_role(
+        pool.get_ref(),
+        auth.organization_id(),
+        &path.into_inner(),
+        body.role,
+    )
+    .await
+    {
+        Ok(user) => HttpResponse::Ok().json(PoolUserView::from(&user)),
+        Err(e) => map_error(e),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn remove_member(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+) -> HttpResponse {
+    if let Err(e) = auth.require_owner() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable();
+    };
+    match identity_svc::remove_member(pool.get_ref(), auth.organization_id(), &path.into_inner())
+        .await
     {
         Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => map_error(e),
@@ -260,6 +496,14 @@ fn db_unavailable() -> HttpResponse {
 
 fn error_body(msg: &str) -> serde_json::Value {
     serde_json::json!({ "error": msg })
+}
+
+/// Convert an actix extractor error (from a role guard) into a response.
+fn error_response(error: actix_web::Error) -> HttpResponse {
+    let response = error.error_response();
+    HttpResponse::build(response.status()).json(error_body(
+        response.status().canonical_reason().unwrap_or("forbidden"),
+    ))
 }
 
 /// Map domain errors to HTTP without leaking credential details.
@@ -280,8 +524,29 @@ fn map_error(error: PoolIdentityError) -> HttpResponse {
         PoolIdentityError::InvalidCredentials => {
             HttpResponse::Unauthorized().json(error_body("invalid credentials"))
         }
+        PoolIdentityError::Forbidden(message) => {
+            HttpResponse::Forbidden().json(error_body(&message))
+        }
+        PoolIdentityError::LastOwner => {
+            HttpResponse::Conflict().json(error_body("the last owner cannot be removed or demoted"))
+        }
         PoolIdentityError::NotFound => {
-            HttpResponse::Unauthorized().json(error_body("operator account required"))
+            HttpResponse::NotFound().json(error_body("member not found"))
+        }
+        PoolIdentityError::InvitationInvalid => {
+            HttpResponse::BadRequest().json(error_body("invitation is invalid"))
+        }
+        PoolIdentityError::InvitationUsed => {
+            HttpResponse::Conflict().json(error_body("invitation has already been used"))
+        }
+        PoolIdentityError::InvitationRevoked => {
+            HttpResponse::Gone().json(error_body("invitation has been revoked"))
+        }
+        PoolIdentityError::InvitationExpired => {
+            HttpResponse::Gone().json(error_body("invitation has expired"))
+        }
+        PoolIdentityError::InvitationNotFound => {
+            HttpResponse::NotFound().json(error_body("invitation not found"))
         }
         other => {
             tracing::error!(error = %other, "pool identity operation failed");

@@ -250,7 +250,7 @@
         {
           "id": "1.1.2",
           "title": "Team members, roles and invitations",
-          "status": "pending",
+          "status": "done",
           "goal": "Members belong to the organization with a role (owner, admin, member, viewer) and an invitation flow: invite by email, single-use expiring token, accept sets the password. Roles decide what the control plane and the API allow; a viewer may read, an admin may change configuration, an owner may manage members and keys.",
           "touches": [
             "migrations/",
@@ -272,7 +272,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added pool members, roles and invitations",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:23:46Z"
         },
         {
           "id": "1.1.3",

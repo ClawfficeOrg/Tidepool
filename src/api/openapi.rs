@@ -253,6 +253,69 @@ const ROUTES: &[RouteSpec] = &[
     },
     RouteSpec {
         method: HttpMethod::Get,
+        path: "/v1/pool/members",
+        tag: "pool",
+        summary: "List the organization's operators",
+        secure: true,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Patch,
+        path: "/v1/pool/members/{id}",
+        tag: "pool",
+        summary: "Change a member's role (owner only; last owner protected)",
+        secure: true,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/pool/members/{id}",
+        tag: "pool",
+        summary: "Remove a member (owner only; last owner protected)",
+        secure: true,
+        has_body: false,
+        success: "204",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/pool/invitations",
+        tag: "pool",
+        summary: "List pending team invitations (owner only)",
+        secure: true,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/pool/invitations",
+        tag: "pool",
+        summary: "Invite an operator by email; the token is shown once",
+        secure: true,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/pool/invitations/accept",
+        tag: "pool",
+        summary: "Accept an invitation and create the member account",
+        secure: false,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/pool/invitations/{id}",
+        tag: "pool",
+        summary: "Revoke a pending invitation (owner only)",
+        secure: true,
+        has_body: false,
+        success: "204",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
         path: "/healthz",
         tag: "system",
         summary: "Liveness probe with DB status",
@@ -316,7 +379,9 @@ fn document() -> OpenApi {
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
                     .bearer_format("JWT")
-                    .description(Some("Player JWT issued by POST /v1/auth/login"))
+                    .description(Some(
+                        "JWT issued by POST /v1/auth/login or POST /v1/pool/login",
+                    ))
                     .build(),
             ),
         )
@@ -331,6 +396,7 @@ fn document() -> OpenApi {
         "analytics",
         "feedback",
         "websocket",
+        "pool",
         "system",
     ]
     .into_iter()
@@ -455,8 +521,8 @@ fn method_str(method: HttpMethod) -> &'static str {
         HttpMethod::Get => "get",
         HttpMethod::Post => "post",
         HttpMethod::Put => "put",
-        HttpMethod::Delete => "delete",
         HttpMethod::Patch => "patch",
+        HttpMethod::Delete => "delete",
         HttpMethod::Head => "head",
         HttpMethod::Options => "options",
         HttpMethod::Trace => "trace",
@@ -501,6 +567,7 @@ mod tests {
             HttpMethod::Get => item.get.is_some(),
             HttpMethod::Post => item.post.is_some(),
             HttpMethod::Put => item.put.is_some(),
+            HttpMethod::Patch => item.patch.is_some(),
             HttpMethod::Delete => item.delete.is_some(),
             _ => false,
         }
@@ -531,14 +598,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 27, "ROUTES must describe all 27 routes");
+        assert_eq!(ROUTES.len(), 34, "ROUTES must describe all 34 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            24,
-            "the 19 game route specs and 5 pool identity routes must stay under /v1/"
+            31,
+            "the 19 game route specs and 12 pool identity routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES

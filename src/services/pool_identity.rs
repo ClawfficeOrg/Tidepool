@@ -19,8 +19,10 @@
 
 use crate::config::PoolBootstrapConfig;
 use crate::entities::organization::Organization;
-use crate::entities::pool_user::PoolUser;
+use crate::entities::pool_invitation::PoolInvitation;
+use crate::entities::pool_user::{PoolRole, PoolUser};
 use crate::services::auth;
+use chrono::{Duration, Utc};
 use sqlx::MySqlPool;
 use thiserror::Error;
 
@@ -30,6 +32,9 @@ pub const MIN_OPERATOR_PASSWORD_LEN: usize = 12;
 
 /// Maximum accepted plaintext password length.
 pub const MAX_OPERATOR_PASSWORD_LEN: usize = 1024;
+
+/// Default invitation lifetime: seven days.
+pub const INVITATION_TTL_SECS: i64 = 7 * 24 * 60 * 60;
 
 /// Domain errors for pool identity operations.
 #[derive(Debug, Error)]
@@ -49,9 +54,30 @@ pub enum PoolIdentityError {
     /// Wrong email/password, or a stale password-change attempt.
     #[error("invalid credentials")]
     InvalidCredentials,
-    /// No operator with that public id.
+    /// No operator with that public id (or not in this organization).
     #[error("operator not found")]
     NotFound,
+    /// The caller's role may not perform this operation.
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+    /// Removing or demoting this owner would leave the organization ownerless.
+    #[error("the last owner cannot be removed or demoted")]
+    LastOwner,
+    /// Invitation is unknown or the secret half does not verify.
+    #[error("invitation is invalid")]
+    InvitationInvalid,
+    /// Invitation has already been accepted.
+    #[error("invitation has already been used")]
+    InvitationUsed,
+    /// Invitation was revoked by an owner.
+    #[error("invitation has been revoked")]
+    InvitationRevoked,
+    /// Invitation is past its expiry.
+    #[error("invitation has expired")]
+    InvitationExpired,
+    /// Invitation is unknown in this organization.
+    #[error("invitation not found")]
+    InvitationNotFound,
     /// Password hashing/verification failed.
     #[error("password hashing failed: {0}")]
     PasswordHash(String),
@@ -377,6 +403,370 @@ pub async fn change_password(
     Ok(())
 }
 
+// ── team members and invitations (task 1.1.2) ─────────────────────────────
+
+/// List the operators in an organization (any role may read).
+pub async fn list_members(
+    pool: &MySqlPool,
+    organization_id: u64,
+) -> Result<Vec<PoolUser>, PoolIdentityError> {
+    sqlx::query_as::<_, PoolUser>(
+        "SELECT id, public_id, organization_id, email, display_name, password_hash, \
+                role, password_change_required, last_login_at, created_at, updated_at \
+         FROM pool_users WHERE organization_id = ? ORDER BY created_at, id",
+    )
+    .bind(organization_id)
+    .fetch_all(pool)
+    .await
+    .map_err(PoolIdentityError::Database)
+}
+
+/// Create an invitation and return it with the raw one-time token.
+///
+/// The raw token is `"<public_id>.<secret>"`; only an Argon2id hash of the
+/// secret is stored. Any still-pending invitation for the same email is
+/// revoked first, so only the newest link is valid.
+pub async fn create_invitation(
+    pool: &MySqlPool,
+    organization_id: u64,
+    invited_by: Option<u64>,
+    email: &str,
+    role: PoolRole,
+    ttl_secs: i64,
+) -> Result<(PoolInvitation, String), PoolIdentityError> {
+    let email = normalize_email(email)?;
+
+    if find_by_email(pool, &email).await?.is_some() {
+        return Err(PoolIdentityError::Invalid(
+            "that email already belongs to a member".into(),
+        ));
+    }
+
+    let public_id = uuid::Uuid::new_v4().to_string();
+    let secret = format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    );
+    let token_hash = hash_password(&secret)?;
+    let raw_token = format!("{public_id}.{secret}");
+    let expires_at = Utc::now() + Duration::seconds(ttl_secs);
+
+    let mut tx = pool.begin().await.map_err(PoolIdentityError::Database)?;
+
+    sqlx::query(
+        "UPDATE pool_invitations SET revoked_at = CURRENT_TIMESTAMP \
+         WHERE organization_id = ? AND email = ? \
+           AND accepted_at IS NULL AND revoked_at IS NULL",
+    )
+    .bind(organization_id)
+    .bind(&email)
+    .execute(&mut *tx)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    sqlx::query(
+        "INSERT INTO pool_invitations \
+         (public_id, organization_id, email, role, token_hash, invited_by, expires_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&public_id)
+    .bind(organization_id)
+    .bind(&email)
+    .bind(role.as_str())
+    .bind(&token_hash)
+    .bind(invited_by)
+    .bind(expires_at)
+    .execute(&mut *tx)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    let invitation = sqlx::query_as::<_, PoolInvitation>(
+        "SELECT id, public_id, organization_id, email, role, token_hash, invited_by, \
+                expires_at, accepted_at, revoked_at, created_at, updated_at \
+         FROM pool_invitations WHERE public_id = ?",
+    )
+    .bind(&public_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    tx.commit().await.map_err(PoolIdentityError::Database)?;
+    Ok((invitation, raw_token))
+}
+
+/// List invitations that can still be accepted.
+pub async fn list_pending_invitations(
+    pool: &MySqlPool,
+    organization_id: u64,
+) -> Result<Vec<PoolInvitation>, PoolIdentityError> {
+    sqlx::query_as::<_, PoolInvitation>(
+        "SELECT id, public_id, organization_id, email, role, token_hash, invited_by, \
+                expires_at, accepted_at, revoked_at, created_at, updated_at \
+         FROM pool_invitations \
+         WHERE organization_id = ? AND accepted_at IS NULL AND revoked_at IS NULL \
+           AND expires_at > CURRENT_TIMESTAMP \
+         ORDER BY created_at, id",
+    )
+    .bind(organization_id)
+    .fetch_all(pool)
+    .await
+    .map_err(PoolIdentityError::Database)
+}
+
+/// Revoke a pending invitation.
+pub async fn revoke_invitation(
+    pool: &MySqlPool,
+    organization_id: u64,
+    invitation_public_id: &str,
+) -> Result<(), PoolIdentityError> {
+    let result = sqlx::query(
+        "UPDATE pool_invitations SET revoked_at = CURRENT_TIMESTAMP \
+         WHERE public_id = ? AND organization_id = ? \
+           AND accepted_at IS NULL AND revoked_at IS NULL",
+    )
+    .bind(invitation_public_id)
+    .bind(organization_id)
+    .execute(pool)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    if result.rows_affected() == 0 {
+        return Err(PoolIdentityError::InvitationNotFound);
+    }
+    Ok(())
+}
+
+/// Accept an invitation, creating the member account.
+///
+/// Single use is enforced inside a transaction with `FOR UPDATE`: a second
+/// concurrent acceptance sees `accepted_at` and fails with
+/// [`PoolIdentityError::InvitationUsed`]. Expired and revoked invitations fail
+/// before the user row is created.
+pub async fn accept_invitation(
+    pool: &MySqlPool,
+    raw_token: &str,
+    display_name: &str,
+    password: &str,
+) -> Result<PoolUser, PoolIdentityError> {
+    let display_name = validate_display_name(display_name)?;
+    validate_password(password)?;
+
+    let (public_id, secret) =
+        parse_invitation_token(raw_token).ok_or(PoolIdentityError::InvitationInvalid)?;
+
+    let invitation = sqlx::query_as::<_, PoolInvitation>(
+        "SELECT id, public_id, organization_id, email, role, token_hash, invited_by, \
+                expires_at, accepted_at, revoked_at, created_at, updated_at \
+         FROM pool_invitations WHERE public_id = ?",
+    )
+    .bind(public_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(PoolIdentityError::Database)?
+    .ok_or(PoolIdentityError::InvitationInvalid)?;
+
+    let secret_matches = auth::verify_password(secret, &invitation.token_hash)
+        .map_err(|e| PoolIdentityError::PasswordHash(format!("invitation verify failed: {e}")))?;
+    if !secret_matches {
+        return Err(PoolIdentityError::InvitationInvalid);
+    }
+
+    let password_hash = hash_password(password)?;
+    let mut tx = pool.begin().await.map_err(PoolIdentityError::Database)?;
+
+    let invitation = sqlx::query_as::<_, PoolInvitation>(
+        "SELECT id, public_id, organization_id, email, role, token_hash, invited_by, \
+                expires_at, accepted_at, revoked_at, created_at, updated_at \
+         FROM pool_invitations WHERE id = ? FOR UPDATE",
+    )
+    .bind(invitation.id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    let now = Utc::now();
+    if invitation.accepted_at.is_some() {
+        return Err(PoolIdentityError::InvitationUsed);
+    }
+    if invitation.revoked_at.is_some() {
+        return Err(PoolIdentityError::InvitationRevoked);
+    }
+    if invitation.expires_at <= now {
+        return Err(PoolIdentityError::InvitationExpired);
+    }
+
+    let user_public_id = uuid::Uuid::new_v4().to_string();
+    let insert = sqlx::query(
+        "INSERT INTO pool_users \
+         (public_id, organization_id, email, display_name, password_hash, role, \
+          password_change_required) \
+         VALUES (?, ?, ?, ?, ?, ?, 0)",
+    )
+    .bind(&user_public_id)
+    .bind(invitation.organization_id)
+    .bind(&invitation.email)
+    .bind(&display_name)
+    .bind(&password_hash)
+    .bind(invitation.role.as_str())
+    .execute(&mut *tx)
+    .await;
+
+    if let Err(e) = insert {
+        return Err(if is_unique_violation(&e) {
+            PoolIdentityError::Invalid("that email already belongs to a member".into())
+        } else {
+            PoolIdentityError::Database(e)
+        });
+    }
+
+    sqlx::query("UPDATE pool_invitations SET accepted_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(invitation.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(PoolIdentityError::Database)?;
+
+    let user = sqlx::query_as::<_, PoolUser>(
+        "SELECT id, public_id, organization_id, email, display_name, password_hash, \
+                role, password_change_required, last_login_at, created_at, updated_at \
+         FROM pool_users WHERE public_id = ?",
+    )
+    .bind(&user_public_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    tx.commit().await.map_err(PoolIdentityError::Database)?;
+    Ok(user)
+}
+
+/// Change a member's role, refusing to demote the last owner.
+pub async fn change_member_role(
+    pool: &MySqlPool,
+    organization_id: u64,
+    member_public_id: &str,
+    new_role: PoolRole,
+) -> Result<PoolUser, PoolIdentityError> {
+    let mut tx = pool.begin().await.map_err(PoolIdentityError::Database)?;
+
+    // Lock every member of the organization in id order. A consistent order
+    // avoids deadlocks when two owner actions overlap, and the full set gives
+    // the last-owner count in the same snapshot.
+    let members = lock_organization_members(&mut tx, organization_id).await?;
+    let target = members
+        .iter()
+        .find(|member| member.public_id == member_public_id)
+        .cloned()
+        .ok_or(PoolIdentityError::NotFound)?;
+
+    if target.role == PoolRole::Owner
+        && new_role != PoolRole::Owner
+        && members
+            .iter()
+            .filter(|member| member.role == PoolRole::Owner)
+            .count()
+            <= 1
+    {
+        return Err(PoolIdentityError::LastOwner);
+    }
+
+    sqlx::query("UPDATE pool_users SET role = ? WHERE id = ?")
+        .bind(new_role.as_str())
+        .bind(target.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(PoolIdentityError::Database)?;
+
+    let updated = sqlx::query_as::<_, PoolUser>(
+        "SELECT id, public_id, organization_id, email, display_name, password_hash, \
+                role, password_change_required, last_login_at, created_at, updated_at \
+         FROM pool_users WHERE id = ?",
+    )
+    .bind(target.id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(PoolIdentityError::Database)?;
+
+    tx.commit().await.map_err(PoolIdentityError::Database)?;
+    Ok(updated)
+}
+
+/// Remove a member, refusing to remove the last owner.
+///
+/// The row is deleted, so any JWT whose subject is that member stops resolving
+/// on the next request (the operator extractor always loads the row).
+pub async fn remove_member(
+    pool: &MySqlPool,
+    organization_id: u64,
+    member_public_id: &str,
+) -> Result<(), PoolIdentityError> {
+    let mut tx = pool.begin().await.map_err(PoolIdentityError::Database)?;
+
+    let members = lock_organization_members(&mut tx, organization_id).await?;
+    let target = members
+        .iter()
+        .find(|member| member.public_id == member_public_id)
+        .cloned()
+        .ok_or(PoolIdentityError::NotFound)?;
+
+    if target.role == PoolRole::Owner
+        && members
+            .iter()
+            .filter(|member| member.role == PoolRole::Owner)
+            .count()
+            <= 1
+    {
+        return Err(PoolIdentityError::LastOwner);
+    }
+
+    sqlx::query("DELETE FROM pool_users WHERE id = ?")
+        .bind(target.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(PoolIdentityError::Database)?;
+
+    tx.commit().await.map_err(PoolIdentityError::Database)?;
+    Ok(())
+}
+
+async fn lock_organization_members(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    organization_id: u64,
+) -> Result<Vec<PoolUser>, PoolIdentityError> {
+    sqlx::query_as::<_, PoolUser>(
+        "SELECT id, public_id, organization_id, email, display_name, password_hash, \
+                role, password_change_required, last_login_at, created_at, updated_at \
+         FROM pool_users WHERE organization_id = ? ORDER BY id FOR UPDATE",
+    )
+    .bind(organization_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(PoolIdentityError::Database)
+}
+
+async fn find_by_email(
+    pool: &MySqlPool,
+    email: &str,
+) -> Result<Option<PoolUser>, PoolIdentityError> {
+    sqlx::query_as::<_, PoolUser>(
+        "SELECT id, public_id, organization_id, email, display_name, password_hash, \
+                role, password_change_required, last_login_at, created_at, updated_at \
+         FROM pool_users WHERE email = ?",
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+    .map_err(PoolIdentityError::Database)
+}
+
+fn parse_invitation_token(raw: &str) -> Option<(&str, &str)> {
+    let (public_id, secret) = raw.split_once('.')?;
+    if public_id.is_empty() || secret.is_empty() {
+        return None;
+    }
+    Some((public_id, secret))
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 async fn ensure_uninitialized(pool: &MySqlPool) -> Result<(), PoolIdentityError> {
@@ -497,6 +887,23 @@ mod tests {
         );
         assert!(validate_organization_name("   ").is_err());
         assert!(validate_organization_name(&"x".repeat(129)).is_err());
+    }
+
+    #[test]
+    fn invitation_token_round_trips_its_public_id() {
+        let token = "11111111-1111-4111-8111-111111111111.abcdef";
+        assert_eq!(
+            parse_invitation_token(token),
+            Some(("11111111-1111-4111-8111-111111111111", "abcdef"))
+        );
+        assert_eq!(parse_invitation_token("no-dot"), None);
+        assert_eq!(parse_invitation_token(".secret"), None);
+        assert_eq!(parse_invitation_token("id."), None);
+    }
+
+    #[test]
+    fn invitation_ttl_is_seven_days() {
+        assert_eq!(INVITATION_TTL_SECS, 604_800);
     }
 
     #[test]

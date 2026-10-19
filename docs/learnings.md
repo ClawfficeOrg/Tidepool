@@ -166,3 +166,9 @@ bullets over prose. Read the last few sections before starting a similar task.
 - Bootstrap secrets need an explicit redacted `Debug` when they live inside a
   `#[derive(Debug)]` config tree; otherwise a single `?config` in a log line
   prints the temporary password.
+- A salted hash cannot be looked up, so a one-time token needs a clear lookup
+  half: `<public_id>.<secret>` lets acceptance fetch the row by public id and
+  verify only the secret, while storing just the secret's hash.
+- Lock the whole member set in id order before checking a "last owner" rule;
+  locking the target first and then the owners opens a deadlock between two
+  owner actions.

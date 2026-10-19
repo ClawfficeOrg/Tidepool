@@ -6,7 +6,7 @@
 //! Two request classes exist:
 //!
 //! - **auth** — credential endpoints (`/v1/auth/**`, legacy `/auth/**`,
-//!   `/v1/setup/**`, `/v1/pool/login`),
+//!   `/v1/setup/**`, `/v1/pool/login`, invitation acceptance),
 //!   with a tight budget to slow brute-force attempts.
 //! - **default** — every other rate-limited public route (e.g. the `/ws`
 //!   handshake).
@@ -88,7 +88,7 @@ pub enum RateLimitError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RateLimitClass {
     /// Credential endpoints (`/v1/auth/**`, `/auth/**`, `/v1/setup/**`,
-    /// `/v1/pool/login`) — tightest budget.
+    /// `/v1/pool/login`, invitation acceptance) — tightest budget.
     Auth,
     /// Every other rate-limited public route — general budget.
     Default,
@@ -115,7 +115,13 @@ impl RateLimitClass {
 /// Path prefixes that always classify as [`RateLimitClass::Auth`], regardless
 /// of what `RATE_LIMIT_PUBLIC_PREFIXES` contains. Both the canonical upstream
 /// spelling and the 0.4.1 legacy alias are listed.
-const AUTH_PREFIXES: &[&str] = &["/v1/auth", "/auth", "/v1/setup", "/v1/pool/login"];
+const AUTH_PREFIXES: &[&str] = &[
+    "/v1/auth",
+    "/auth",
+    "/v1/setup",
+    "/v1/pool/login",
+    "/v1/pool/invitations/accept",
+];
 
 /// Outcome of classifying a request path against the limiter configuration.
 ///
@@ -660,6 +666,10 @@ mod tests {
         assert_eq!(classify_path("/v1/setup", &cfg), Some(RateLimitClass::Auth));
         assert_eq!(
             classify_path("/v1/pool/login", &cfg),
+            Some(RateLimitClass::Auth)
+        );
+        assert_eq!(
+            classify_path("/v1/pool/invitations/accept", &cfg),
             Some(RateLimitClass::Auth)
         );
         // Authenticated reads are not part of the auth budget.

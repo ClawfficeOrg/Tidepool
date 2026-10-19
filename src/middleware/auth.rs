@@ -15,16 +15,24 @@
 //! }
 //! ```
 
-use crate::{config::Config, services::auth as auth_svc};
+use crate::{
+    config::Config,
+    entities::pool_user::{PoolRole, PoolUser},
+    services::{auth as auth_svc, pool_identity},
+};
 use actix_web::{
     Error, FromRequest, HttpRequest,
     dev::Payload,
-    error::{ErrorInternalServerError, ErrorUnauthorized},
+    error::{ErrorForbidden, ErrorInternalServerError, ErrorServiceUnavailable, ErrorUnauthorized},
     http::header,
     web,
 };
 pub use auth_svc::Claims;
-use std::future::{Ready, ready};
+use sqlx::MySqlPool;
+use std::{
+    future::{Future, Ready, ready},
+    pin::Pin,
+};
 
 /// The authenticated caller, extracted from a valid `Authorization: Bearer <jwt>` header.
 ///
@@ -75,6 +83,84 @@ impl FromRequest for AuthenticatedUser {
                 ready(Err(ErrorUnauthorized("invalid or expired token")))
             }
         }
+    }
+}
+
+/// A signed-in **pool operator**, resolved from the JWT subject.
+///
+/// Unlike [`AuthenticatedUser`] (which only verifies the token), this extractor
+/// also loads the `pool_users` row. That has three consequences:
+///
+/// - A player token is refused: its subject does not resolve to an operator.
+/// - A removed member is refused on the next request, so revocation is
+///   immediate even though the JWT itself is still cryptographically valid.
+/// - Role changes take effect on the next request because the role is read
+///   from the database rather than from a claim.
+///
+/// Mutating hub handlers must call [`OperatorAuth::require_mutating`] or
+/// [`OperatorAuth::require_owner`]; a viewer is read-only.
+#[derive(Debug, Clone)]
+pub struct OperatorAuth {
+    /// The resolved operator row.
+    pub operator: PoolUser,
+}
+
+impl OperatorAuth {
+    /// Reject the caller when it is a read-only viewer.
+    ///
+    /// Use this in every mutating hub handler. Returns HTTP 403.
+    pub fn require_mutating(&self) -> Result<(), Error> {
+        if self.operator.role == PoolRole::Viewer {
+            return Err(ErrorForbidden("viewer role is read-only"));
+        }
+        Ok(())
+    }
+
+    /// Require the organization owner role.
+    ///
+    /// Use this for member and API-key management. Returns HTTP 403.
+    pub fn require_owner(&self) -> Result<(), Error> {
+        if self.operator.role != PoolRole::Owner {
+            return Err(ErrorForbidden("owner role required"));
+        }
+        Ok(())
+    }
+
+    /// The operator's internal organization id.
+    pub fn organization_id(&self) -> u64 {
+        self.operator.organization_id
+    }
+}
+
+impl FromRequest for OperatorAuth {
+    type Error = Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
+
+    fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
+        let pool = req.app_data::<web::Data<MySqlPool>>().cloned();
+
+        // Reuse the JWT extractor: its future is ready immediately.
+        let authenticated =
+            match <AuthenticatedUser as FromRequest>::from_request(req, payload).into_inner() {
+                Ok(user) => user,
+                Err(error) => return Box::pin(async move { Err(error) }),
+            };
+
+        Box::pin(async move {
+            let Some(pool) = pool else {
+                return Err(ErrorServiceUnavailable("database unavailable"));
+            };
+            match pool_identity::find_by_public_id(pool.get_ref(), &authenticated.player_public_id)
+                .await
+            {
+                Ok(Some(operator)) => Ok(OperatorAuth { operator }),
+                Ok(None) => Err(ErrorUnauthorized("operator account required")),
+                Err(error) => {
+                    tracing::error!(error = %error, "operator lookup failed");
+                    Err(ErrorInternalServerError("internal error"))
+                }
+            }
+        })
     }
 }
 
@@ -225,5 +311,45 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    fn operator(role: PoolRole) -> OperatorAuth {
+        OperatorAuth {
+            operator: PoolUser {
+                id: 1,
+                public_id: "11111111-1111-4111-8111-111111111111".into(),
+                organization_id: 7,
+                email: "member@example.com".into(),
+                display_name: "Member".into(),
+                password_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA".into(),
+                role,
+                password_change_required: false,
+                last_login_at: None,
+                created_at: "2026-10-19T12:00:00Z".parse().expect("ts"),
+                updated_at: "2026-10-19T12:00:00Z".parse().expect("ts"),
+            },
+        }
+    }
+
+    #[actix_web::test]
+    async fn viewer_is_read_only() {
+        let viewer = operator(PoolRole::Viewer);
+        assert!(viewer.require_mutating().is_err());
+        assert!(viewer.require_owner().is_err());
+    }
+
+    #[actix_web::test]
+    async fn member_may_mutate_but_not_manage_the_team() {
+        let member = operator(PoolRole::Member);
+        assert!(member.require_mutating().is_ok());
+        assert!(member.require_owner().is_err());
+        assert!(operator(PoolRole::Admin).require_mutating().is_ok());
+    }
+
+    #[actix_web::test]
+    async fn owner_may_manage_the_team() {
+        let owner = operator(PoolRole::Owner);
+        assert!(owner.require_mutating().is_ok());
+        assert!(owner.require_owner().is_ok());
     }
 }

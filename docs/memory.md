@@ -958,6 +958,16 @@ becomes necessary it is an additive claim, not a second secret.
 over TLS. Any deployment that exposes setup or operator sign-in must terminate
 TLS in front of the pool; the compose/deploy task (1.6.x) owns that.
 
+**Team roles and invitations:** owners manage members and invitations, admins
+will change configuration, members operate, viewers read. Role checks live in
+`OperatorAuth` (`require_mutating` / `require_owner`) and read the role from the
+database on every request, so a demotion is effective immediately. Invitation
+tokens are `<public_id>.<secret>`; only an Argon2id hash of the secret is
+stored, so the database cannot be used to accept an invitation and the raw
+token is shown once. Single use is `accepted_at`, checked under `FOR UPDATE`.
+Removing a member deletes the row, which makes every old JWT fail the next
+operator lookup; there is no separate session table in v1.
+
 ---
 
 ## Open Questions / Assumptions
