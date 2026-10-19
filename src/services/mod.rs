@@ -10,6 +10,7 @@ pub mod enrollment;
 pub mod events;
 pub mod feedback;
 pub mod game_settings;
+pub mod host_presence;
 pub mod hosts;
 pub mod leaderboards;
 pub mod players;

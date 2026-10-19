@@ -1008,6 +1008,15 @@ expires every unconsumed token it minted. The enrollment exchange is public but
 requires the one-time token; presence and protocol sessions will authenticate
 with the relationship credential via `authenticate_host`.
 
+**Host presence:** the live process keeps a connection/heartbeat registry;
+`hosts.status` is a durable projection, not the source of truth. A host is
+online only while it has a connection *and* a heartbeat within 90 seconds, so a
+client cannot declare presence. Startup marks leftover `connected` rows offline
+because no connection survives a restart. Dispatch calls `require_connected`;
+an offline host fails with `daemon_not_connected` and is not queued. The
+`tidepool_hosts_connected` gauge is updated on transitions and resynced when
+stale rows are swept.
+
 ---
 
 ## Open Questions / Assumptions

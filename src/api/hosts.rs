@@ -13,6 +13,7 @@ use crate::api::problem::{Problem, ProblemCode};
 use crate::entities::host::HostView;
 use crate::middleware::auth::OperatorAuth;
 use crate::services::api_keys::AuditActor;
+use crate::services::host_presence;
 use crate::services::hosts::{self as host_svc, HostServiceError, NewHost, RenameHost};
 use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
 use serde::{Deserialize, Serialize};
@@ -83,6 +84,9 @@ async fn list_hosts(
     let Some(pool) = pool else {
         return db_unavailable(&req);
     };
+    if let Err(error) = host_presence::refresh_stale(pool.get_ref(), chrono::Utc::now()).await {
+        tracing::warn!(error = %error, "host presence refresh failed");
+    }
     match host_svc::list_hosts(pool.get_ref(), auth.organization_id()).await {
         Ok(hosts) => HttpResponse::Ok().json(HostsResponse {
             hosts: hosts.iter().map(HostView::from).collect(),
@@ -129,6 +133,9 @@ async fn get_host(
     let Some(pool) = pool else {
         return db_unavailable(&req);
     };
+    if let Err(error) = host_presence::refresh_stale(pool.get_ref(), chrono::Utc::now()).await {
+        tracing::warn!(error = %error, "host presence refresh failed");
+    }
     match host_svc::find_host(pool.get_ref(), auth.organization_id(), &path.into_inner()).await {
         Ok(Some(host)) => HttpResponse::Ok().json(HostView::from(&host)),
         Ok(None) => not_found(&req),
@@ -185,15 +192,21 @@ async fn revoke_host(
     let Some(pool) = pool else {
         return db_unavailable(&req);
     };
+    let public_id = path.into_inner();
     match host_svc::revoke_host(
         pool.get_ref(),
         auth.organization_id(),
-        &path.into_inner(),
+        &public_id,
         actor(&auth),
     )
     .await
     {
-        Ok(()) => HttpResponse::NoContent().finish(),
+        Ok(()) => {
+            if let Err(error) = host_presence::forget_host(pool.get_ref(), &public_id).await {
+                tracing::warn!(error = %error, "failed to forget revoked host presence");
+            }
+            HttpResponse::NoContent().finish()
+        }
         Err(e) => map_error(e, &req),
     }
 }

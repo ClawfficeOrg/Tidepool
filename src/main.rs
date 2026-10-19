@@ -41,6 +41,13 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    // No host connection survives a process restart.
+    if let Some(pool) = pool.as_ref()
+        && let Err(e) = services::host_presence::mark_all_offline(pool).await
+    {
+        tracing::warn!(error = %e, "failed to reset host presence at startup");
+    }
+
     // Apply the unattended first-run bootstrap, if configured. This only ever
     // inserts: an existing organization is left untouched, so a restart cannot
     // re-apply the temporary password.
@@ -122,7 +129,8 @@ async fn main() -> std::io::Result<()> {
             .configure(api::socket_ticket::config)
             .configure(api::metrics::config)
             .configure(api::openapi::config)
-            .route("/ws", web::get().to(sockets::ws::ws_index));
+            .route("/ws", web::get().to(sockets::ws::ws_index))
+            .route("/ws/host", web::get().to(sockets::host_ws::ws_host));
         if let Some(p) = pool.clone() {
             app = app.app_data(web::Data::new(p));
         }

@@ -36,6 +36,7 @@ pub struct Metrics {
     http_requests: IntCounterVec,
     http_duration: HistogramVec,
     ws_connections: IntGauge,
+    hosts_connected: IntGauge,
 }
 
 impl Metrics {
@@ -58,14 +59,20 @@ impl Metrics {
             "tidepool_ws_connections",
             "Current number of active WebSocket connections",
         )?;
+        let hosts_connected = IntGauge::new(
+            "tidepool_hosts_connected",
+            "Current number of connected pool hosts",
+        )?;
         registry.register(Box::new(http_requests.clone()))?;
         registry.register(Box::new(http_duration.clone()))?;
         registry.register(Box::new(ws_connections.clone()))?;
+        registry.register(Box::new(hosts_connected.clone()))?;
         Ok(Self {
             registry,
             http_requests,
             http_duration,
             ws_connections,
+            hosts_connected,
         })
     }
 
@@ -87,6 +94,21 @@ impl Metrics {
     /// Mark one WebSocket connection closed.
     pub fn ws_disconnected(&self) {
         self.ws_connections.dec();
+    }
+
+    /// Mark one host online.
+    pub fn host_connected(&self) {
+        self.hosts_connected.inc();
+    }
+
+    /// Mark one host offline.
+    pub fn host_disconnected(&self) {
+        self.hosts_connected.dec();
+    }
+
+    /// Set the connected-host gauge to an authoritative count.
+    pub fn hosts_connected_set(&self, count: i64) {
+        self.hosts_connected.set(count);
     }
 
     /// Render every registered collector in Prometheus text format.
@@ -188,6 +210,18 @@ mod tests {
             "tidepool_http_request_duration_seconds_count{method=\"GET\",status=\"200\"} 1"
         ));
         assert!(out.contains("tidepool_ws_connections 1"));
+    }
+
+    #[test]
+    fn host_gauge_tracks_balance() {
+        let m = Metrics::new().expect("registry");
+        m.host_connected();
+        m.host_connected();
+        assert!(m.render().contains("tidepool_hosts_connected 2"));
+        m.host_disconnected();
+        assert!(m.render().contains("tidepool_hosts_connected 1"));
+        m.hosts_connected_set(0);
+        assert!(m.render().contains("tidepool_hosts_connected 0"));
     }
 
     #[test]

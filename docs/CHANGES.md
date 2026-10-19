@@ -110,6 +110,21 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - `services::enrollment::authenticate_host` verifies the relationship credential
   for later presence and host-protocol work.
 
+### Host presence and heartbeat (task 1.2.3)
+- Added an in-memory presence registry and `GET /ws/host`, authenticated with
+  the enrollment relationship credential (`X-Host-Id` + `X-Host-Credential`).
+  Connect/disconnect moves a host between `connected` and `offline`; the durable
+  `hosts.status` projection follows.
+- Host sockets send `{"type":"heartbeat"}` and receive
+  `{"type":"heartbeat.ack"}`. A missed heartbeat (90s window) marks the host
+  offline and closes the socket, even if it is still open.
+- Dispatch checks `host_presence::require_connected`: an offline/stale host fails
+  immediately with the documented `daemon_not_connected` code instead of being
+  queued.
+- Added the `tidepool_hosts_connected` gauge and reset leftover `connected`
+  rows to offline on process startup. Revoking a host forgets its connections
+  and the gauge immediately.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

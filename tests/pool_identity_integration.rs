@@ -21,7 +21,8 @@ use tidepool::{
     entities::{api_key::ApiKeyScope, pool_user::PoolRole},
     middleware::{problem::HubProblem, request_id::RequestIdMiddleware},
     services::{
-        api_keys as api_key_svc, auth as auth_svc, enrollment as enrollment_svc,
+        api_keys::{self as api_key_svc, AuditActor},
+        auth as auth_svc, enrollment as enrollment_svc, host_presence, hosts as host_svc,
         pool_identity::{self, BootstrapOutcome, NewOrganization, PoolIdentityError},
     },
 };
@@ -1510,4 +1511,105 @@ async fn enrollment_token_requires_the_daemons_enroll_scope() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     let problem: Value = test::read_body_json(resp).await;
     assert_eq!(problem["code"], "missing_scope");
+}
+
+// ── host presence (task 1.2.3) ────────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_presence_moves_online_offline_and_blocks_dispatch() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, _owner_token) = bootstrap_owner(&pool).await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "presence-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register host");
+
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint enrollment token");
+    let credential = "presence-host-credential-0123456789abcdef";
+    let enrolled = enrollment_svc::enroll_host(&pool, &token, credential)
+        .await
+        .expect("enroll host");
+    assert_eq!(
+        enrolled.status,
+        tidepool::entities::host::HostStatus::Offline
+    );
+
+    // A connection moves the durable projection to connected.
+    let connected = host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connect");
+    assert_eq!(connected.public_id, host.public_id);
+    let status: String = sqlx::query_scalar("SELECT status FROM hosts WHERE public_id = ?")
+        .bind(&host.public_id)
+        .fetch_one(&pool)
+        .await
+        .expect("status");
+    assert_eq!(status, "connected");
+    assert!(
+        tidepool::middleware::metrics::metrics()
+            .render()
+            .contains("tidepool_hosts_connected 1")
+    );
+
+    host_presence::require_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connected host is dispatchable");
+
+    // Dropping the last connection moves it offline and dispatch fails with the
+    // documented code instead of queueing.
+    host_presence::host_disconnected(&pool, &host.public_id)
+        .await
+        .expect("disconnect");
+    let error = host_presence::require_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect_err("offline host must not dispatch");
+    assert_eq!(error.code(), "daemon_not_connected");
+    assert_eq!(
+        error.to_string(),
+        format!("daemon_not_connected: host '{}' is offline", host.slug)
+    );
+    assert!(
+        tidepool::middleware::metrics::metrics()
+            .render()
+            .contains("tidepool_hosts_connected 0")
+    );
+
+    // Revoking an online host forgets its connections immediately.
+    host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("reconnect");
+    host_svc::revoke_host(&pool, organization_id, &host.public_id, AuditActor::System)
+        .await
+        .expect("revoke");
+    host_presence::forget_host(&pool, &host.public_id)
+        .await
+        .expect("forget");
+    assert!(matches!(
+        host_presence::require_connected(&pool, organization_id, &host.public_id).await,
+        Err(host_presence::HostPresenceError::NotFound)
+    ));
 }

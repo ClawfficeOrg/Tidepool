@@ -400,7 +400,7 @@
         {
           "id": "1.2.3",
           "title": "Host presence and heartbeat",
-          "status": "pending",
+          "status": "done",
           "goal": "An enrolled host holds a connection to the pool and the pool tracks presence: connected and accepting dispatch, offline, or revoked. A missed heartbeat marks the host offline and an event for an offline host fails dispatch with a named code (daemon_not_connected) instead of being queued for later, so the trigger must fire again. Presence is derived from the connection plus heartbeat, never from a client-supplied field.",
           "touches": [
             "src/services/host_presence.rs",
@@ -421,7 +421,8 @@
           "complexity": "High",
           "agent": "pro_dev_agent",
           "changelog": "Added host presence and heartbeat",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:10:56Z"
         },
         {
           "id": "1.2.4",

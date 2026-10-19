@@ -18,3 +18,5 @@
 {"at": "2026-10-19T23:05:29Z", "event": "done", "task": "1.2.1", "owner": "opencode", "from": "in_progress", "to": "done"}
 {"at": "2026-10-19T23:05:50Z", "event": "start", "task": "1.2.2", "owner": "opencode", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-20T00:05:50Z"}
 {"at": "2026-10-19T23:08:21Z", "event": "done", "task": "1.2.2", "owner": "opencode", "from": "in_progress", "to": "done"}
+{"at": "2026-10-19T23:08:43Z", "event": "start", "task": "1.2.3", "owner": "opencode", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-20T00:08:43Z"}
+{"at": "2026-10-19T23:10:56Z", "event": "done", "task": "1.2.3", "owner": "opencode", "from": "in_progress", "to": "done"}
