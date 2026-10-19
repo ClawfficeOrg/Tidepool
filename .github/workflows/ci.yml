@@ -130,7 +130,29 @@ jobs:
                     "/v1/games/{game_id}/settings", "/v1/events", "/v1/feedback",
                     "/v1/socket-tickets", "/healthz", "/metrics", "/openapi.json"]:
               assert p in doc["paths"], f"drift: route {p} not documented"
-          print(f"OK: {len(doc['paths'])} paths documented, spec {doc['openapi']}")
+
+          # Hub routes must document how they are authorized; API-key routes
+          # must also list the scope they need.
+          hub_prefixes = ("/v1/setup", "/v1/pool", "/v1/api-keys")
+          methods = {"get", "post", "put", "patch", "delete", "head", "options"}
+          hub_ops = 0
+          for path, item in doc["paths"].items():
+              if not any(path == p or path.startswith(p + "/") for p in hub_prefixes):
+                  continue
+              for method, op in item.items():
+                  if method not in methods:
+                      continue
+                  hub_ops += 1
+                  assert "x-auth" in op, f"drift: {method.upper()} {path} has no x-auth"
+                  assert op["x-auth"] in ("public", "member", "api_key"), \
+                      f"drift: {method.upper()} {path} bad x-auth {op['x-auth']}"
+                  if op["x-auth"] == "api_key":
+                      assert op.get("x-required-scope"), \
+                          f"drift: {method.upper()} {path} has no x-required-scope"
+          assert hub_ops >= 16, f"drift: only {hub_ops} hub operations documented"
+          whoami = doc["paths"]["/v1/api-keys/whoami"]["get"]
+          assert whoami.get("x-required-scope") == "projects:read", whoami
+          print(f"OK: {len(doc['paths'])} paths documented, {hub_ops} hub ops, spec {doc['openapi']}")
           PY
 
   sqlx-migrate:

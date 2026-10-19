@@ -16,15 +16,17 @@
 //! ```
 
 use crate::{
+    api::problem::{Problem, ProblemCode, ProblemError},
     config::Config,
     entities::pool_user::{PoolRole, PoolUser},
+    middleware::request_id::RequestId,
     services::{auth as auth_svc, pool_identity},
 };
 use actix_web::{
     Error, FromRequest, HttpRequest,
     dev::Payload,
-    error::{ErrorForbidden, ErrorInternalServerError, ErrorServiceUnavailable, ErrorUnauthorized},
-    http::header,
+    error::{ErrorInternalServerError, ErrorServiceUnavailable, ErrorUnauthorized},
+    http::{StatusCode, header},
     web,
 };
 pub use auth_svc::Claims;
@@ -103,6 +105,8 @@ impl FromRequest for AuthenticatedUser {
 pub struct OperatorAuth {
     /// The resolved operator row.
     pub operator: PoolUser,
+    /// Correlation id for 403 problem documents.
+    pub request_id: String,
 }
 
 impl OperatorAuth {
@@ -111,7 +115,7 @@ impl OperatorAuth {
     /// Use this in every mutating hub handler. Returns HTTP 403.
     pub fn require_mutating(&self) -> Result<(), Error> {
         if self.operator.role == PoolRole::Viewer {
-            return Err(ErrorForbidden("viewer role is read-only"));
+            return Err(forbidden(&self.request_id, "viewer role is read-only"));
         }
         Ok(())
     }
@@ -121,7 +125,7 @@ impl OperatorAuth {
     /// Use this for member and API-key management. Returns HTTP 403.
     pub fn require_owner(&self) -> Result<(), Error> {
         if self.operator.role != PoolRole::Owner {
-            return Err(ErrorForbidden("owner role required"));
+            return Err(forbidden(&self.request_id, "owner role required"));
         }
         Ok(())
     }
@@ -138,6 +142,7 @@ impl FromRequest for OperatorAuth {
 
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         let pool = req.app_data::<web::Data<MySqlPool>>().cloned();
+        let request_id = RequestId::from_request(req);
 
         // Reuse the JWT extractor: its future is ready immediately.
         let authenticated =
@@ -153,7 +158,10 @@ impl FromRequest for OperatorAuth {
             match pool_identity::find_by_public_id(pool.get_ref(), &authenticated.player_public_id)
                 .await
             {
-                Ok(Some(operator)) => Ok(OperatorAuth { operator }),
+                Ok(Some(operator)) => Ok(OperatorAuth {
+                    operator,
+                    request_id,
+                }),
                 Ok(None) => Err(ErrorUnauthorized("operator account required")),
                 Err(error) => {
                     tracing::error!(error = %error, "operator lookup failed");
@@ -162,6 +170,17 @@ impl FromRequest for OperatorAuth {
             }
         })
     }
+}
+
+/// A 403 with the hub problem shape.
+fn forbidden(request_id: &str, detail: &str) -> Error {
+    let problem = Problem::new(
+        StatusCode::FORBIDDEN,
+        ProblemCode::Forbidden,
+        detail.to_string(),
+        request_id.to_string(),
+    );
+    ProblemError::new(problem).into()
 }
 
 /// Extract the raw token string from `Authorization: Bearer <token>`.
@@ -328,6 +347,7 @@ mod tests {
                 created_at: "2026-10-19T12:00:00Z".parse().expect("ts"),
                 updated_at: "2026-10-19T12:00:00Z".parse().expect("ts"),
             },
+            request_id: "req-test".into(),
         }
     }
 

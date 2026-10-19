@@ -979,6 +979,17 @@ mutation rather than in the same transaction, and a write failure is logged.
 Daemon enrollment tokens are not part of this task; the future table must join
 back to `api_keys.status` so revoking a key kills its unconsumed tokens.
 
+**Hub errors and request ids:** hub failures use RFC 9457 problem details with
+`code` and `requestId`; the game API keeps its `{"error": ...}` bodies because
+clients depend on them. Handlers emit specific codes, and a hub-only middleware
+is the safety net for extractor/404/405/429/5xx failures. The model is additive:
+new hub routes must document `x-auth` and, for API keys, `x-required-scope`.
+`requestId` comes from middleware inserted before the handler; incoming ids are
+reused only when they match a conservative charset/length so log injection and
+header abuse stay impossible. The Rust drift test parses the hub modules'
+`web::scope(...).route(...)` registrations and compares them with `ROUTES`, so
+a route cannot be added to code without the table.
+
 ---
 
 ## Open Questions / Assumptions

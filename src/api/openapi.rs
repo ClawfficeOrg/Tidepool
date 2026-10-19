@@ -10,6 +10,7 @@ use utoipa::openapi::{
     ComponentsBuilder, Content, InfoBuilder, ObjectBuilder, OpenApi, PathItem, PathsBuilder,
     Required, Response, ResponseBuilder, Responses, ResponsesBuilder, Schema, SecurityRequirement,
     Tag, Type,
+    extensions::Extensions,
     path::{HttpMethod, Operation, OperationBuilder, Parameter, ParameterBuilder, ParameterIn},
     request_body::{RequestBody, RequestBodyBuilder},
     schema::SchemaType,
@@ -27,6 +28,8 @@ struct RouteSpec {
     secure: bool,
     /// Whether the route accepts a JSON request body.
     has_body: bool,
+    /// API-key scope required by this route, when it accepts API keys.
+    required_scope: Option<&'static str>,
     /// Success status code, e.g. `"200"`.
     success: &'static str,
 }
@@ -41,6 +44,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "auth",
         summary: "Register a new player and return the public profile",
         secure: false,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -50,6 +54,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "auth",
         summary: "Verify credentials and issue a signed JWT",
         secure: false,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -59,6 +64,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "players",
         summary: "Fetch a player's public profile",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -68,6 +74,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "players",
         summary: "Update the authenticated player's own profile",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -77,6 +84,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "players",
         summary: "Soft-delete the authenticated player's own account",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "204",
     },
@@ -86,6 +94,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "players",
         summary: "Create a subaccount under the authenticated player",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -95,6 +104,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "players",
         summary: "List the authenticated player's subaccounts",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -104,6 +114,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "leaderboards",
         summary: "Fetch one ranked page of a leaderboard",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -113,6 +124,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "leaderboards",
         summary: "Submit a leaderboard entry for the authenticated player",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -122,6 +134,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "leaderboards",
         summary: "Update the authenticated player's own leaderboard entry",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -131,6 +144,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "saves",
         summary: "Create a game save",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -140,6 +154,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "saves",
         summary: "List the authenticated player's saves, newest first",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -149,6 +164,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "saves",
         summary: "Fetch a single game save",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -158,6 +174,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "saves",
         summary: "Delete a single game save",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "204",
     },
@@ -167,6 +184,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "game settings",
         summary: "Fetch a game's settings",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -176,6 +194,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "game settings",
         summary: "Set a game's settings (upsert)",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -185,6 +204,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "analytics",
         summary: "Ingest a batch of analytics events (fire-and-forget)",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "202",
     },
@@ -194,6 +214,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "feedback",
         summary: "Submit player feedback",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -203,6 +224,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "websocket",
         summary: "Issue a one-shot WebSocket connection ticket",
         secure: false,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -212,6 +234,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Report whether the pool still needs first-run setup",
         secure: false,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -221,6 +244,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Create the organization and first owner from the browser",
         secure: false,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -230,6 +254,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Sign an operator in and issue a JWT",
         secure: false,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -239,6 +264,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Fetch the signed-in operator and organization",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -248,6 +274,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Replace the operator's password (clears first-sign-in requirement)",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "204",
     },
@@ -257,6 +284,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "List the organization's operators",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -266,6 +294,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Change a member's role (owner only; last owner protected)",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "200",
     },
@@ -275,6 +304,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Remove a member (owner only; last owner protected)",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "204",
     },
@@ -284,6 +314,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "List pending team invitations (owner only)",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -293,6 +324,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Invite an operator by email; the token is shown once",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -302,6 +334,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Accept an invitation and create the member account",
         secure: false,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -311,6 +344,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Revoke a pending invitation (owner only)",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "204",
     },
@@ -320,6 +354,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "List organization API keys (owner only; prefix only)",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -329,6 +364,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Create an API key; the full secret is shown once",
         secure: true,
+        required_scope: None,
         has_body: true,
         success: "201",
     },
@@ -338,6 +374,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Introspect an API key (requires projects:read)",
         secure: true,
+        required_scope: Some("projects:read"),
         has_body: false,
         success: "200",
     },
@@ -347,6 +384,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "pool",
         summary: "Revoke an API key (owner only; effective immediately)",
         secure: true,
+        required_scope: None,
         has_body: false,
         success: "204",
     },
@@ -356,6 +394,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "system",
         summary: "Liveness probe with DB status",
         secure: false,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -365,6 +404,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "system",
         summary: "Prometheus text-format metrics",
         secure: false,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -374,6 +414,7 @@ const ROUTES: &[RouteSpec] = &[
         tag: "system",
         summary: "This OpenAPI document",
         secure: false,
+        required_scope: None,
         has_body: false,
         success: "200",
     },
@@ -442,7 +483,16 @@ fn document() -> OpenApi {
     let info = InfoBuilder::new()
         .title("Tidepool Server API")
         .version("1.0.0")
-        .description(Some("Talo-compatible game backend API (v0.x line)"))
+        .description(Some(
+            "Talo-compatible game backend API (v0.x line). Hub routes (/v1/setup, \
+             /v1/pool, /v1/api-keys) return RFC 9457 application/problem+json \
+             with code and requestId; codes: unauthorized, forbidden, \
+             missing_scope, invalid_request, validation_failed, not_found, \
+             conflict, gone, method_not_allowed, rate_limited, \
+             daemon_not_connected, configuration_invalid, service_unavailable, \
+             internal_error. x-auth and x-required-scope document each hub \
+             operation.",
+        ))
         .build();
 
     OpenApi::builder()
@@ -467,6 +517,20 @@ fn build_operation(route: &RouteSpec) -> Operation {
 
     if route.secure {
         builder = builder.security(SecurityRequirement::new("bearerAuth", Vec::<String>::new()));
+    }
+    if route.tag == "pool" {
+        let auth = if route.required_scope.is_some() {
+            "api_key"
+        } else if route.secure {
+            "member"
+        } else {
+            "public"
+        };
+        let mut extensions = Extensions::from_iter([("x-auth", auth)]);
+        if let Some(scope) = route.required_scope {
+            extensions.insert("x-required-scope".to_string(), serde_json::json!(scope));
+        }
+        builder = builder.extensions(Some(extensions));
     }
 
     let params: Vec<Parameter> = path_params(route.path)
@@ -680,5 +744,139 @@ mod tests {
                 route.path
             );
         }
+    }
+
+    /// Every hub operation documents how it is authorized, and API-key routes
+    /// document the required scope. The CI scrape asserts the same on the
+    /// served document.
+    #[test]
+    fn hub_routes_document_access_and_required_scope() {
+        let doc = document();
+        for route in ROUTES.iter().filter(|route| route.tag == "pool") {
+            let item = doc
+                .paths
+                .paths
+                .get(route.path)
+                .unwrap_or_else(|| panic!("missing path {}", route.path));
+            let operation = match route.method {
+                HttpMethod::Get => item.get.as_ref(),
+                HttpMethod::Post => item.post.as_ref(),
+                HttpMethod::Put => item.put.as_ref(),
+                HttpMethod::Patch => item.patch.as_ref(),
+                HttpMethod::Delete => item.delete.as_ref(),
+                _ => None,
+            }
+            .unwrap_or_else(|| panic!("missing operation {}", route.path));
+            let extensions = operation
+                .extensions
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} has no access extension", route.path));
+            let expected = if route.required_scope.is_some() {
+                "api_key"
+            } else if route.secure {
+                "member"
+            } else {
+                "public"
+            };
+            assert_eq!(
+                extensions.get("x-auth").and_then(|value| value.as_str()),
+                Some(expected),
+                "{} access",
+                route.path
+            );
+            match route.required_scope {
+                Some(scope) => assert_eq!(
+                    extensions
+                        .get("x-required-scope")
+                        .and_then(|value| value.as_str()),
+                    Some(scope),
+                    "{} scope",
+                    route.path
+                ),
+                None => assert!(
+                    !extensions.contains_key("x-required-scope"),
+                    "{} must not claim a scope",
+                    route.path
+                ),
+            }
+        }
+        assert_eq!(
+            ROUTES
+                .iter()
+                .filter(|route| route.required_scope.is_some())
+                .count(),
+            1
+        );
+
+        // Extensions are flattened onto the operation in the served JSON, as
+        // the CI scrape asserts.
+        let json: serde_json::Value =
+            serde_json::from_str(&document().to_json().expect("json")).expect("valid json");
+        assert_eq!(
+            json["paths"]["/v1/api-keys/whoami"]["get"]["x-required-scope"],
+            "projects:read"
+        );
+        assert_eq!(json["paths"]["/v1/pool/members"]["get"]["x-auth"], "member");
+        assert_eq!(json["paths"]["/v1/setup/status"]["get"]["x-auth"], "public");
+    }
+
+    /// Parse the hub modules' `web::scope(...).route(...)` registrations and
+    /// require the OpenAPI table to describe exactly the same inventory. This
+    /// fails when a hub route is added to code without a table entry, and when
+    /// a table entry is removed while the route remains registered.
+    #[test]
+    fn every_registered_hub_route_is_in_the_table() {
+        fn parse_scope(source: &str) -> std::collections::BTreeSet<(String, String)> {
+            let mut routes = std::collections::BTreeSet::new();
+            let mut scope: Option<String> = None;
+            for line in source.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.split_once("web::scope(\"")
+                    && let Some((path, _)) = rest.1.split_once('"')
+                {
+                    scope = Some(path.to_string());
+                }
+                let Some(scope_path) = scope.as_ref() else {
+                    continue;
+                };
+                let Some(rest) = line.split_once(".route(\"") else {
+                    continue;
+                };
+                let Some((route_path, rest)) = rest.1.split_once('"') else {
+                    continue;
+                };
+                let method = ["get", "post", "put", "patch", "delete"]
+                    .into_iter()
+                    .find(|method| rest.contains(&format!("web::{method}()")))
+                    .unwrap_or_else(|| panic!("route {line} has no known method"));
+                let full = if route_path.is_empty() {
+                    scope_path.clone()
+                } else {
+                    format!("{scope_path}{route_path}")
+                };
+                routes.insert((method.to_string(), full));
+            }
+            routes
+        }
+
+        let mut registered = parse_scope(include_str!("pool_identity.rs"));
+        registered.extend(parse_scope(include_str!("api_keys.rs")));
+
+        let documented: std::collections::BTreeSet<(String, String)> = ROUTES
+            .iter()
+            .filter(|route| route.tag == "pool")
+            .map(|route| {
+                (
+                    method_str(route.method.clone()).to_string(),
+                    route.path.to_string(),
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            registered, documented,
+            "hub routes registered in code and documented in ROUTES must match"
+        );
+        assert_eq!(registered.len(), 16, "expected 16 hub operations");
     }
 }

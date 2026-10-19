@@ -3,7 +3,7 @@ use tidepool::{
     api,
     config::Config,
     db,
-    middleware::{metrics, rate_limit},
+    middleware::{metrics, problem, rate_limit, request_id},
     services, sockets,
 };
 use tracing::info;
@@ -88,6 +88,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(TracingLogger::default())
             .wrap(rate_limit::RateLimit)
             .wrap(metrics::MetricsMiddleware)
+            .wrap(problem::HubProblem)
+            .wrap(request_id::RequestIdMiddleware)
             .app_data(cfg_data.clone());
         if let Some(r) = redis_mgr.clone() {
             // Rate limiting rides the same Redis manager; without it the

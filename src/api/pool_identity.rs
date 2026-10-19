@@ -16,6 +16,7 @@
 //!
 //! `TIDEBOOT_*` is applied at startup by `main`, not through an endpoint.
 
+use crate::api::problem::{Problem, ProblemCode};
 use crate::config::Config;
 use crate::entities::organization::OrganizationView;
 use crate::entities::pool_invitation::PoolInvitationView;
@@ -26,7 +27,7 @@ use crate::services::auth as auth_svc;
 use crate::services::pool_identity::{
     self as identity_svc, INVITATION_TTL_SECS, NewOrganization, PoolIdentityError,
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 use validator::Validate;
@@ -136,9 +137,13 @@ pub struct MeResponse {
 }
 
 #[tracing::instrument(skip(pool, cfg))]
-async fn setup_status(pool: Option<web::Data<MySqlPool>>, cfg: web::Data<Config>) -> HttpResponse {
+async fn setup_status(
+    pool: Option<web::Data<MySqlPool>>,
+    cfg: web::Data<Config>,
+    req: HttpRequest,
+) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     let bootstrap_configured = cfg.pool_bootstrap.is_some();
 
@@ -147,17 +152,21 @@ async fn setup_status(pool: Option<web::Data<MySqlPool>>, cfg: web::Data<Config>
             needs_setup: status.needs_setup,
             bootstrap_configured: status.bootstrap_configured,
         }),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
 #[tracing::instrument(skip(pool, body))]
-async fn setup(pool: Option<web::Data<MySqlPool>>, body: web::Json<SetupRequest>) -> HttpResponse {
+async fn setup(
+    pool: Option<web::Data<MySqlPool>>,
+    body: web::Json<SetupRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     if let Err(e) = body.validate() {
-        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+        return validation_error(&req, &e.to_string());
     }
 
     let input = NewOrganization {
@@ -172,7 +181,7 @@ async fn setup(pool: Option<web::Data<MySqlPool>>, body: web::Json<SetupRequest>
             organization: OrganizationView::from(&organization),
             user: PoolUserView::from(&user),
         }),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -181,12 +190,13 @@ async fn login(
     pool: Option<web::Data<MySqlPool>>,
     cfg: web::Data<Config>,
     body: web::Json<LoginRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     if let Err(e) = body.validate() {
-        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+        return validation_error(&req, &e.to_string());
     }
 
     match identity_svc::authenticate(pool.get_ref(), &body.email, &body.password).await {
@@ -200,18 +210,22 @@ async fn login(
                 }),
                 Err(e) => {
                     tracing::error!(error = %e, "operator JWT issue failed");
-                    HttpResponse::InternalServerError().json(error_body("internal error"))
+                    internal_error(&req)
                 }
             }
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
 #[tracing::instrument(skip(pool, auth))]
-async fn me(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
+async fn me(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    req: HttpRequest,
+) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
 
     match identity_svc::find_organization(pool.get_ref(), auth.organization_id()).await {
@@ -224,9 +238,9 @@ async fn me(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpRespo
                 organization_id = auth.organization_id(),
                 "operator organization missing"
             );
-            HttpResponse::InternalServerError().json(error_body("internal error"))
+            internal_error(&req)
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 #[tracing::instrument(skip(pool, auth, body))]
@@ -234,15 +248,16 @@ async fn change_password(
     pool: Option<web::Data<MySqlPool>>,
     auth: OperatorAuth,
     body: web::Json<ChangePasswordRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     if let Err(e) = auth.require_mutating() {
         return error_response(e);
     }
     if let Err(e) = body.validate() {
-        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+        return validation_error(&req, &e.to_string());
     }
 
     match identity_svc::change_password(
@@ -254,7 +269,7 @@ async fn change_password(
     .await
     {
         Ok(()) => HttpResponse::NoContent().finish(),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -317,31 +332,39 @@ pub struct UpdateRoleRequest {
 }
 
 #[tracing::instrument(skip(pool, auth))]
-async fn list_members(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
+async fn list_members(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    req: HttpRequest,
+) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     match identity_svc::list_members(pool.get_ref(), auth.organization_id()).await {
         Ok(members) => HttpResponse::Ok().json(MembersResponse {
             members: members.iter().map(PoolUserView::from).collect(),
         }),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
 #[tracing::instrument(skip(pool, auth))]
-async fn list_invitations(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
+async fn list_invitations(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    req: HttpRequest,
+) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     match identity_svc::list_pending_invitations(pool.get_ref(), auth.organization_id()).await {
         Ok(invitations) => HttpResponse::Ok().json(InvitationsResponse {
             invitations: invitations.iter().map(PoolInvitationView::from).collect(),
         }),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -350,15 +373,16 @@ async fn invite_member(
     pool: Option<web::Data<MySqlPool>>,
     auth: OperatorAuth,
     body: web::Json<InviteRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     if let Err(e) = body.validate() {
-        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+        return validation_error(&req, &e.to_string());
     }
 
     match identity_svc::create_invitation(
@@ -392,7 +416,7 @@ async fn invite_member(
                 token,
             })
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -401,12 +425,13 @@ async fn revoke_invitation(
     pool: Option<web::Data<MySqlPool>>,
     auth: OperatorAuth,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     let public_id = path.into_inner();
     match identity_svc::revoke_invitation(pool.get_ref(), auth.organization_id(), &public_id).await
@@ -426,7 +451,7 @@ async fn revoke_invitation(
             .await;
             HttpResponse::NoContent().finish()
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -435,12 +460,13 @@ async fn accept_invitation(
     pool: Option<web::Data<MySqlPool>>,
     cfg: web::Data<Config>,
     body: web::Json<AcceptInvitationRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     if let Err(e) = body.validate() {
-        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+        return validation_error(&req, &e.to_string());
     }
 
     match identity_svc::accept_invitation(
@@ -461,11 +487,11 @@ async fn accept_invitation(
                 }),
                 Err(e) => {
                     tracing::error!(error = %e, "invitation JWT issue failed");
-                    HttpResponse::InternalServerError().json(error_body("internal error"))
+                    internal_error(&req)
                 }
             }
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -475,12 +501,13 @@ async fn change_member_role(
     auth: OperatorAuth,
     path: web::Path<String>,
     body: web::Json<UpdateRoleRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     let public_id = path.into_inner();
     match identity_svc::change_member_role(
@@ -506,7 +533,7 @@ async fn change_member_role(
             .await;
             HttpResponse::Ok().json(PoolUserView::from(&user))
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -515,84 +542,136 @@ async fn remove_member(
     pool: Option<web::Data<MySqlPool>>,
     auth: OperatorAuth,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     match identity_svc::remove_member(pool.get_ref(), auth.organization_id(), &path.into_inner())
         .await
     {
         Ok(()) => HttpResponse::NoContent().finish(),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
-fn db_unavailable() -> HttpResponse {
-    HttpResponse::ServiceUnavailable().json(error_body("database unavailable"))
+fn db_unavailable(req: &HttpRequest) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::SERVICE_UNAVAILABLE,
+        ProblemCode::ServiceUnavailable,
+        "database unavailable",
+    )
+    .into_response()
 }
 
-fn error_body(msg: &str) -> serde_json::Value {
-    serde_json::json!({ "error": msg })
+fn internal_error(req: &HttpRequest) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        ProblemCode::InternalError,
+        "internal error",
+    )
+    .into_response()
+}
+
+fn validation_error(req: &HttpRequest, detail: &str) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        ProblemCode::ValidationFailed,
+        format!("validation: {detail}"),
+    )
+    .into_response()
 }
 
 /// Convert an actix extractor error (from a role guard) into a response.
+///
+/// Our guards already return [`crate::api::problem::ProblemError`]; anything
+/// else is converted by `HubProblem` middleware.
 fn error_response(error: actix_web::Error) -> HttpResponse {
-    let response = error.error_response();
-    HttpResponse::build(response.status()).json(error_body(
-        response.status().canonical_reason().unwrap_or("forbidden"),
-    ))
+    error.error_response()
 }
 
-/// Map domain errors to HTTP without leaking credential details.
-fn map_error(error: PoolIdentityError) -> HttpResponse {
-    match error {
-        PoolIdentityError::AlreadyInitialized => {
-            HttpResponse::Conflict().json(error_body("pool is already initialized"))
-        }
-        PoolIdentityError::AlreadyBootstrapped => {
-            HttpResponse::Conflict().json(error_body("pool is already bootstrapped"))
-        }
-        PoolIdentityError::Invalid(message) => {
-            HttpResponse::BadRequest().json(error_body(&message))
-        }
-        PoolIdentityError::WeakPassword => {
-            HttpResponse::BadRequest().json(error_body("password must be at least 12 characters"))
-        }
-        PoolIdentityError::InvalidCredentials => {
-            HttpResponse::Unauthorized().json(error_body("invalid credentials"))
-        }
+/// Map domain errors to problem documents without leaking credential details.
+fn map_error(error: PoolIdentityError, req: &HttpRequest) -> HttpResponse {
+    let (status, code, detail) = match error {
+        PoolIdentityError::AlreadyInitialized => (
+            StatusCode::CONFLICT,
+            ProblemCode::Conflict,
+            "pool is already initialized".to_string(),
+        ),
+        PoolIdentityError::AlreadyBootstrapped => (
+            StatusCode::CONFLICT,
+            ProblemCode::Conflict,
+            "pool is already bootstrapped".to_string(),
+        ),
+        PoolIdentityError::Invalid(message) => (
+            StatusCode::BAD_REQUEST,
+            ProblemCode::InvalidRequest,
+            message,
+        ),
+        PoolIdentityError::WeakPassword => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ProblemCode::ValidationFailed,
+            "password must be at least 12 characters".to_string(),
+        ),
+        PoolIdentityError::InvalidCredentials => (
+            StatusCode::UNAUTHORIZED,
+            ProblemCode::Unauthorized,
+            "invalid credentials".to_string(),
+        ),
         PoolIdentityError::Forbidden(message) => {
-            HttpResponse::Forbidden().json(error_body(&message))
+            (StatusCode::FORBIDDEN, ProblemCode::Forbidden, message)
         }
-        PoolIdentityError::LastOwner => {
-            HttpResponse::Conflict().json(error_body("the last owner cannot be removed or demoted"))
-        }
-        PoolIdentityError::NotFound => {
-            HttpResponse::NotFound().json(error_body("member not found"))
-        }
-        PoolIdentityError::InvitationInvalid => {
-            HttpResponse::BadRequest().json(error_body("invitation is invalid"))
-        }
-        PoolIdentityError::InvitationUsed => {
-            HttpResponse::Conflict().json(error_body("invitation has already been used"))
-        }
-        PoolIdentityError::InvitationRevoked => {
-            HttpResponse::Gone().json(error_body("invitation has been revoked"))
-        }
-        PoolIdentityError::InvitationExpired => {
-            HttpResponse::Gone().json(error_body("invitation has expired"))
-        }
-        PoolIdentityError::InvitationNotFound => {
-            HttpResponse::NotFound().json(error_body("invitation not found"))
-        }
+        PoolIdentityError::LastOwner => (
+            StatusCode::CONFLICT,
+            ProblemCode::Conflict,
+            "the last owner cannot be removed or demoted".to_string(),
+        ),
+        PoolIdentityError::NotFound => (
+            StatusCode::NOT_FOUND,
+            ProblemCode::NotFound,
+            "member not found".to_string(),
+        ),
+        PoolIdentityError::InvitationInvalid => (
+            StatusCode::BAD_REQUEST,
+            ProblemCode::InvalidRequest,
+            "invitation is invalid".to_string(),
+        ),
+        PoolIdentityError::InvitationUsed => (
+            StatusCode::CONFLICT,
+            ProblemCode::Conflict,
+            "invitation has already been used".to_string(),
+        ),
+        PoolIdentityError::InvitationRevoked => (
+            StatusCode::GONE,
+            ProblemCode::Gone,
+            "invitation has been revoked".to_string(),
+        ),
+        PoolIdentityError::InvitationExpired => (
+            StatusCode::GONE,
+            ProblemCode::Gone,
+            "invitation has expired".to_string(),
+        ),
+        PoolIdentityError::InvitationNotFound => (
+            StatusCode::NOT_FOUND,
+            ProblemCode::NotFound,
+            "invitation not found".to_string(),
+        ),
         other => {
             tracing::error!(error = %other, "pool identity operation failed");
-            HttpResponse::InternalServerError().json(error_body("internal error"))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ProblemCode::InternalError,
+                "internal error".to_string(),
+            )
         }
-    }
+    };
+    Problem::from_request(req, status, code, detail).into_response()
 }
 
 #[cfg(test)]

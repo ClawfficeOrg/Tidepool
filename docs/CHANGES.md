@@ -61,6 +61,26 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   system actor: setup/bootstrap, password change, invitations, role changes,
   member removal, key creation and key revocation.
 
+### Hub API error contract and OpenAPI scopes (task 1.1.4)
+- Hub routes (`/v1/setup`, `/v1/pool`, `/v1/api-keys`) now answer failures with
+  RFC 9457 `application/problem+json`: `type`, `title`, `status`, `detail`,
+  `code` and `requestId`. The game API's `{"error": "..."}` bodies are unchanged.
+- Added the code taxonomy (`unauthorized`, `forbidden`, `missing_scope`,
+  `invalid_request`, `validation_failed`, `not_found`, `conflict`, `gone`,
+  `method_not_allowed`, `rate_limited`, `daemon_not_connected`,
+  `configuration_invalid`, `service_unavailable`, `internal_error`), documented
+  in `docs/HUB_API_ERRORS.md`.
+- Added request-id middleware: safe incoming `x-request-id` values are reused,
+  otherwise a UUID v4 is generated; the id is echoed on every response and in
+  hub problem documents.
+- A hub problem middleware is the safety net for extractor failures, unknown
+  paths, method mismatches, rate limiting and 5xx responses, so every hub
+  failure has the contract shape.
+- OpenAPI hub operations now carry `x-auth` (`public` / `member` / `api_key`)
+  and `x-required-scope` for API-key routes. New Rust drift tests compare hub
+  registrations with the single `ROUTES` table, and the CI scrape validates the
+  served extensions.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

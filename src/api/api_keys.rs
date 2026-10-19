@@ -7,11 +7,12 @@
 //! The full key is returned by `POST /v1/api-keys` exactly once. List and
 //! whoami return only the prefix.
 
+use crate::api::problem::{Problem, ProblemCode};
 use crate::entities::api_key::{ApiKeyScope, ApiKeyView};
 use crate::middleware::api_key::ApiKeyAuth;
 use crate::middleware::auth::OperatorAuth;
 use crate::services::api_keys::{self as api_key_svc, ApiKeyServiceError, AuditActor, AuditEntry};
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 use validator::Validate;
@@ -55,18 +56,22 @@ pub struct CreateApiKeyResponse {
 }
 
 #[tracing::instrument(skip(pool, auth))]
-async fn list_keys(pool: Option<web::Data<MySqlPool>>, auth: OperatorAuth) -> HttpResponse {
+async fn list_keys(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    req: HttpRequest,
+) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     match api_key_svc::list_api_keys(pool.get_ref(), auth.organization_id()).await {
         Ok(keys) => HttpResponse::Ok().json(ApiKeysResponse {
             api_keys: keys.iter().map(ApiKeyView::from).collect(),
         }),
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -75,15 +80,16 @@ async fn create_key(
     pool: Option<web::Data<MySqlPool>>,
     auth: OperatorAuth,
     body: web::Json<CreateApiKeyRequest>,
+    req: HttpRequest,
 ) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     if let Err(e) = body.validate() {
-        return HttpResponse::BadRequest().json(error_body(&format!("validation: {e}")));
+        return validation_error(&req, &e.to_string());
     }
 
     match api_key_svc::create_api_key(
@@ -118,7 +124,7 @@ async fn create_key(
                 secret,
             })
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -127,12 +133,13 @@ async fn revoke_key(
     pool: Option<web::Data<MySqlPool>>,
     auth: OperatorAuth,
     path: web::Path<String>,
+    req: HttpRequest,
 ) -> HttpResponse {
     if let Err(e) = auth.require_owner() {
         return error_response(e);
     }
     let Some(pool) = pool else {
-        return db_unavailable();
+        return db_unavailable(&req);
     };
     let public_id = path.into_inner();
 
@@ -152,7 +159,7 @@ async fn revoke_key(
             .await;
             HttpResponse::NoContent().finish()
         }
-        Err(e) => map_error(e),
+        Err(e) => map_error(e, &req),
     }
 }
 
@@ -165,37 +172,57 @@ async fn whoami(key: ApiKeyAuth) -> HttpResponse {
     HttpResponse::Ok().json(ApiKeyView::from(&key.key))
 }
 
-fn db_unavailable() -> HttpResponse {
-    HttpResponse::ServiceUnavailable().json(error_body("database unavailable"))
+fn db_unavailable(req: &HttpRequest) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::SERVICE_UNAVAILABLE,
+        ProblemCode::ServiceUnavailable,
+        "database unavailable",
+    )
+    .into_response()
 }
 
-fn error_body(msg: &str) -> serde_json::Value {
-    serde_json::json!({ "error": msg })
+fn validation_error(req: &HttpRequest, detail: &str) -> HttpResponse {
+    Problem::from_request(
+        req,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        ProblemCode::ValidationFailed,
+        format!("validation: {detail}"),
+    )
+    .into_response()
 }
 
 fn error_response(error: actix_web::Error) -> HttpResponse {
-    let response = error.error_response();
-    HttpResponse::build(response.status()).json(error_body(
-        response.status().canonical_reason().unwrap_or("forbidden"),
-    ))
+    error.error_response()
 }
 
-fn map_error(error: ApiKeyServiceError) -> HttpResponse {
-    match error {
-        ApiKeyServiceError::Invalid(message) => {
-            HttpResponse::BadRequest().json(error_body(&message))
-        }
-        ApiKeyServiceError::NotFound => {
-            HttpResponse::NotFound().json(error_body("API key not found"))
-        }
-        ApiKeyServiceError::InvalidCredentials => {
-            HttpResponse::Unauthorized().json(error_body("invalid API key"))
-        }
+fn map_error(error: ApiKeyServiceError, req: &HttpRequest) -> HttpResponse {
+    let (status, code, detail) = match error {
+        ApiKeyServiceError::Invalid(message) => (
+            StatusCode::BAD_REQUEST,
+            ProblemCode::InvalidRequest,
+            message,
+        ),
+        ApiKeyServiceError::NotFound => (
+            StatusCode::NOT_FOUND,
+            ProblemCode::NotFound,
+            "API key not found".to_string(),
+        ),
+        ApiKeyServiceError::InvalidCredentials => (
+            StatusCode::UNAUTHORIZED,
+            ProblemCode::Unauthorized,
+            "invalid API key".to_string(),
+        ),
         other => {
             tracing::error!(error = ?other, "API key operation failed");
-            HttpResponse::InternalServerError().json(error_body("internal error"))
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ProblemCode::InternalError,
+                "internal error".to_string(),
+            )
         }
-    }
+    };
+    Problem::from_request(req, status, code, detail).into_response()
 }
 
 #[cfg(test)]
