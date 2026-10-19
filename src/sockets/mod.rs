@@ -2,6 +2,7 @@
 
 pub mod channels;
 pub mod groups;
+pub mod host_ws;
 pub mod presence;
 pub mod tickets;
 pub mod ws;

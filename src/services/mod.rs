@@ -6,9 +6,14 @@
 pub mod api_keys;
 pub mod auth;
 pub mod cache;
+pub mod enrollment;
 pub mod events;
 pub mod feedback;
 pub mod game_settings;
+pub mod host_capability;
+pub mod host_presence;
+pub mod host_protocol;
+pub mod hosts;
 pub mod leaderboards;
 pub mod players;
 pub mod pool_identity;

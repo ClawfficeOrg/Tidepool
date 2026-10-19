@@ -344,7 +344,7 @@
         {
           "id": "1.2.1",
           "title": "Host registry: immutable id, mutable slug",
-          "status": "pending",
+          "status": "done",
           "goal": "Migration and service for `hosts`: an immutable generated id, a friendly slug derived from the hostname and de-duplicated with a short suffix, a display name, status (approval required, connected, offline, revoked) and timestamps. Renaming the slug is allowed and does not change the id; an environment that referenced the old slug fails activation rather than failing at dispatch. Revoking from the pool ends the relationship while the host keeps running local work.",
           "touches": [
             "migrations/",
@@ -365,12 +365,13 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added the pool host registry",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:05:29Z"
         },
         {
           "id": "1.2.2",
           "title": "Enrollment tokens and host relationship credentials",
-          "status": "pending",
+          "status": "done",
           "goal": "POST /api/v1/hosts/enrollment-tokens (scope daemons:enroll, renamed hosts:enroll if the naming proposal lands) mints a short-lived single-use token, ten minutes, consumed on enrollment. The host exchanges it for its own long-lived relationship credential, which the host generates and keeps and the pool stores only as a hash. One host has at most one pool relationship; enrolling an already-enrolled host is refused. An enrollment token cannot be reused, and revoking the issuing key expires unconsumed tokens.",
           "touches": [
             "migrations/",
@@ -393,12 +394,13 @@
           "agent": "pro_dev_agent",
           "security_notes": "This is the pool's trust boundary with a machine: single-use tokens, hashed credentials, no reuse, and a documented revocation path.",
           "changelog": "Added host enrollment tokens and relationship credentials",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:08:21Z"
         },
         {
           "id": "1.2.3",
           "title": "Host presence and heartbeat",
-          "status": "pending",
+          "status": "done",
           "goal": "An enrolled host holds a connection to the pool and the pool tracks presence: connected and accepting dispatch, offline, or revoked. A missed heartbeat marks the host offline and an event for an offline host fails dispatch with a named code (daemon_not_connected) instead of being queued for later, so the trigger must fire again. Presence is derived from the connection plus heartbeat, never from a client-supplied field.",
           "touches": [
             "src/services/host_presence.rs",
@@ -419,12 +421,13 @@
           "complexity": "High",
           "agent": "pro_dev_agent",
           "changelog": "Added host presence and heartbeat",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:10:56Z"
         },
         {
           "id": "1.2.4",
           "title": "Host execution permission and capability report",
-          "status": "pending",
+          "status": "done",
           "goal": "Enrolling a host does not let the pool start agents on it. `host.execute` is a separate grant made from the machine, defaulting to no, and until it is granted the host is listed as connected-only. With the grant, the host reports what it can run: providers, models, execution modes and thinking options, each with the provider-native options it accepts. The pool asks for that report and validates a trigger's agent selection against it, so an agent a host cannot run is refused at save time with the field named, not at first run.",
           "touches": [
             "migrations/",
@@ -446,12 +449,13 @@
           "agent": "pro_dev_agent",
           "security_notes": "Execution authority is granted by the machine, never assumed by the pool; a permission grant is not a sandbox.",
           "changelog": "Added host execution permission and capability reporting",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:14:56Z"
         },
         {
           "id": "1.2.5",
           "title": "Pool host protocol and reference host agent",
-          "status": "pending",
+          "status": "done",
           "goal": "Write the pool host protocol down: connection and authentication with the relationship credential, presence heartbeat, capability report, create-agent intent with a stable execution id, idempotent replay after a pool restart or a lost response, observation of output, completion, and interruption. Ship a minimal reference host agent that implements it, so the hub is testable end to end before Limpet exists. The protocol is framed by the pool, versioned, and documented for Limpet to implement unchanged.",
           "touches": [
             "docs/HOST_PROTOCOL.md",
@@ -472,7 +476,8 @@
           "complexity": "Very High",
           "agent": "flagship",
           "changelog": "Specified the pool host protocol and added a reference host agent",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:21:49Z"
         }
       ]
     },

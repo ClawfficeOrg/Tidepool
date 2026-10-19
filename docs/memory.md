@@ -990,6 +990,49 @@ header abuse stay impossible. The Rust drift test parses the hub modules'
 `web::scope(...).route(...)` registrations and compares them with `ROUTES`, so
 a route cannot be added to code without the table.
 
+**Host identity:** a host has an immutable generated `public_id` and a mutable
+`slug` derived from its hostname. Slugs are lowercase ASCII kebab-case, capped
+at 63 characters, and collision-suffixed (`-2`, `-3`) on registration; explicit
+renames collide with 409 rather than silently re-suffixing. Revocation is a
+status, not a delete: the row stays for audit and every live lookup filters
+`status <> 'revoked'`. Configuration activation resolves a slug through
+`resolve_for_activation` and names the `host_slug` field on failure, so a
+missing/revoked host fails at save time instead of dispatch time.
+
+**Host enrollment:** a ten-minute token (`<public_id>.<secret>`) is minted only
+for a registered, unenrolled host. The host generates its own long-lived
+credential; the pool stores only the Argon2id hash and no read endpoint returns
+it. `host_credentials.host_id` is UNIQUE, so one host has one relationship.
+Tokens are single-use and carry the issuing API-key id, so `revoke_api_key`
+expires every unconsumed token it minted. The enrollment exchange is public but
+requires the one-time token; presence and protocol sessions will authenticate
+with the relationship credential via `authenticate_host`.
+
+**Host presence:** the live process keeps a connection/heartbeat registry;
+`hosts.status` is a durable projection, not the source of truth. A host is
+online only while it has a connection *and* a heartbeat within 90 seconds, so a
+client cannot declare presence. Startup marks leftover `connected` rows offline
+because no connection survives a restart. Dispatch calls `require_connected`;
+an offline host fails with `daemon_not_connected` and is not queued. The
+`tidepool_hosts_connected` gauge is updated on transitions and resynced when
+stale rows are swept.
+
+**Host execution is a second grant:** enrollment (identity) and the WebSocket
+connection (presence) never permit the pool to start agents. `host.execute` is a
+separate `execution_granted` flag, default false. A capability report is a flat
+list of provider/model/mode/thinking variants plus opaque provider-native
+options; re-reporting replaces the set. Validation happens at save time and
+names the first unavailable field. The pool only offers providers in the
+grantable allow-list for pooled execution, even if a host reports others.
+
+**Host protocol executions:** `executionId` is chosen by the pool and is the
+idempotency key. The pool stores the execution before sending `create_agent`
+and resends the same intent on reconnect/lost response; the host must answer a
+replay with the existing result. Terminal replays are served from the ledger
+even when the host is offline. Output is appended only while queued/running, so
+a late `execution_output` after completion cannot duplicate the final text. The
+reference agent keeps completions in memory; Limpet must persist them.
+
 ---
 
 ## Open Questions / Assumptions

@@ -71,7 +71,8 @@ cargo test --test '*' -- --ignored    # needs the dev stack up
 ```
 
 Live-stack integration tests are `#[ignore]` by default and use
-`DATABASE_URL` / `REDIS_URL` when set.
+`DATABASE_URL` / `REDIS_URL` when set. The minimal host agent lives in
+`crates/tidepool-host-agent`; see `docs/HOST_PROTOCOL.md`.
 
 ## Layout
 

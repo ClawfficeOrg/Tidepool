@@ -18,10 +18,11 @@ use tidepool::{
     api,
     config::{Config, PoolBootstrapConfig, RateLimitConfig},
     db,
-    entities::pool_user::PoolRole,
+    entities::{api_key::ApiKeyScope, pool_user::PoolRole},
     middleware::{problem::HubProblem, request_id::RequestIdMiddleware},
     services::{
-        auth as auth_svc,
+        api_keys::{self as api_key_svc, AuditActor},
+        auth as auth_svc, enrollment as enrollment_svc, host_presence, hosts as host_svc,
         pool_identity::{self, BootstrapOutcome, NewOrganization, PoolIdentityError},
     },
 };
@@ -592,7 +593,8 @@ async fn viewer_is_refused_every_mutating_pool_route() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
-            .configure(api::pool_identity::config),
+            .configure(api::pool_identity::config)
+            .configure(api::hosts::config),
     )
     .await;
 
@@ -664,6 +666,16 @@ async fn viewer_is_refused_every_mutating_pool_route() {
         .to_request();
     assert_eq!(
         test::call_service(&app, remove_attempt).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    let host_attempt = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .set_json(serde_json::json!({"hostname": "viewer-host"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, host_attempt).await.status(),
         StatusCode::FORBIDDEN
     );
 }
@@ -1089,4 +1101,826 @@ async fn hub_failures_use_problem_details_with_a_request_id() {
     let problem: Value = test::read_body_json(resp).await;
     assert_eq!(problem["code"], "validation_failed");
     assert_eq!(problem["requestId"], "req-hub-3");
+}
+
+// ── host registry (task 1.2.1) ────────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn hosts_register_with_unique_slugs_and_rename_without_changing_id() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "Studio-Mac.local"}))
+        .to_request();
+    let resp = test::call_service(&app, create).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["slug"], "studio-mac-local");
+    assert_eq!(body["status"], "pending_approval");
+    let first_id = body["id"].as_str().expect("host id").to_string();
+
+    let duplicate = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "studio-mac.local"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, duplicate).await).await;
+    assert_eq!(body["slug"], "studio-mac-local-2");
+    let second_id = body["id"].as_str().expect("host id").to_string();
+    assert_ne!(first_id, second_id);
+
+    // Rename keeps the immutable id and is visible in the API.
+    let rename = test::TestRequest::patch()
+        .uri(&format!("/v1/hosts/{first_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"slug": "Studio Mac Primary", "display_name": "Studio Mac"}))
+        .to_request();
+    let resp = test::call_service(&app, rename).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["id"], first_id);
+    assert_eq!(body["slug"], "studio-mac-primary");
+    assert_eq!(body["display_name"], "Studio Mac");
+
+    // An explicit rename onto another host's slug is a conflict.
+    let collision = test::TestRequest::patch()
+        .uri(&format!("/v1/hosts/{second_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"slug": "studio-mac-primary"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, collision).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    let list = test::TestRequest::get()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, list).await).await;
+    assert_eq!(body["hosts"].as_array().expect("hosts").len(), 2);
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn revoked_hosts_disappear_and_unknown_slugs_fail_activation() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "studio-mac"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let host_id = body["id"].as_str().expect("host id").to_string();
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("organization id");
+
+    let host =
+        tidepool::services::hosts::resolve_for_activation(&pool, organization_id, "studio-mac")
+            .await
+            .expect("known slug resolves");
+    assert_eq!(host.public_id, host_id);
+
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoke).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    // Refused at every endpoint.
+    let get = test::TestRequest::get()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, get).await.status(),
+        StatusCode::NOT_FOUND
+    );
+    let rename = test::TestRequest::patch()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"slug": "still-here"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, rename).await.status(),
+        StatusCode::NOT_FOUND
+    );
+
+    let list = test::TestRequest::get()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, list).await).await;
+    assert_eq!(body["hosts"].as_array().expect("hosts").len(), 0);
+
+    let error =
+        tidepool::services::hosts::resolve_for_activation(&pool, organization_id, "studio-mac")
+            .await
+            .expect_err("revoked slug must not activate");
+    assert_eq!(
+        error.to_string(),
+        "host_slug: unknown host slug 'studio-mac'"
+    );
+}
+
+// ── host enrollment (task 1.2.2) ──────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_enrollment_is_single_use_and_stores_only_hashes() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config)
+            .configure(api::api_keys::config)
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+    let owner_internal: u64 = sqlx::query_scalar("SELECT id FROM pool_users LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("owner id");
+
+    let (key, key_secret) = api_key_svc::create_api_key(
+        &pool,
+        organization_id,
+        Some(owner_internal),
+        "enrollment",
+        &[ApiKeyScope::DaemonsEnroll],
+    )
+    .await
+    .expect("create key");
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "studio-mac"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let host_id = body["id"].as_str().expect("host id").to_string();
+
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": host_id}))
+        .to_request();
+    let resp = test::call_service(&app, mint).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    let enrollment_token = body["token"]
+        .as_str()
+        .expect("enrollment token")
+        .to_string();
+    assert!(enrollment_token.contains('.'));
+    assert!(body.get("token_hash").is_none());
+
+    let credential = "host-generated-credential-0123456789abcdef";
+    let enroll = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": enrollment_token,
+            "credential": credential
+        }))
+        .to_request();
+    let resp = test::call_service(&app, enroll).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "offline");
+    let serialized = serde_json::to_string(&body).expect("json");
+    assert!(!serialized.contains("credential"));
+    assert!(!serialized.contains("argon2"));
+
+    // No read endpoint returns the credential or its hash.
+    let get = test::TestRequest::get()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, get).await).await;
+    assert!(!serde_json::to_string(&body).unwrap().contains("credential"));
+
+    // Only the Argon2id hash is stored.
+    let stored: String = sqlx::query_scalar("SELECT credential_hash FROM host_credentials")
+        .fetch_one(&pool)
+        .await
+        .expect("stored credential");
+    assert!(stored.starts_with("$argon2id$"));
+    assert!(!stored.contains(credential));
+
+    // The relationship credential authenticates the host.
+    let host = enrollment_svc::authenticate_host(&pool, &host_id, credential)
+        .await
+        .expect("credential authenticates");
+    assert_eq!(host.public_id, host_id);
+    assert!(matches!(
+        enrollment_svc::authenticate_host(&pool, &host_id, "wrong-credential").await,
+        Err(enrollment_svc::EnrollmentError::InvalidCredentials)
+    ));
+
+    // Reusing the token is refused.
+    let replay = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": enrollment_token,
+            "credential": credential
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, replay).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    // A second relationship for the same host is refused at mint time.
+    let mint_again = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": host_id}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, mint_again).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    // Expiry is enforced even when the token exists.
+    let create_second = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "expiring-host"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create_second).await).await;
+    let expiring_id = body["id"].as_str().expect("host id").to_string();
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": expiring_id}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, mint).await).await;
+    let expiring_token = body["token"].as_str().expect("token").to_string();
+    sqlx::query(
+        "UPDATE enrollment_tokens SET expires_at = '2020-01-01 00:00:00' WHERE public_id = ?",
+    )
+    .bind(expiring_token.split('.').next().unwrap())
+    .execute(&pool)
+    .await
+    .expect("expire token");
+    let expired = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": expiring_token,
+            "credential": credential
+        }))
+        .to_request();
+    let resp = test::call_service(&app, expired).await;
+    assert_eq!(resp.status(), StatusCode::GONE);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "gone");
+
+    // Revoking the issuing key expires its unconsumed tokens.
+    let create_third = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "revoked-key-host"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create_third).await).await;
+    let third_id = body["id"].as_str().expect("host id").to_string();
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": third_id}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, mint).await).await;
+    let third_token = body["token"].as_str().expect("token").to_string();
+
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/api-keys/{}", key.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoke).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    let revoked = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": third_token,
+            "credential": credential
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoked).await.status(),
+        StatusCode::GONE
+    );
+    let revoked_at: Option<chrono::NaiveDateTime> =
+        sqlx::query_scalar("SELECT revoked_at FROM enrollment_tokens WHERE public_id = ?")
+            .bind(third_token.split('.').next().unwrap())
+            .fetch_one(&pool)
+            .await
+            .expect("revoked token row");
+    assert!(revoked_at.is_some());
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn enrollment_token_requires_the_daemons_enroll_scope() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config)
+            .configure(api::api_keys::config)
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+    let (_key, secret) = api_key_svc::create_api_key(
+        &pool,
+        organization_id,
+        None,
+        "read only",
+        &[ApiKeyScope::ProjectsRead],
+    )
+    .await
+    .expect("create key");
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "scoped-host"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let host_id = body["id"].as_str().expect("host id").to_string();
+
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", secret))
+        .set_json(serde_json::json!({"host_id": host_id}))
+        .to_request();
+    let resp = test::call_service(&app, mint).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "missing_scope");
+}
+
+// ── host presence (task 1.2.3) ────────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_presence_moves_online_offline_and_blocks_dispatch() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, _owner_token) = bootstrap_owner(&pool).await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "presence-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register host");
+
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint enrollment token");
+    let credential = "presence-host-credential-0123456789abcdef";
+    let enrolled = enrollment_svc::enroll_host(&pool, &token, credential)
+        .await
+        .expect("enroll host");
+    assert_eq!(
+        enrolled.status,
+        tidepool::entities::host::HostStatus::Offline
+    );
+
+    // A connection moves the durable projection to connected.
+    let connected = host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connect");
+    assert_eq!(connected.public_id, host.public_id);
+    let status: String = sqlx::query_scalar("SELECT status FROM hosts WHERE public_id = ?")
+        .bind(&host.public_id)
+        .fetch_one(&pool)
+        .await
+        .expect("status");
+    assert_eq!(status, "connected");
+    assert!(
+        tidepool::middleware::metrics::metrics()
+            .render()
+            .contains("tidepool_hosts_connected 1")
+    );
+
+    host_presence::require_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connected host is dispatchable");
+
+    // Dropping the last connection moves it offline and dispatch fails with the
+    // documented code instead of queueing.
+    host_presence::host_disconnected(&pool, &host.public_id)
+        .await
+        .expect("disconnect");
+    let error = host_presence::require_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect_err("offline host must not dispatch");
+    assert_eq!(error.code(), "daemon_not_connected");
+    assert_eq!(
+        error.to_string(),
+        format!("daemon_not_connected: host '{}' is offline", host.slug)
+    );
+    assert!(
+        tidepool::middleware::metrics::metrics()
+            .render()
+            .contains("tidepool_hosts_connected 0")
+    );
+
+    // Revoking an online host forgets its connections immediately.
+    host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("reconnect");
+    host_svc::revoke_host(&pool, organization_id, &host.public_id, AuditActor::System)
+        .await
+        .expect("revoke");
+    host_presence::forget_host(&pool, &host.public_id)
+        .await
+        .expect("forget");
+    assert!(matches!(
+        host_presence::require_connected(&pool, organization_id, &host.public_id).await,
+        Err(host_presence::HostPresenceError::NotFound)
+    ));
+}
+
+// ── host execution grant and capabilities (task 1.2.4) ────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_execution_grant_and_capability_validation() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "capability-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register host");
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint");
+    let credential = "capability-host-credential-0123456789abcdef";
+    enrollment_svc::enroll_host(&pool, &token, credential)
+        .await
+        .expect("enroll");
+
+    // Enrollment alone is connected-only.
+    let get = test::TestRequest::get()
+        .uri(&format!("/v1/hosts/{}", host.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, get).await).await;
+    assert_eq!(body["execution_enabled"], false);
+    assert_eq!(body["status"], "offline");
+
+    let selection = tidepool::entities::host_capability::AgentSelection {
+        provider: "anthropic".into(),
+        model: "claude".into(),
+        execution_mode: "default".into(),
+        thinking_option: None,
+    };
+    assert!(matches!(
+        tidepool::services::host_capability::validate_agent_for_host(
+            &pool,
+            organization_id,
+            &host.public_id,
+            &selection
+        )
+        .await,
+        Err(tidepool::services::host_capability::HostCapabilityError::NotGranted)
+    ));
+
+    // Reporting before the grant is refused.
+    let report = test::TestRequest::post()
+        .uri(&format!("/v1/hosts/{}/capabilities", host.public_id))
+        .insert_header(("X-Host-Id", host.public_id.clone()))
+        .insert_header(("X-Host-Credential", credential))
+        .set_json(serde_json::json!({
+            "capabilities": [{
+                "provider": "anthropic",
+                "model": "claude",
+                "execution_mode": "default"
+            }]
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, report).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    // Grant host.execute from the control plane.
+    let grant = test::TestRequest::post()
+        .uri(&format!("/v1/hosts/{}/execution", host.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let resp = test::call_service(&app, grant).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["execution_enabled"], true);
+
+    // The host reports providers, models, modes and provider-native options.
+    let report = test::TestRequest::post()
+        .uri(&format!("/v1/hosts/{}/capabilities", host.public_id))
+        .insert_header(("X-Host-Id", host.public_id.clone()))
+        .insert_header(("X-Host-Credential", credential))
+        .set_json(serde_json::json!({
+            "capabilities": [
+                {
+                    "provider": "anthropic",
+                    "model": "claude",
+                    "execution_mode": "default",
+                    "options": {"max_tokens": 8192}
+                },
+                {
+                    "provider": "anthropic",
+                    "model": "claude",
+                    "execution_mode": "plan",
+                    "thinking_option": "high"
+                },
+                {
+                    "provider": "openai",
+                    "model": "gpt",
+                    "execution_mode": "default"
+                },
+                {
+                    "provider": "not-grantable",
+                    "model": "x",
+                    "execution_mode": "default"
+                }
+            ]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, report).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["offered_providers"][0], "anthropic");
+    assert_eq!(body["offered_providers"][1], "openai");
+    assert_eq!(body["offered_providers"].as_array().unwrap().len(), 2);
+
+    // Saving a trigger with a valid selection succeeds; an unavailable model
+    // or provider is refused with the field named.
+    tidepool::services::host_capability::validate_agent_for_host(
+        &pool,
+        organization_id,
+        &host.public_id,
+        &selection,
+    )
+    .await
+    .expect("valid selection");
+
+    let mut bad_model = selection.clone();
+    bad_model.model = "missing".into();
+    let error = tidepool::services::host_capability::validate_agent_for_host(
+        &pool,
+        organization_id,
+        &host.public_id,
+        &bad_model,
+    )
+    .await
+    .expect_err("bad model");
+    assert_eq!(error.to_string(), "model: host cannot run 'missing'");
+
+    // Revoking the grant removes the execution target but keeps the host.
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/hosts/{}/execution", host.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let resp = test::call_service(&app, revoke).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["execution_enabled"], false);
+    assert!(matches!(
+        tidepool::services::host_capability::validate_agent_for_host(
+            &pool,
+            organization_id,
+            &host.public_id,
+            &selection
+        )
+        .await,
+        Err(tidepool::services::host_capability::HostCapabilityError::NotGranted)
+    ));
+}
+
+// ── host protocol executions (task 1.2.5) ─────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_execution_output_completion_and_terminal_replay() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, _owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "protocol-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register");
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint");
+    enrollment_svc::enroll_host(&pool, &token, "protocol-host-credential-0123456789abcdef")
+        .await
+        .expect("enroll");
+
+    // A new intent against an offline host fails with the documented code.
+    let error = tidepool::services::host_protocol::create_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        "exec-offline",
+        "hello",
+    )
+    .await
+    .expect_err("offline host cannot dispatch");
+    assert!(matches!(
+        error,
+        tidepool::services::host_protocol::HostProtocolError::DaemonNotConnected { .. }
+    ));
+
+    // Store an intent directly, then exercise ordered output and completion.
+    let host_internal: u64 = sqlx::query_scalar("SELECT id FROM hosts WHERE public_id = ?")
+        .bind(&host.public_id)
+        .fetch_one(&pool)
+        .await
+        .expect("host id");
+    sqlx::query(
+        "INSERT INTO host_executions (public_id, host_id, prompt, status)          VALUES ('exec-1', ?, 'hello', 'running')",
+    )
+    .bind(host_internal)
+    .execute(&pool)
+    .await
+    .expect("insert execution");
+
+    tidepool::services::host_protocol::record_output(&pool, "exec-1", "hello ")
+        .await
+        .expect("output 1");
+    tidepool::services::host_protocol::record_output(&pool, "exec-1", "world")
+        .await
+        .expect("output 2");
+    tidepool::services::host_protocol::record_completion(
+        &pool,
+        "exec-1",
+        "succeeded",
+        Some("final answer"),
+    )
+    .await
+    .expect("complete");
+
+    let execution = tidepool::services::host_protocol::find_execution(&pool, "exec-1")
+        .await
+        .expect("find")
+        .expect("exists");
+    assert_eq!(
+        execution.status,
+        tidepool::entities::host_execution::ExecutionStatus::Succeeded
+    );
+    assert_eq!(execution.output.as_deref(), Some("final answer"));
+    assert!(execution.completed_at.is_some());
+
+    // A late output frame after completion is ignored.
+    tidepool::services::host_protocol::record_output(&pool, "exec-1", "late")
+        .await
+        .expect("late output");
+    let after = tidepool::services::host_protocol::find_execution(&pool, "exec-1")
+        .await
+        .expect("find")
+        .expect("exists");
+    assert_eq!(after.output.as_deref(), Some("final answer"));
+
+    // Replaying a completed intent returns the existing execution even while
+    // the host is offline, and does not create a second row.
+    let (view, replayed) = tidepool::services::host_protocol::create_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        "exec-1",
+        "different prompt",
+    )
+    .await
+    .expect("terminal replay");
+    assert!(replayed);
+    assert_eq!(
+        view.status,
+        tidepool::entities::host_execution::ExecutionStatus::Succeeded
+    );
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM host_executions")
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    assert_eq!(count, 1);
 }

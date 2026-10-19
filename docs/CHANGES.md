@@ -81,6 +81,83 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   registrations with the single `ROUTES` table, and the CI scrape validates the
   served extensions.
 
+### Host registry (task 1.2.1)
+- Added `hosts` (migration `20261020000001_create_hosts`): immutable public id,
+  mutable slug, display name, hostname, status (`pending_approval`,
+  `connected`, `offline`, `revoked`) and timestamps.
+- `POST /v1/hosts` derives a lowercase kebab-case slug from the hostname and
+  de-duplicates with `-2`, `-3`, ...; `PATCH /v1/hosts/{id}` renames the slug or
+  display name without changing the id. Explicit collisions return 409.
+- `DELETE /v1/hosts/{id}` revokes the relationship from the pool side. Revoked
+  hosts are filtered from every endpoint and from dispatch/activation lookups;
+  the machine keeps its own local work.
+- `services::hosts::resolve_for_activation` fails with a named `host_slug`
+  field for an unknown or revoked slug, so configuration activation fails
+  before dispatch.
+
+### Host enrollment and relationship credentials (task 1.2.2)
+- Added `host_credentials` and `enrollment_tokens` (migration
+  `20261020000002_create_host_enrollment`).
+- `POST /v1/hosts/enrollment-tokens` mints a ten-minute single-use token bound
+  to a registered host. It accepts an API key with `daemons:enroll` or a
+  non-viewer member token; the raw token is returned once.
+- `POST /v1/hosts/enroll` is the public exchange: the host supplies the token
+  and the long-lived credential it generated. Only an Argon2id hash of the
+  credential is stored, and no read endpoint returns either secret.
+- One host has at most one credential (`UNIQUE host_id`); minting or enrolling a
+  host that already has one returns 409. Tokens are single-use and rejected
+  after expiry (410) or after the issuing API key is revoked (410).
+- `services::enrollment::authenticate_host` verifies the relationship credential
+  for later presence and host-protocol work.
+
+### Host presence and heartbeat (task 1.2.3)
+- Added an in-memory presence registry and `GET /ws/host`, authenticated with
+  the enrollment relationship credential (`X-Host-Id` + `X-Host-Credential`).
+  Connect/disconnect moves a host between `connected` and `offline`; the durable
+  `hosts.status` projection follows.
+- Host sockets send `{"type":"heartbeat"}` and receive
+  `{"type":"heartbeat.ack"}`. A missed heartbeat (90s window) marks the host
+  offline and closes the socket, even if it is still open.
+- Dispatch checks `host_presence::require_connected`: an offline/stale host fails
+  immediately with the documented `daemon_not_connected` code instead of being
+  queued.
+- Added the `tidepool_hosts_connected` gauge and reset leftover `connected`
+  rows to offline on process startup. Revoking a host forgets its connections
+  and the gauge immediately.
+
+### Host execution grant and capabilities (task 1.2.4)
+- Added `hosts.execution_granted` (default false) and `host_capabilities`
+  (migration `20261020000003_create_host_capabilities`). Enrollment alone is
+  connected-only; `POST /v1/hosts/{id}/execution` makes the separate
+  `host.execute` grant and `DELETE` revokes it. `HostView.execution_enabled`
+  labels the state.
+- With the grant, the host reports providers, models, execution modes, thinking
+  options and provider-native option objects at
+  `POST /v1/hosts/{id}/capabilities`, authenticated with the relationship
+  credential. `GET` returns the report and the offered provider set.
+- Only the grantable provider set is offered for pooled execution. Save-time
+  validation (`validate_agent_for_host`) names the unavailable
+  `provider`, `model`, `execution_mode` or `thinking_option` field instead of
+  failing at first dispatch.
+- Grant, revoke and report actions are audited.
+
+### Pool host protocol and reference agent (task 1.2.5)
+- Added `docs/HOST_PROTOCOL.md`: enrollment, WebSocket authentication,
+  heartbeat, capability report, `create_agent`, `execution_started`,
+  `execution_output`, `execution_completed`, `interrupt_execution`, errors,
+  idempotent replay and reconnect recovery.
+- Added `host_executions` (migration `20261020000004_create_host_executions`).
+  A stable pool-supplied execution id is the idempotency key; output is
+  appended while running and completion records status/output/time. A terminal
+  replay returns the existing execution even when the host is offline.
+- Added the host protocol service and `/v1/hosts/{id}/executions` to create or
+  replay a create-agent intent. Offline dispatch fails with
+  `daemon_not_connected`; frames are sent over the host WebSocket.
+- Added `crates/tidepool-host-agent`, a minimal blocking reference agent that
+  enrolls, reports capabilities, heartbeats, runs one create intent and replays
+  completions by execution id. It is excluded from production deployment and
+  exists to test the pool before Limpet.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

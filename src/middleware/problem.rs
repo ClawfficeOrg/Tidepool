@@ -26,7 +26,7 @@ use std::{
 };
 
 /// Hub path prefixes that use the problem-details contract.
-const HUB_PREFIXES: &[&str] = &["/v1/setup", "/v1/pool", "/v1/api-keys"];
+const HUB_PREFIXES: &[&str] = &["/v1/setup", "/v1/pool", "/v1/api-keys", "/v1/hosts"];
 
 /// True for a hub route (segment-boundary match, so `/v1/poolside` is not hub).
 pub fn is_hub_path(path: &str) -> bool {
@@ -201,6 +201,7 @@ mod tests {
         assert!(is_hub_path("/v1/pool/login"));
         assert!(is_hub_path("/v1/setup/status"));
         assert!(is_hub_path("/v1/api-keys"));
+        assert!(is_hub_path("/v1/hosts/abc"));
         assert!(!is_hub_path("/v1/poolside"));
         assert!(!is_hub_path("/v1/auth/login"));
         assert!(!is_hub_path("/v1/players/abc"));

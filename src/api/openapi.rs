@@ -389,6 +389,126 @@ const ROUTES: &[RouteSpec] = &[
         success: "204",
     },
     RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/executions",
+        tag: "pool",
+        summary: "Create or replay a create-agent intent with a stable execution id",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/execution",
+        tag: "pool",
+        summary: "Grant host.execute so the host may run agents",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/hosts/{id}/execution",
+        tag: "pool",
+        summary: "Revoke host.execute; the host becomes connected-only",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/hosts/{id}/capabilities",
+        tag: "pool",
+        summary: "Read the host's last capability report and offered providers",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/capabilities",
+        tag: "pool",
+        summary: "Host reports providers, models, modes and thinking options",
+        secure: false,
+        required_scope: None,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts/enrollment-tokens",
+        tag: "pool",
+        summary: "Mint a ten-minute single-use host enrollment token",
+        secure: true,
+        required_scope: Some("daemons:enroll"),
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts/enroll",
+        tag: "pool",
+        summary: "Exchange an enrollment token for a host relationship credential",
+        secure: false,
+        required_scope: None,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/hosts",
+        tag: "pool",
+        summary: "List live hosts in the pool",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/hosts",
+        tag: "pool",
+        summary: "Register a host; the slug is derived from the hostname",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/hosts/{id}",
+        tag: "pool",
+        summary: "Fetch a live host by immutable id",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Patch,
+        path: "/v1/hosts/{id}",
+        tag: "pool",
+        summary: "Rename a host slug or display name; the id is unchanged",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/hosts/{id}",
+        tag: "pool",
+        summary: "Revoke the pool relationship for a host",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "204",
+    },
+    RouteSpec {
         method: HttpMethod::Get,
         path: "/healthz",
         tag: "system",
@@ -519,7 +639,11 @@ fn build_operation(route: &RouteSpec) -> Operation {
         builder = builder.security(SecurityRequirement::new("bearerAuth", Vec::<String>::new()));
     }
     if route.tag == "pool" {
-        let auth = if route.required_scope.is_some() {
+        let host_authenticated =
+            route.method == HttpMethod::Post && route.path == "/v1/hosts/{id}/capabilities";
+        let auth = if host_authenticated {
+            "host"
+        } else if route.required_scope.is_some() {
             "api_key"
         } else if route.secure {
             "member"
@@ -698,14 +822,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 38, "ROUTES must describe all 38 routes");
+        assert_eq!(ROUTES.len(), 50, "ROUTES must describe all 50 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            35,
-            "the 19 game route specs and 16 pool identity routes must stay under /v1/"
+            47,
+            "the 19 game route specs and 28 pool/host routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -771,7 +895,11 @@ mod tests {
                 .extensions
                 .as_ref()
                 .unwrap_or_else(|| panic!("{} has no access extension", route.path));
-            let expected = if route.required_scope.is_some() {
+            let host_authenticated =
+                route.method == HttpMethod::Post && route.path == "/v1/hosts/{id}/capabilities";
+            let expected = if host_authenticated {
+                "host"
+            } else if route.required_scope.is_some() {
                 "api_key"
             } else if route.secure {
                 "member"
@@ -805,7 +933,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.required_scope.is_some())
                 .count(),
-            1
+            2
         );
 
         // Extensions are flattened onto the operation in the served JSON, as
@@ -829,6 +957,8 @@ mod tests {
         fn parse_scope(source: &str) -> std::collections::BTreeSet<(String, String)> {
             let mut routes = std::collections::BTreeSet::new();
             let mut scope: Option<String> = None;
+            let mut pending_route: Option<String> = None;
+            let mut pending_path_line = false;
             for line in source.lines() {
                 let line = line.trim();
                 if let Some(rest) = line.split_once("web::scope(\"")
@@ -839,28 +969,46 @@ mod tests {
                 let Some(scope_path) = scope.as_ref() else {
                     continue;
                 };
-                let Some(rest) = line.split_once(".route(\"") else {
+                if pending_route.is_none() {
+                    if let Some(rest) = line.split_once(".route(\"")
+                        && let Some((route_path, _)) = rest.1.split_once('"')
+                    {
+                        pending_route = Some(route_path.to_string());
+                        pending_path_line = false;
+                    } else if line.contains(".route(") {
+                        pending_path_line = true;
+                    } else if pending_path_line
+                        && let Some((route_path, _)) = line.trim_start_matches('"').split_once('"')
+                    {
+                        pending_route = Some(route_path.to_string());
+                        pending_path_line = false;
+                    }
+                }
+                let Some(route_path) = pending_route.clone() else {
                     continue;
                 };
-                let Some((route_path, rest)) = rest.1.split_once('"') else {
-                    continue;
-                };
-                let method = ["get", "post", "put", "patch", "delete"]
+                // The route and its method may be on the same line or split
+                // across lines by rustfmt.
+                let Some(method) = ["get", "post", "put", "patch", "delete"]
                     .into_iter()
-                    .find(|method| rest.contains(&format!("web::{method}()")))
-                    .unwrap_or_else(|| panic!("route {line} has no known method"));
+                    .find(|method| line.contains(&format!("web::{method}()")))
+                else {
+                    continue;
+                };
                 let full = if route_path.is_empty() {
                     scope_path.clone()
                 } else {
                     format!("{scope_path}{route_path}")
                 };
                 routes.insert((method.to_string(), full));
+                pending_route = None;
             }
             routes
         }
 
         let mut registered = parse_scope(include_str!("pool_identity.rs"));
         registered.extend(parse_scope(include_str!("api_keys.rs")));
+        registered.extend(parse_scope(include_str!("hosts.rs")));
 
         let documented: std::collections::BTreeSet<(String, String)> = ROUTES
             .iter()
@@ -877,6 +1025,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 16, "expected 16 hub operations");
+        assert_eq!(registered.len(), 28, "expected 28 hub operations");
     }
 }
