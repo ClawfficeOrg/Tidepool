@@ -7,6 +7,7 @@ pub mod analytics_event;
 pub mod api_key;
 pub mod game_channel;
 pub mod game_setting;
+pub mod host;
 pub mod leaderboard;
 pub mod organization;
 pub mod player;

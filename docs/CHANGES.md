@@ -81,6 +81,20 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   registrations with the single `ROUTES` table, and the CI scrape validates the
   served extensions.
 
+### Host registry (task 1.2.1)
+- Added `hosts` (migration `20261020000001_create_hosts`): immutable public id,
+  mutable slug, display name, hostname, status (`pending_approval`,
+  `connected`, `offline`, `revoked`) and timestamps.
+- `POST /v1/hosts` derives a lowercase kebab-case slug from the hostname and
+  de-duplicates with `-2`, `-3`, ...; `PATCH /v1/hosts/{id}` renames the slug or
+  display name without changing the id. Explicit collisions return 409.
+- `DELETE /v1/hosts/{id}` revokes the relationship from the pool side. Revoked
+  hosts are filtered from every endpoint and from dispatch/activation lookups;
+  the machine keeps its own local work.
+- `services::hosts::resolve_for_activation` fails with a named `host_slug`
+  field for an unknown or revoked slug, so configuration activation fails
+  before dispatch.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

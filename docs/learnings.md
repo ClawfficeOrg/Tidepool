@@ -184,3 +184,5 @@ bullets over prose. Read the last few sections before starting a similar task.
 - Actix `ServiceResponse::map_body` can replace an error body without reading
   it; wrapping the response in `BoxBody` keeps the middleware response type
   uniform while preserving already-correct problem documents.
+- `sqlx` records a checksum per migration: never edit an applied migration in a
+  shared dev database. Revert and re-apply locally, or add a new migration.

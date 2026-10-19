@@ -344,7 +344,7 @@
         {
           "id": "1.2.1",
           "title": "Host registry: immutable id, mutable slug",
-          "status": "pending",
+          "status": "done",
           "goal": "Migration and service for `hosts`: an immutable generated id, a friendly slug derived from the hostname and de-duplicated with a short suffix, a display name, status (approval required, connected, offline, revoked) and timestamps. Renaming the slug is allowed and does not change the id; an environment that referenced the old slug fails activation rather than failing at dispatch. Revoking from the pool ends the relationship while the host keeps running local work.",
           "touches": [
             "migrations/",
@@ -365,7 +365,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added the pool host registry",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:05:29Z"
         },
         {
           "id": "1.2.2",

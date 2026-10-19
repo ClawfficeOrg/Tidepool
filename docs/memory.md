@@ -990,6 +990,15 @@ header abuse stay impossible. The Rust drift test parses the hub modules'
 `web::scope(...).route(...)` registrations and compares them with `ROUTES`, so
 a route cannot be added to code without the table.
 
+**Host identity:** a host has an immutable generated `public_id` and a mutable
+`slug` derived from its hostname. Slugs are lowercase ASCII kebab-case, capped
+at 63 characters, and collision-suffixed (`-2`, `-3`) on registration; explicit
+renames collide with 409 rather than silently re-suffixing. Revocation is a
+status, not a delete: the row stays for audit and every live lookup filters
+`status <> 'revoked'`. Configuration activation resolves a slug through
+`resolve_for_activation` and names the `host_slug` field on failure, so a
+missing/revoked host fails at save time instead of dispatch time.
+
 ---
 
 ## Open Questions / Assumptions

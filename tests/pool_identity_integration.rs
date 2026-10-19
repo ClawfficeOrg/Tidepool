@@ -592,7 +592,8 @@ async fn viewer_is_refused_every_mutating_pool_route() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
-            .configure(api::pool_identity::config),
+            .configure(api::pool_identity::config)
+            .configure(api::hosts::config),
     )
     .await;
 
@@ -664,6 +665,16 @@ async fn viewer_is_refused_every_mutating_pool_route() {
         .to_request();
     assert_eq!(
         test::call_service(&app, remove_attempt).await.status(),
+        StatusCode::FORBIDDEN
+    );
+
+    let host_attempt = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {viewer_token}")))
+        .set_json(serde_json::json!({"hostname": "viewer-host"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, host_attempt).await.status(),
         StatusCode::FORBIDDEN
     );
 }
@@ -1089,4 +1100,156 @@ async fn hub_failures_use_problem_details_with_a_request_id() {
     let problem: Value = test::read_body_json(resp).await;
     assert_eq!(problem["code"], "validation_failed");
     assert_eq!(problem["requestId"], "req-hub-3");
+}
+
+// ── host registry (task 1.2.1) ────────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn hosts_register_with_unique_slugs_and_rename_without_changing_id() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "Studio-Mac.local"}))
+        .to_request();
+    let resp = test::call_service(&app, create).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["slug"], "studio-mac-local");
+    assert_eq!(body["status"], "pending_approval");
+    let first_id = body["id"].as_str().expect("host id").to_string();
+
+    let duplicate = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "studio-mac.local"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, duplicate).await).await;
+    assert_eq!(body["slug"], "studio-mac-local-2");
+    let second_id = body["id"].as_str().expect("host id").to_string();
+    assert_ne!(first_id, second_id);
+
+    // Rename keeps the immutable id and is visible in the API.
+    let rename = test::TestRequest::patch()
+        .uri(&format!("/v1/hosts/{first_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"slug": "Studio Mac Primary", "display_name": "Studio Mac"}))
+        .to_request();
+    let resp = test::call_service(&app, rename).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["id"], first_id);
+    assert_eq!(body["slug"], "studio-mac-primary");
+    assert_eq!(body["display_name"], "Studio Mac");
+
+    // An explicit rename onto another host's slug is a conflict.
+    let collision = test::TestRequest::patch()
+        .uri(&format!("/v1/hosts/{second_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"slug": "studio-mac-primary"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, collision).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    let list = test::TestRequest::get()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, list).await).await;
+    assert_eq!(body["hosts"].as_array().expect("hosts").len(), 2);
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn revoked_hosts_disappear_and_unknown_slugs_fail_activation() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "studio-mac"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let host_id = body["id"].as_str().expect("host id").to_string();
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("organization id");
+
+    let host =
+        tidepool::services::hosts::resolve_for_activation(&pool, organization_id, "studio-mac")
+            .await
+            .expect("known slug resolves");
+    assert_eq!(host.public_id, host_id);
+
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoke).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    // Refused at every endpoint.
+    let get = test::TestRequest::get()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, get).await.status(),
+        StatusCode::NOT_FOUND
+    );
+    let rename = test::TestRequest::patch()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"slug": "still-here"}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, rename).await.status(),
+        StatusCode::NOT_FOUND
+    );
+
+    let list = test::TestRequest::get()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, list).await).await;
+    assert_eq!(body["hosts"].as_array().expect("hosts").len(), 0);
+
+    let error =
+        tidepool::services::hosts::resolve_for_activation(&pool, organization_id, "studio-mac")
+            .await
+            .expect_err("revoked slug must not activate");
+    assert_eq!(
+        error.to_string(),
+        "host_slug: unknown host slug 'studio-mac'"
+    );
 }
