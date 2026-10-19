@@ -23,6 +23,14 @@ reviewing the Phase 0.4 release PR (#21); `v0.4.0` remains the phase-completion
 marker. No API or schema changes.
 
 ### Fixed
+- `cargo audit` is clean again after four advisories landed against `rustls`
+  0.23.45 on 2026-10-14. Lockfile-only update: `rustls` 0.23.45 → 0.23.46,
+  which clears **RUSTSEC-2026-0346** (`Debug` impls expose TLS secrets,
+  medium), **RUSTSEC-2026-0347** (buffered data sent after ECH rejection, low),
+  **RUSTSEC-2026-0348** (Brotli certificate decompression can allocate up to
+  1 GiB, low) and **RUSTSEC-2026-0349** (ServerHello can downgrade to classical
+  key exchange, low). Reached via `sqlx-core` → `sqlx-mysql`; no `Cargo.toml`
+  change required and no other versions moved.
 - `cargo audit` is clean again after the advisory database advanced past the
   last dependency bump. Lockfile-only update: `rustls` 0.23.40 → 0.23.45
   (plus `rustls-webpki` 0.103.13 → 0.103.15), which clears
