@@ -18,10 +18,10 @@ use tidepool::{
     api,
     config::{Config, PoolBootstrapConfig, RateLimitConfig},
     db,
-    entities::pool_user::PoolRole,
+    entities::{api_key::ApiKeyScope, pool_user::PoolRole},
     middleware::{problem::HubProblem, request_id::RequestIdMiddleware},
     services::{
-        auth as auth_svc,
+        api_keys as api_key_svc, auth as auth_svc, enrollment as enrollment_svc,
         pool_identity::{self, BootstrapOutcome, NewOrganization, PoolIdentityError},
     },
 };
@@ -1252,4 +1252,262 @@ async fn revoked_hosts_disappear_and_unknown_slugs_fail_activation() {
         error.to_string(),
         "host_slug: unknown host slug 'studio-mac'"
     );
+}
+
+// ── host enrollment (task 1.2.2) ──────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_enrollment_is_single_use_and_stores_only_hashes() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config)
+            .configure(api::api_keys::config)
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+    let owner_internal: u64 = sqlx::query_scalar("SELECT id FROM pool_users LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("owner id");
+
+    let (key, key_secret) = api_key_svc::create_api_key(
+        &pool,
+        organization_id,
+        Some(owner_internal),
+        "enrollment",
+        &[ApiKeyScope::DaemonsEnroll],
+    )
+    .await
+    .expect("create key");
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "studio-mac"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let host_id = body["id"].as_str().expect("host id").to_string();
+
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": host_id}))
+        .to_request();
+    let resp = test::call_service(&app, mint).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    let enrollment_token = body["token"]
+        .as_str()
+        .expect("enrollment token")
+        .to_string();
+    assert!(enrollment_token.contains('.'));
+    assert!(body.get("token_hash").is_none());
+
+    let credential = "host-generated-credential-0123456789abcdef";
+    let enroll = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": enrollment_token,
+            "credential": credential
+        }))
+        .to_request();
+    let resp = test::call_service(&app, enroll).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "offline");
+    let serialized = serde_json::to_string(&body).expect("json");
+    assert!(!serialized.contains("credential"));
+    assert!(!serialized.contains("argon2"));
+
+    // No read endpoint returns the credential or its hash.
+    let get = test::TestRequest::get()
+        .uri(&format!("/v1/hosts/{host_id}"))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, get).await).await;
+    assert!(!serde_json::to_string(&body).unwrap().contains("credential"));
+
+    // Only the Argon2id hash is stored.
+    let stored: String = sqlx::query_scalar("SELECT credential_hash FROM host_credentials")
+        .fetch_one(&pool)
+        .await
+        .expect("stored credential");
+    assert!(stored.starts_with("$argon2id$"));
+    assert!(!stored.contains(credential));
+
+    // The relationship credential authenticates the host.
+    let host = enrollment_svc::authenticate_host(&pool, &host_id, credential)
+        .await
+        .expect("credential authenticates");
+    assert_eq!(host.public_id, host_id);
+    assert!(matches!(
+        enrollment_svc::authenticate_host(&pool, &host_id, "wrong-credential").await,
+        Err(enrollment_svc::EnrollmentError::InvalidCredentials)
+    ));
+
+    // Reusing the token is refused.
+    let replay = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": enrollment_token,
+            "credential": credential
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, replay).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    // A second relationship for the same host is refused at mint time.
+    let mint_again = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": host_id}))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, mint_again).await.status(),
+        StatusCode::CONFLICT
+    );
+
+    // Expiry is enforced even when the token exists.
+    let create_second = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "expiring-host"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create_second).await).await;
+    let expiring_id = body["id"].as_str().expect("host id").to_string();
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": expiring_id}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, mint).await).await;
+    let expiring_token = body["token"].as_str().expect("token").to_string();
+    sqlx::query(
+        "UPDATE enrollment_tokens SET expires_at = '2020-01-01 00:00:00' WHERE public_id = ?",
+    )
+    .bind(expiring_token.split('.').next().unwrap())
+    .execute(&pool)
+    .await
+    .expect("expire token");
+    let expired = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": expiring_token,
+            "credential": credential
+        }))
+        .to_request();
+    let resp = test::call_service(&app, expired).await;
+    assert_eq!(resp.status(), StatusCode::GONE);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "gone");
+
+    // Revoking the issuing key expires its unconsumed tokens.
+    let create_third = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "revoked-key-host"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create_third).await).await;
+    let third_id = body["id"].as_str().expect("host id").to_string();
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", key_secret.clone()))
+        .set_json(serde_json::json!({"host_id": third_id}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, mint).await).await;
+    let third_token = body["token"].as_str().expect("token").to_string();
+
+    let revoke = test::TestRequest::delete()
+        .uri(&format!("/v1/api-keys/{}", key.public_id))
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoke).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    let revoked = test::TestRequest::post()
+        .uri("/v1/hosts/enroll")
+        .set_json(serde_json::json!({
+            "token": third_token,
+            "credential": credential
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, revoked).await.status(),
+        StatusCode::GONE
+    );
+    let revoked_at: Option<chrono::NaiveDateTime> =
+        sqlx::query_scalar("SELECT revoked_at FROM enrollment_tokens WHERE public_id = ?")
+            .bind(third_token.split('.').next().unwrap())
+            .fetch_one(&pool)
+            .await
+            .expect("revoked token row");
+    assert!(revoked_at.is_some());
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn enrollment_token_requires_the_daemons_enroll_scope() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config)
+            .configure(api::api_keys::config)
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+    let (_key, secret) = api_key_svc::create_api_key(
+        &pool,
+        organization_id,
+        None,
+        "read only",
+        &[ApiKeyScope::ProjectsRead],
+    )
+    .await
+    .expect("create key");
+
+    let create = test::TestRequest::post()
+        .uri("/v1/hosts")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({"hostname": "scoped-host"}))
+        .to_request();
+    let body: Value = test::read_body_json(test::call_service(&app, create).await).await;
+    let host_id = body["id"].as_str().expect("host id").to_string();
+
+    let mint = test::TestRequest::post()
+        .uri("/v1/hosts/enrollment-tokens")
+        .insert_header(("X-API-Key", secret))
+        .set_json(serde_json::json!({"host_id": host_id}))
+        .to_request();
+    let resp = test::call_service(&app, mint).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "missing_scope");
 }

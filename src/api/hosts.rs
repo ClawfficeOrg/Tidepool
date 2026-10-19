@@ -25,6 +25,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::scope("/v1/hosts")
             .route("", web::get().to(list_hosts))
             .route("", web::post().to(register_host))
+            .route(
+                "/enrollment-tokens",
+                web::post().to(crate::api::enrollment::mint_enrollment_token),
+            )
+            .route(
+                "/enroll",
+                web::post().to(crate::api::enrollment::enroll_host),
+            )
             .route("/{id}", web::get().to(get_host))
             .route("/{id}", web::patch().to(rename_host))
             .route("/{id}", web::delete().to(revoke_host)),

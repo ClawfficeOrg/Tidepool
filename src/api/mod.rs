@@ -2,6 +2,7 @@
 
 pub mod api_keys;
 pub mod auth;
+pub mod enrollment;
 pub mod events;
 pub mod feedback;
 pub mod game_settings;

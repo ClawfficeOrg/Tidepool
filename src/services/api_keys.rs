@@ -296,7 +296,7 @@ pub async fn revoke_api_key(
         return Err(ApiKeyServiceError::NotFound);
     }
 
-    sqlx::query_as::<_, ApiKey>(
+    let key = sqlx::query_as::<_, ApiKey>(
         "SELECT id, public_id, organization_id, name, prefix, secret_hash, scopes, \
                 status, created_by, last_used_at, revoked_at, created_at, updated_at \
          FROM api_keys WHERE public_id = ?",
@@ -304,7 +304,20 @@ pub async fn revoke_api_key(
     .bind(public_id)
     .fetch_one(pool)
     .await
-    .map_err(ApiKeyServiceError::Database)
+    .map_err(ApiKeyServiceError::Database)?;
+
+    // Revoking the issuing key expires every unconsumed enrollment token it
+    // minted (task 1.2.2).
+    sqlx::query(
+        "UPDATE enrollment_tokens SET revoked_at = CURRENT_TIMESTAMP \
+         WHERE issued_by_api_key_id = ? AND consumed_at IS NULL AND revoked_at IS NULL",
+    )
+    .bind(key.id)
+    .execute(pool)
+    .await
+    .map_err(ApiKeyServiceError::Database)?;
+
+    Ok(key)
 }
 
 /// Validate a scope selection: non-empty, unique and only known scopes.

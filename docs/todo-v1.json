@@ -371,7 +371,7 @@
         {
           "id": "1.2.2",
           "title": "Enrollment tokens and host relationship credentials",
-          "status": "pending",
+          "status": "done",
           "goal": "POST /api/v1/hosts/enrollment-tokens (scope daemons:enroll, renamed hosts:enroll if the naming proposal lands) mints a short-lived single-use token, ten minutes, consumed on enrollment. The host exchanges it for its own long-lived relationship credential, which the host generates and keeps and the pool stores only as a hash. One host has at most one pool relationship; enrolling an already-enrolled host is refused. An enrollment token cannot be reused, and revoking the issuing key expires unconsumed tokens.",
           "touches": [
             "migrations/",
@@ -394,7 +394,8 @@
           "agent": "pro_dev_agent",
           "security_notes": "This is the pool's trust boundary with a machine: single-use tokens, hashed credentials, no reuse, and a documented revocation path.",
           "changelog": "Added host enrollment tokens and relationship credentials",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:08:21Z"
         },
         {
           "id": "1.2.3",

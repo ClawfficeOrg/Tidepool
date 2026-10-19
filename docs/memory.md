@@ -999,6 +999,15 @@ status, not a delete: the row stays for audit and every live lookup filters
 `resolve_for_activation` and names the `host_slug` field on failure, so a
 missing/revoked host fails at save time instead of dispatch time.
 
+**Host enrollment:** a ten-minute token (`<public_id>.<secret>`) is minted only
+for a registered, unenrolled host. The host generates its own long-lived
+credential; the pool stores only the Argon2id hash and no read endpoint returns
+it. `host_credentials.host_id` is UNIQUE, so one host has one relationship.
+Tokens are single-use and carry the issuing API-key id, so `revoke_api_key`
+expires every unconsumed token it minted. The enrollment exchange is public but
+requires the one-time token; presence and protocol sessions will authenticate
+with the relationship credential via `authenticate_host`.
+
 ---
 
 ## Open Questions / Assumptions

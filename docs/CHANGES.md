@@ -95,6 +95,21 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   field for an unknown or revoked slug, so configuration activation fails
   before dispatch.
 
+### Host enrollment and relationship credentials (task 1.2.2)
+- Added `host_credentials` and `enrollment_tokens` (migration
+  `20261020000002_create_host_enrollment`).
+- `POST /v1/hosts/enrollment-tokens` mints a ten-minute single-use token bound
+  to a registered host. It accepts an API key with `daemons:enroll` or a
+  non-viewer member token; the raw token is returned once.
+- `POST /v1/hosts/enroll` is the public exchange: the host supplies the token
+  and the long-lived credential it generated. Only an Argon2id hash of the
+  credential is stored, and no read endpoint returns either secret.
+- One host has at most one credential (`UNIQUE host_id`); minting or enrolling a
+  host that already has one returns 409. Tokens are single-use and rejected
+  after expiry (410) or after the issuing API key is revoked (410).
+- `services::enrollment::authenticate_host` verifies the relationship credential
+  for later presence and host-protocol work.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub
