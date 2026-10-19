@@ -9,9 +9,15 @@ These instructions apply to every agent working in this repository.
 Before starting any task, read:
 
 - [`docs/GUIDELINES.md`](docs/GUIDELINES.md) — code standards, CI, branching and PR rules
-- [`docs/todo.md`](docs/todo.md) — master todo index (versioned todo files live alongside it)
-- [`docs/RECOVERY_PLAN.md`](docs/RECOVERY_PLAN.md) — recovery context and per-task loop contract
-- [`memory/projects/playzoid-server/project.md`](memory/projects/playzoid-server/project.md) — architectural decision log
+- [`docs/todo.md`](docs/todo.md) — the plan index; it points at the TideTable files below
+- [`docs/todo-v1.json`](docs/todo-v1.json) / [`docs/todo-v2.json`](docs/todo-v2.json) —
+  the plan of record (TideTable JSON). `v1` is the active line: the rename from
+  Playzoid, and the hub. `v2` is the clients.
+- [`docs/HUB_CAPABILITIES.md`](docs/HUB_CAPABILITIES.md) — Paseo Hub read and
+  mapped to Tidepool, capability by capability
+- [`docs/memory.md`](docs/memory.md) — architectural decision log and the
+  hard rules
+- [`docs/RECOVERY_PLAN.md`](docs/RECOVERY_PLAN.md) — historical recovery context
 
 Also read as relevant to your specific task:
 
@@ -32,10 +38,34 @@ All work goes through PRs against `main`. Never push directly to `main`.
 | Refactor        | `refactor/<scope>/<description>`                 |
 | Docs            | `docs/<description>`                             |
 | Chore / tooling | `chore/<description>`                            |
-| Ralph tasks     | `task/vX.Y.Z` (e.g. `task/v0.3.5`)               |
+| Ralph tasks     | `task/vX.Y.Z` (e.g. `task/v1.1.1`)               |
 
 **Never self-approve or auto-merge PRs you authored.** All PRs require CI green
 plus at least one human reviewer before merge.
+
+## The plan is TideTable JSON
+
+`docs/todo-v1.json` and `docs/todo-v2.json` are the plan of record; the
+markdown `todo-v*.md` files are the historical record and take no new tasks.
+Claim work through TideTable rather than by editing the plan by hand:
+
+```sh
+# TideTable is installed (tidetable/tt, v0.12.0); it lives at
+# ~/git_repos/clawffice/TideTable. --local is required for plan files.
+TODO=docs/todo-v1.json
+
+tidetable --local validate "$TODO"
+tidetable --local next "$TODO" --json
+tidetable --local start "$TODO" 1.1.1 --owner <you>
+tidetable --local done "$TODO" 1.1.1
+```
+
+`start` claims the task under a lease, so two agents cannot take the same one
+and a crashed session's task returns to the pool. `touches` is the file
+ownership field: two tasks whose paths overlap are never handed out together by
+`tidetable ready --disjoint`. Cross-file prerequisites do not validate, so
+`todo-v2.json` records its dependencies on v1 as `requires_v1` — do not start a
+v2 task while those are pending. See `docs/todo.md` for the full command list.
 
 ---
 

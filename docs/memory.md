@@ -866,6 +866,66 @@ sufficient while the offending PRs exist.
 
 ---
 
+### 2026-10-19 — Playzoid becomes Tidepool; TideTable becomes the plan
+
+**Context:** the project was a Talo-compatible game backend named Playzoid-Server.
+The suite's own design system (clawffice-design) had already assigned this
+product the name **Tidepool** (Hub and game server; pools federate with other
+pools; product hue `tide`, current `water`, creature the rock pool, part
+`Rhumb`), and the work that comes next — the hub above the game server — is the
+work that name describes. Separately, the roadmap lived in markdown todo files
+whose ids are positional and whose prerequisites are prose; it could not express
+"hosts before dispatch" or say which files two concurrent tasks both own.
+
+**Options considered:**
+- Keep the name and add the hub beside it — two names for one product, and a
+  suite that disagrees with its own design system.
+- Rename later, when the hub lands — every new hub file, metric, image tag and
+  doc written under a name that is about to change; the rename would then touch
+  the hub too, not just the game API.
+- Rename now, with the plan change (chosen) — one disruptive pass while the
+  surface is one binary and 22 routes, and the hub is written under its real
+  name from the first file.
+
+**Decision:**
+- **Name:** the repository becomes `ClawfficeOrg/Tidepool`, the crate and binary
+  `tidepool`, and the Prometheus prefix `tidepool_*`. GitHub keeps a redirect
+  from the old repository name. `docs/todo-v1.json` tasks 1.0.1–1.0.3, 1.0.5
+  carry each part of the rename; the game API surface does not change.
+- **Plan:** TideTable JSON is the plan of record from here on.
+  `docs/todo-v1.json` (v1, ships `0.5.0`) is the rename and the hub;
+  `docs/todo-v2.json` (v2, ships `0.6.0`) is the clients. `docs/todo-v0.md` and
+  `docs/todo-v1.md` are frozen as the record of releases 0.1–0.4, and
+  `docs/todo.md` is the index. Task ids, the `task/vX.Y.Z` branch pattern and
+  the green gate are unchanged.
+- **Hub scope:** servers first (v1), clients second (v2). v1 is identity, hosts,
+  connections, triggers, workflows, dispatch, activity, chatrooms, the session
+  relay and self-hosting. v2 is the machine-readable contract, the TypeScript,
+  Rust and Python SDKs with one conformance suite, the `tidepool` CLI, the
+  Svelte control plane, the ratatui console and the Zoid reference client.
+  Federation (Rhumb), the hosted pool and mobile are deferred to v3.
+
+**Reference:** Paseo Hub (<https://paseo.sh/docs/hub>) was read on 2026-10-19 and
+mapped capability by capability in [`HUB_CAPABILITIES.md`](HUB_CAPABILITIES.md).
+It is read for product shape only: no Paseo code, schema, configuration format,
+database or wire protocol is copied or ported, and Tidepool does not speak the
+Paseo protocol or read a Paseo home directory. The same rule Wheelhouse records
+in its `docs/paseo-notes.md`.
+
+**Consequences:**
+- Renaming the metric prefix is observable by anyone scraping; it is recorded as
+  a breaking change in `CHANGES.md` rather than dropped silently.
+- Only `.env`/environment secrets are configuration; nothing in the rename moves
+  a credential into the repository, and the standing rule (never hardcode a
+  secret) is unchanged.
+- Cross-file prerequisites do not validate in TideTable, so `todo-v2.json`
+  records its v1 dependencies as `requires_v1` — documentation, not scheduling.
+  A supervisor must not start a v2 task while those entries are pending.
+- The suite's other repos still refer to the old codename in places; each is
+  renamed by its own plan, not this one.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve
