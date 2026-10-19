@@ -158,6 +158,11 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   completions by execution id. It is excluded from production deployment and
   exists to test the pool before Limpet.
 
+### Fixed
+- Docker builds copy the workspace's `crates/` directory and build only the
+  `tidepool` package, so the reference host-agent member no longer breaks the
+  image build.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub
