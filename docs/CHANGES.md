@@ -141,6 +141,23 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   failing at first dispatch.
 - Grant, revoke and report actions are audited.
 
+### Pool host protocol and reference agent (task 1.2.5)
+- Added `docs/HOST_PROTOCOL.md`: enrollment, WebSocket authentication,
+  heartbeat, capability report, `create_agent`, `execution_started`,
+  `execution_output`, `execution_completed`, `interrupt_execution`, errors,
+  idempotent replay and reconnect recovery.
+- Added `host_executions` (migration `20261020000004_create_host_executions`).
+  A stable pool-supplied execution id is the idempotency key; output is
+  appended while running and completion records status/output/time. A terminal
+  replay returns the existing execution even when the host is offline.
+- Added the host protocol service and `/v1/hosts/{id}/executions` to create or
+  replay a create-agent intent. Offline dispatch fails with
+  `daemon_not_connected`; frames are sent over the host WebSocket.
+- Added `crates/tidepool-host-agent`, a minimal blocking reference agent that
+  enrolls, reports capabilities, heartbeats, runs one create intent and replays
+  completions by execution id. It is excluded from production deployment and
+  exists to test the pool before Limpet.
+
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
   (`clawffice-design`) had already assigned this product the name Tidepool (hub

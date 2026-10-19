@@ -12,6 +12,7 @@ pub mod feedback;
 pub mod game_settings;
 pub mod host_capability;
 pub mod host_presence;
+pub mod host_protocol;
 pub mod hosts;
 pub mod leaderboards;
 pub mod players;

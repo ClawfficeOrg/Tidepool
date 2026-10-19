@@ -1798,3 +1798,129 @@ async fn host_execution_grant_and_capability_validation() {
         Err(tidepool::services::host_capability::HostCapabilityError::NotGranted)
     ));
 }
+
+// ── host protocol executions (task 1.2.5) ─────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn host_execution_output_completion_and_terminal_replay() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, _owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "protocol-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register");
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint");
+    enrollment_svc::enroll_host(&pool, &token, "protocol-host-credential-0123456789abcdef")
+        .await
+        .expect("enroll");
+
+    // A new intent against an offline host fails with the documented code.
+    let error = tidepool::services::host_protocol::create_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        "exec-offline",
+        "hello",
+    )
+    .await
+    .expect_err("offline host cannot dispatch");
+    assert!(matches!(
+        error,
+        tidepool::services::host_protocol::HostProtocolError::DaemonNotConnected { .. }
+    ));
+
+    // Store an intent directly, then exercise ordered output and completion.
+    let host_internal: u64 = sqlx::query_scalar("SELECT id FROM hosts WHERE public_id = ?")
+        .bind(&host.public_id)
+        .fetch_one(&pool)
+        .await
+        .expect("host id");
+    sqlx::query(
+        "INSERT INTO host_executions (public_id, host_id, prompt, status)          VALUES ('exec-1', ?, 'hello', 'running')",
+    )
+    .bind(host_internal)
+    .execute(&pool)
+    .await
+    .expect("insert execution");
+
+    tidepool::services::host_protocol::record_output(&pool, "exec-1", "hello ")
+        .await
+        .expect("output 1");
+    tidepool::services::host_protocol::record_output(&pool, "exec-1", "world")
+        .await
+        .expect("output 2");
+    tidepool::services::host_protocol::record_completion(
+        &pool,
+        "exec-1",
+        "succeeded",
+        Some("final answer"),
+    )
+    .await
+    .expect("complete");
+
+    let execution = tidepool::services::host_protocol::find_execution(&pool, "exec-1")
+        .await
+        .expect("find")
+        .expect("exists");
+    assert_eq!(
+        execution.status,
+        tidepool::entities::host_execution::ExecutionStatus::Succeeded
+    );
+    assert_eq!(execution.output.as_deref(), Some("final answer"));
+    assert!(execution.completed_at.is_some());
+
+    // A late output frame after completion is ignored.
+    tidepool::services::host_protocol::record_output(&pool, "exec-1", "late")
+        .await
+        .expect("late output");
+    let after = tidepool::services::host_protocol::find_execution(&pool, "exec-1")
+        .await
+        .expect("find")
+        .expect("exists");
+    assert_eq!(after.output.as_deref(), Some("final answer"));
+
+    // Replaying a completed intent returns the existing execution even while
+    // the host is offline, and does not create a second row.
+    let (view, replayed) = tidepool::services::host_protocol::create_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        "exec-1",
+        "different prompt",
+    )
+    .await
+    .expect("terminal replay");
+    assert!(replayed);
+    assert_eq!(
+        view.status,
+        tidepool::entities::host_execution::ExecutionStatus::Succeeded
+    );
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM host_executions")
+        .fetch_one(&pool)
+        .await
+        .expect("count");
+    assert_eq!(count, 1);
+}

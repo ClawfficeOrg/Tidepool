@@ -279,7 +279,7 @@ mod tests {
             .to_request();
         assert_eq!(
             test::call_service(&app, req).await.status(),
-            TestStatus::UNPROCESSABLE_ENTITY
+            TestStatus::SERVICE_UNAVAILABLE
         );
     }
 }

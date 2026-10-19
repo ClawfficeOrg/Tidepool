@@ -12,11 +12,13 @@
 use crate::api::problem::{Problem, ProblemCode};
 use crate::entities::host::HostView;
 use crate::entities::host_capability::AgentCapability;
+use crate::entities::host_execution::HostExecutionView;
 use crate::middleware::auth::OperatorAuth;
-use crate::services::api_keys::AuditActor;
+use crate::services::api_keys::{AuditActor, AuditEntry};
 use crate::services::enrollment;
 use crate::services::host_capability::{self as capability_svc, HostCapabilityError};
 use crate::services::host_presence;
+use crate::services::host_protocol::{self as protocol_svc, HostProtocolError};
 use crate::services::hosts::{self as host_svc, HostServiceError, NewHost, RenameHost};
 use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
 use serde::{Deserialize, Serialize};
@@ -41,6 +43,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/{id}/execution", web::delete().to(revoke_execution))
             .route("/{id}/capabilities", web::get().to(get_capabilities))
             .route("/{id}/capabilities", web::post().to(report_capabilities))
+            .route("/{id}/executions", web::post().to(create_execution))
             .route("/{id}", web::get().to(get_host))
             .route("/{id}", web::patch().to(rename_host))
             .route("/{id}", web::delete().to(revoke_host)),
@@ -417,6 +420,115 @@ fn map_capability_error(error: HostCapabilityError, req: &HttpRequest) -> HttpRe
         ),
         HostCapabilityError::Database(error) => {
             tracing::error!(error = %error, "host capability operation failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ProblemCode::InternalError,
+                "internal error".to_string(),
+            )
+        }
+    };
+    Problem::from_request(req, status, code, detail).into_response()
+}
+
+/// Create-agent intent from the pool.
+#[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct CreateExecutionRequest {
+    /// Stable idempotency key chosen by the pool.
+    #[validate(length(min = 1, max = 64))]
+    pub execution_id: String,
+    /// Prompt text.
+    #[validate(length(min = 1, max = 1_000_000))]
+    pub prompt: String,
+}
+
+/// Create/replay response.
+#[derive(Debug, Serialize)]
+pub struct CreateExecutionResponse {
+    /// Execution state.
+    pub execution: HostExecutionView,
+    /// True when the intent already existed and was replayed.
+    pub replayed: bool,
+}
+
+#[tracing::instrument(skip(pool, auth, body))]
+async fn create_execution(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<String>,
+    body: web::Json<CreateExecutionRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = auth.require_mutating() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    if let Err(e) = body.validate() {
+        return validation_error(&req, &e.to_string());
+    }
+
+    match protocol_svc::create_execution(
+        pool.get_ref(),
+        auth.organization_id(),
+        &path.into_inner(),
+        &body.execution_id,
+        &body.prompt,
+    )
+    .await
+    {
+        Ok((execution, replayed)) => {
+            crate::services::api_keys::audit(
+                pool.get_ref(),
+                AuditEntry {
+                    organization_id: auth.organization_id(),
+                    actor: actor(&auth),
+                    action: "host.execution_create",
+                    target_kind: Some("execution"),
+                    target_public_id: Some(&execution.id),
+                    detail: serde_json::json!({ "replayed": replayed }),
+                },
+            )
+            .await;
+            let status = if replayed {
+                StatusCode::OK
+            } else {
+                StatusCode::CREATED
+            };
+            HttpResponse::build(status).json(CreateExecutionResponse {
+                execution,
+                replayed,
+            })
+        }
+        Err(e) => map_protocol_error(e, &req),
+    }
+}
+
+fn map_protocol_error(error: HostProtocolError, req: &HttpRequest) -> HttpResponse {
+    let (status, code, detail) = match error {
+        HostProtocolError::NotFound => (
+            StatusCode::NOT_FOUND,
+            ProblemCode::NotFound,
+            "host not found".to_string(),
+        ),
+        HostProtocolError::DaemonNotConnected { slug } => (
+            StatusCode::CONFLICT,
+            ProblemCode::DaemonNotConnected,
+            format!("daemon_not_connected: host '{slug}' is offline"),
+        ),
+        HostProtocolError::SocketGone => (
+            StatusCode::CONFLICT,
+            ProblemCode::DaemonNotConnected,
+            "daemon_not_connected: host socket is gone".to_string(),
+        ),
+        HostProtocolError::Invalid(message) => (
+            StatusCode::BAD_REQUEST,
+            ProblemCode::InvalidRequest,
+            message,
+        ),
+        HostProtocolError::Database(error) => {
+            tracing::error!(error = %error, "host execution creation failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ProblemCode::InternalError,

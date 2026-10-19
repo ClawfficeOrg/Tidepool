@@ -11,6 +11,7 @@ pub mod game_setting;
 pub mod host;
 pub mod host_capability;
 pub mod host_credential;
+pub mod host_execution;
 pub mod leaderboard;
 pub mod organization;
 pub mod player;

@@ -18,6 +18,7 @@
 
 use crate::services::enrollment::{self, EnrollmentError};
 use crate::services::host_presence::{self, HEARTBEAT_TIMEOUT_SECS};
+use crate::services::host_protocol::{self, SendFrame};
 use actix::{ActorContext, AsyncContext};
 use actix_web::{Error, HttpRequest, HttpResponse, error::ErrorUnauthorized, web};
 use actix_web_actors::ws;
@@ -40,6 +41,7 @@ impl actix::Actor for HostWs {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        host_protocol::register_socket(&self.host_public_id, ctx.address());
         ctx.run_interval(Duration::from_secs(HEARTBEAT_TICK_SECS), |actor, ctx| {
             if actor.last_client_heartbeat.elapsed()
                 > Duration::from_secs(HEARTBEAT_TIMEOUT_SECS as u64)
@@ -56,6 +58,7 @@ impl actix::Actor for HostWs {
 
     fn stopping(&mut self, _ctx: &mut Self::Context) -> actix::Running {
         let public_id = self.host_public_id.clone();
+        host_protocol::unregister_socket(&public_id);
         let pool = self.pool.clone();
         actix::spawn(async move {
             if let Err(error) = host_presence::host_disconnected(&pool, &public_id).await {
@@ -66,15 +69,25 @@ impl actix::Actor for HostWs {
     }
 }
 
+impl actix::Handler<SendFrame> for HostWs {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendFrame, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
+}
+
 impl actix::StreamHandler<Result<ws::Message, ws::ProtocolError>> for HostWs {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Text(text)) => {
-                let is_heartbeat = match serde_json::from_str::<serde_json::Value>(&text) {
-                    Ok(value) => value.get("type").and_then(|v| v.as_str()) == Some("heartbeat"),
-                    Err(_) => text.trim() == "heartbeat",
-                };
-                if is_heartbeat {
+                let frame = serde_json::from_str::<serde_json::Value>(&text).ok();
+                let frame_type = frame
+                    .as_ref()
+                    .and_then(|value| value.get("type"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                if frame_type == "heartbeat" || text.trim() == "heartbeat" {
                     self.last_client_heartbeat = Instant::now();
                     let public_id = self.host_public_id.clone();
                     let pool = self.pool.clone();
@@ -87,11 +100,72 @@ impl actix::StreamHandler<Result<ws::Message, ws::ProtocolError>> for HostWs {
                         }
                     });
                     ctx.text(json!({"type": "heartbeat.ack"}).to_string());
-                } else {
-                    ctx.text(
-                        json!({"type": "error", "code": "invalid_request", "detail": "unknown frame"})
-                            .to_string(),
-                    );
+                    return;
+                }
+
+                let execution_id = frame
+                    .as_ref()
+                    .and_then(|value| value.get("executionId"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let pool = self.pool.clone();
+                match frame_type {
+                    "execution_started" => {
+                        actix::spawn(async move {
+                            if let Err(error) =
+                                host_protocol::record_started(&pool, &execution_id).await
+                            {
+                                tracing::warn!(error = %error, "failed to record execution start");
+                            }
+                        });
+                    }
+                    "execution_output" => {
+                        let delta = frame
+                            .as_ref()
+                            .and_then(|value| value.get("text"))
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        actix::spawn(async move {
+                            if let Err(error) =
+                                host_protocol::record_output(&pool, &execution_id, &delta).await
+                            {
+                                tracing::warn!(error = %error, "failed to record execution output");
+                            }
+                        });
+                    }
+                    "execution_completed" => {
+                        let status = frame
+                            .as_ref()
+                            .and_then(|value| value.get("status"))
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("failed")
+                            .to_string();
+                        let output = frame
+                            .as_ref()
+                            .and_then(|value| value.get("output"))
+                            .and_then(|value| value.as_str())
+                            .map(str::to_string);
+                        actix::spawn(async move {
+                            if let Err(error) = host_protocol::record_completion(
+                                &pool,
+                                &execution_id,
+                                &status,
+                                output.as_deref(),
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = %error, "failed to record execution completion");
+                            }
+                        });
+                    }
+                    _ => {
+                        ctx.text(
+                            json!({"type": "error", "code": "invalid_request", "detail": "unknown frame"})
+                                .to_string(),
+                        );
+                    }
                 }
             }
             Ok(ws::Message::Ping(bytes)) => ctx.pong(&bytes),

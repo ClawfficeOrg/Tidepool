@@ -455,7 +455,7 @@
         {
           "id": "1.2.5",
           "title": "Pool host protocol and reference host agent",
-          "status": "pending",
+          "status": "done",
           "goal": "Write the pool host protocol down: connection and authentication with the relationship credential, presence heartbeat, capability report, create-agent intent with a stable execution id, idempotent replay after a pool restart or a lost response, observation of output, completion, and interruption. Ship a minimal reference host agent that implements it, so the hub is testable end to end before Limpet exists. The protocol is framed by the pool, versioned, and documented for Limpet to implement unchanged.",
           "touches": [
             "docs/HOST_PROTOCOL.md",
@@ -476,7 +476,8 @@
           "complexity": "Very High",
           "agent": "flagship",
           "changelog": "Specified the pool host protocol and added a reference host agent",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T23:21:49Z"
         }
       ]
     },

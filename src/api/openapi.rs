@@ -390,6 +390,16 @@ const ROUTES: &[RouteSpec] = &[
     },
     RouteSpec {
         method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/executions",
+        tag: "pool",
+        summary: "Create or replay a create-agent intent with a stable execution id",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
         path: "/v1/hosts/{id}/execution",
         tag: "pool",
         summary: "Grant host.execute so the host may run agents",
@@ -812,14 +822,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 49, "ROUTES must describe all 49 routes");
+        assert_eq!(ROUTES.len(), 50, "ROUTES must describe all 50 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            46,
-            "the 19 game route specs and 27 pool/host routes must stay under /v1/"
+            47,
+            "the 19 game route specs and 28 pool/host routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -1015,6 +1025,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 27, "expected 27 hub operations");
+        assert_eq!(registered.len(), 28, "expected 28 hub operations");
     }
 }

@@ -1025,6 +1025,14 @@ options; re-reporting replaces the set. Validation happens at save time and
 names the first unavailable field. The pool only offers providers in the
 grantable allow-list for pooled execution, even if a host reports others.
 
+**Host protocol executions:** `executionId` is chosen by the pool and is the
+idempotency key. The pool stores the execution before sending `create_agent`
+and resends the same intent on reconnect/lost response; the host must answer a
+replay with the existing result. Terminal replays are served from the ledger
+even when the host is offline. Output is appended only while queued/running, so
+a late `execution_output` after completion cannot duplicate the final text. The
+reference agent keeps completions in memory; Limpet must persist them.
+
 ---
 
 ## Open Questions / Assumptions
