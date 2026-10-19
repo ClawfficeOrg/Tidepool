@@ -1,0 +1,1031 @@
+{
+  "schema_version": "1.0.0",
+  "project": {
+    "name": "Tidepool",
+    "version": {
+      "milestone": "v1",
+      "release_version": "0.5.0",
+      "next_milestone": "todo-v2.json"
+    },
+    "description": "Tidepool v1: the rename from Playzoid, and the hub. Playzoid-Server was a Talo-compatible game backend (auth, players, leaderboards, saves, WebSocket channels, analytics, feedback, metrics, OpenAPI). Tidepool keeps that game API unchanged and adds the layer above it: one pool that machines enrol with, that receives events from GitHub, Slack and Discord, that matches them against triggers and workflows declared in a repository, and that asks enrolled hosts to run agents. It also owns chatrooms and the session relay the rest of the suite reads. Everything is self-hostable, open, and speaks one documented HTTP API. Deliverables here are server-side only; the Svelte control plane, the ratatui console, the client SDKs, the reference human client and Rhumb federation are todo-v2.json.",
+    "prerequisites": []
+  },
+  "agent_config": {
+    "tiers": {
+      "basic_dev_agent": {
+        "complexity_range": "Low",
+        "duration_minutes": "5-15"
+      },
+      "mid_dev_agent": {
+        "complexity_range": "Medium",
+        "duration_minutes": "15-45"
+      },
+      "pro_dev_agent": {
+        "complexity_range": "High, Very High",
+        "duration_minutes": "45-120+"
+      }
+    },
+    "required_reading": [
+      "AGENTS.md",
+      "docs/todo-v1.json",
+      "docs/HUB_CAPABILITIES.md",
+      "docs/GUIDELINES.md",
+      "docs/memory.md",
+      "docs/learnings.md",
+      "docs/TALO_API.md"
+    ]
+  },
+  "meta": {
+    "history": "docs/todo-v0.md (releases 0.1-0.3) and docs/todo-v1.md (release 0.4) are the retired markdown plan of record, kept as history. From this file on, TideTable JSON is the plan; the markdown files are read-only. `docs/todo.md` is the human index. Task ids keep the semver scheme: Y is the release line, Z the task number, and branch names stay `task/vX.Y.Z`.",
+    "why_tidetable": "The markdown plan could not express the dependency graph this work needs (hosts before dispatch, identity before hosts, chatrooms after the hub API), and by hand it could not say which files two concurrent tasks both own. TideTable gives stable ids, machine-readable prerequisites and `touches`, so ralph can fan out disjoint work and never renumber when a line is inserted.",
+    "paseo_reference": "https://paseo.sh/docs/hub and the pages under it (concepts, daemons, workflows, triggers, api, self-hosting) were read on 2026-10-19 and mapped to Tidepool's own models in docs/HUB_CAPABILITIES.md. Paseo Hub is read for product shape only. No Paseo code, schema, configuration format or wire protocol is copied or ported, and Tidepool does not speak the Paseo protocol or read a Paseo home directory.",
+    "design": "clawffice-design (../../clawffice-design) is the source of tokens, palettes and marks. Tidepool's product hue is tide (#4A9FE0 dark / #1864AB light), current water, creature the rock pool, part Rhumb for hub-to-hub federation. The game API and the hub share one binary and one palette.",
+    "scope_note": "Tidepool is the hub AND the game server. Tasks 1.0.5 keeps the Talo-compatible surface intact and green while the hub grows beside it. Nothing in this file changes an existing game endpoint's shape.",
+    "open_questions": [
+      "Naming: the plan uses neutral hub words (host, trigger, workflow, run, activity). Tidepool-flavoured names are proposed in docs/HUB_CAPABILITIES.md and need a human sign-off before they reach the API.",
+      "Tenancy: is a pool single-tenant (one team, as Paseo Hub's self-hosted mode is) or multi-tenant from v1? Tasks 1.1.1/1.1.2 assume one organization per pool, multi-tenant deferred.",
+      "Agent runtime on a host: Limpet is the suite's intended host daemon but does not exist yet. Task 1.2.5 defines the pool host protocol and ships a minimal reference host agent so the hub is testable end to end now; Limpet implements the same protocol later.",
+      "PostgreSQL: the repo's standing decision is MySQL until 1.0.0 (docs/memory.md). Paseo Hub offers an embedded database or PostgreSQL. Metric/histogram-shaped activity tables are the first thing that will hurt on MySQL, so the trade-off is recorded in docs/memory.md rather than revisited silently."
+    ]
+  },
+  "phases": [
+    {
+      "id": "1.0",
+      "title": "Rename: Playzoid becomes Tidepool",
+      "goal": "One name everywhere, and TideTable as the plan. The repository, the crate, the binary, the metrics namespace, the dev stack and the docs all say Tidepool; the markdown plan is retired in favour of this file; and the existing Talo-compatible game API is proven unchanged by the move.",
+      "prerequisites": [],
+      "tasks": [
+        {
+          "id": "1.0.1",
+          "title": "Repository rename and redirects",
+          "status": "done",
+          "goal": "Rename the GitHub repository ClawfficeOrg/Playzoid-Server to ClawfficeOrg/Tidepool and update the local remote. GitHub keeps a redirect from the old name so existing clones and links keep working; record the redirect so nothing treats it as permanent.",
+          "touches": [
+            "docs/memory.md",
+            "docs/CHANGES.md"
+          ],
+          "success": [
+            "The GitHub repository is named Tidepool and the old name redirects",
+            "The local checkout's origin remote points at the new URL",
+            "The rename and its redirect are recorded in docs/memory.md"
+          ],
+          "tests": "gh repo view ClawfficeOrg/Tidepool; git fetch origin; git remote get-url origin",
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "changelog": "Renamed the GitHub repository from Playzoid-Server to Tidepool",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.0.2",
+          "title": "Crate, binary and metrics namespace rename",
+          "status": "pending",
+          "goal": "Rename the Cargo package `playzoid_server` to `tidepool`, which renames the binary, the `use` paths in src/ and tests/, the Dockerfile COPY and ENTRYPOINT, the compose service, the CI openapi job's binary path, and the Prometheus metric prefixes `playzoid_http_requests_total`, `playzoid_http_request_duration_seconds`, `playzoid_ws_connections` and `playzoid_db_pool_connections` to `tidepool_*`. Metric names are a public contract for anyone scraping, so the rename is recorded as breaking in CHANGES.md.",
+          "touches": [
+            "Cargo.toml",
+            "src/main.rs",
+            "src/lib.rs",
+            "src/middleware/metrics.rs",
+            "src/middleware/rate_limit.rs",
+            "src/api/metrics.rs",
+            "src/services/auth.rs",
+            "tests/",
+            "Dockerfile",
+            ".github/workflows/ci.yml"
+          ],
+          "success": [
+            "`cargo build` produces `target/debug/tidepool` and no `playzoid_server` binary",
+            "`grep -ri playzoid src tests Cargo.toml Dockerfile` returns nothing",
+            "Every metric renders with the `tidepool_` prefix and the metric unit tests assert the new names",
+            "The image builds and runs, and `/healthz` answers"
+          ],
+          "tests": "cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test; docker build . ; docker run --rm -p 8080:8080 tidepool:ci then curl /healthz",
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "security_notes": "The metrics rename is observable by scrapers; note it as a breaking change rather than silently dropping old series.",
+          "changelog": "Renamed the crate, binary and Prometheus metric prefix to tidepool",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.0.3",
+          "title": "Dev stack, CI and deploy rename",
+          "status": "pending",
+          "goal": "Rename the development and deployment identifiers that carry the old name: the MySQL database and user in config/docker-compose.dev.yml and its override, the CI service database in .github/workflows/ci.yml, the integration-test default DATABASE_URL in tests/, .env.example, the docker image tag, and the migration fixture names. Existing migration files are not rewritten (migrations are forward-only and already applied); only the database/user names change, with a note on how to rename an existing dev database.",
+          "touches": [
+            "config/docker-compose.dev.yml",
+            "config/docker-compose.dev.override.yml",
+            ".github/workflows/ci.yml",
+            ".env.example",
+            "tests/",
+            "docs/README.md"
+          ],
+          "success": [
+            "`docker compose -f config/docker-compose.dev.yml up -d` brings up MySQL and Redis under the new names",
+            "`cargo test --test '*' -- --ignored` passes against the renamed dev stack",
+            "No file outside migrations/ mentions the old database or user name",
+            "docs/README.md says how to rename an existing dev database without losing data"
+          ],
+          "tests": "docker compose -f config/docker-compose.dev.yml up -d && cargo test --test '*' -- --ignored",
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Renamed the dev stack database, CI service and deploy identifiers to tidepool",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.0.4",
+          "title": "Adopt TideTable as the plan of record",
+          "status": "done",
+          "goal": "Replace the markdown roadmap with TideTable JSON. This file (v1: rename and hub) and docs/todo-v2.json (v2: clients) become the plan; docs/todo.md becomes the human index that points at them; docs/todo-v0.md and docs/todo-v1.md stay as the historical record and take no new tasks.",
+          "touches": [
+            "docs/todo-v1.json",
+            "docs/todo-v2.json",
+            "docs/todo.md",
+            "AGENTS.md"
+          ],
+          "success": [
+            "`python -m tidetable --local validate docs/todo-v1.json` and the same for v2 exit 0",
+            "`python -m tidetable --local ready docs/todo-v1.json` lists the first tasks with no prerequisite",
+            "docs/todo.md names the JSON files as canonical and the markdown files as history",
+            "AGENTS.md points at the JSON plan and at TideTable for the task loop"
+          ],
+          "tests": "python -m tidetable --local validate docs/todo-v1.json docs/todo-v2.json",
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "changelog": "Adopted TideTable JSON as the plan of record",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.0.5",
+          "title": "Docs, branding and design-token sweep",
+          "status": "pending",
+          "goal": "Rewrite the prose that still describes Playzoid as a Talo clone: README.md, docs/README.md, docs/GUIDELINES.md, docs/TALO_API.md's successor naming, skills/ralph.md, and the source doc comments. Adopt the clawffice-design Tidepool identity (product hue tide, current water, creature the rock pool) in the README. Vendor nothing at run time: the tokens are referenced, not imported. Also add the guard that proves the rename did not move the game API: the OpenAPI `ROUTES` table still describes the same 22 game routes under /v1.",
+          "touches": [
+            "README.md",
+            "docs/README.md",
+            "docs/GUIDELINES.md",
+            "docs/TALO_API.md",
+            "skills/ralph.md",
+            "src/api/openapi.rs"
+          ],
+          "success": [
+            "No prose in README.md, docs/ or skills/ calls the project Playzoid except where it records history",
+            "The README states Tidepool's role: hub and game server, self-hostable, open",
+            "The clawffice-design tide hue and rock-pool creature are the stated identity",
+            "The OpenAPI drift test still passes with the game routes unmoved under /v1"
+          ],
+          "tests": "cargo test openapi; grep -ri playzoid README.md docs skills | grep -v 'was Playzoid'",
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Renamed the docs and adopted the clawffice-design Tidepool identity",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.0.6",
+          "title": "TideTable task-loop integration",
+          "status": "pending",
+          "goal": "Make the TideTable loop the documented way to run this repo's plan, and remove the friction in front of it. TideTable already ships both the `tidetable` and `tt` entrypoints (v0.12.0), so no alias or wrapper is needed: confirm one is installed, document the `--local` requirement, and give the editable install to use when it is absent, so every command in docs/todo.md works as written. Point `skills/ralph.md` at the JSON plan and at `tidetable next`/`start`/`done` for claiming work, keeping its existing gate and PR rules unchanged. Record in docs/todo.md where TideTable lives and how to run it when the CLI is not installed.",
+          "touches": [
+            "skills/ralph.md",
+            "scripts/",
+            "docs/todo.md",
+            "docs/GUIDELINES.md"
+          ],
+          "success": [
+            "Every command in docs/todo.md runs as written on this machine",
+            "skills/ralph.md claims work through TideTable instead of parsing markdown task lines",
+            "The gate, branching and review rules in skills/ralph.md are unchanged",
+            "A checkout with TideTable absent fails with one sentence saying where to get it"
+          ],
+          "tests": "Run the documented commands end to end: validate, ready, next, start, done on a scratch copy of the plan.",
+          "prerequisites": [
+            "1.0.4"
+          ],
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "changelog": "Wired the TideTable task loop into ralph and the docs",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "1.1",
+      "title": "Pool identity: organization, members, API keys",
+      "goal": "The pool knows who owns it and who may operate it. One organization per pool, operator accounts bootstrappable from the environment, team members with roles, and scoped API keys whose secrets are shown once. This is what every later phase authorizes against.",
+      "prerequisites": [
+        "1.0"
+      ],
+      "tasks": [
+        {
+          "id": "1.1.1",
+          "title": "Organization, operator accounts and pool bootstrap",
+          "status": "pending",
+          "goal": "Migration and service for `organizations` and `pool_users` (email, password_hash via Argon2id, display name, role). First run offers browser setup; an unattended deployment can instead bootstrap the first operator from TIDEBOOT_* environment variables (organization name, owner email, temporary password of at least 12 characters) and the password must be changed on first sign-in. One organization per pool in v1; multi-tenancy is deferred and recorded.",
+          "touches": [
+            "migrations/",
+            "src/entities/organization.rs",
+            "src/entities/pool_user.rs",
+            "src/services/pool_identity.rs",
+            "src/api/pool_identity.rs",
+            "src/config.rs"
+          ],
+          "success": [
+            "A fresh database can be bootstrapped from the environment with no browser step",
+            "Passwords are Argon2id PHC strings; no plaintext is stored or logged",
+            "The bootstrap password is refused after first change and never re-applied on restart",
+            "A second organization cannot be created through any endpoint"
+          ],
+          "tests": "Unit tests for bootstrap-once semantics, short-password rejection and role defaults; integration tests in tests/pool_identity_integration.rs against the dev stack.",
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "Bootstrap credential is a privileged secret: never log it, never store it after first change, and require TLS in any deployment that exposes it.",
+          "changelog": "Added pool organizations, operator accounts and environment bootstrap",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.1.2",
+          "title": "Team members, roles and invitations",
+          "status": "pending",
+          "goal": "Members belong to the organization with a role (owner, admin, member, viewer) and an invitation flow: invite by email, single-use expiring token, accept sets the password. Roles decide what the control plane and the API allow; a viewer may read, an admin may change configuration, an owner may manage members and keys.",
+          "touches": [
+            "migrations/",
+            "src/entities/pool_user.rs",
+            "src/services/pool_identity.rs",
+            "src/api/pool_identity.rs",
+            "src/middleware/auth.rs"
+          ],
+          "success": [
+            "Invitations expire and cannot be reused",
+            "A viewer is refused every mutating hub route with 403",
+            "Removing a member immediately invalidates their sessions and tokens",
+            "The last owner cannot be removed or demoted"
+          ],
+          "tests": "Unit tests for role checks and invitation lifecycle; integration tests for the 403 matrix per role.",
+          "prerequisites": [
+            "1.1.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added pool members, roles and invitations",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.1.3",
+          "title": "API keys with scopes, one-time secrets and audit",
+          "status": "pending",
+          "goal": "Organization-scoped API keys for automation, with selectable scopes: projects:read, configuration:validate, configuration:install, runs:dispatch, daemons:enroll. The full secret is returned exactly once at creation and only a prefix plus a hash is stored. The pool records creation, selected scopes, last-used time and status, and refuses a valid key that lacks the scope an endpoint needs with 403. Revoking a key rejects its future requests immediately and expires any unconsumed enrollment token it issued.",
+          "touches": [
+            "migrations/",
+            "src/entities/api_key.rs",
+            "src/services/api_keys.rs",
+            "src/api/api_keys.rs",
+            "src/middleware/api_key.rs"
+          ],
+          "success": [
+            "The secret is shown once; a second read returns the prefix only",
+            "A key without the needed scope is 403, not 401",
+            "Revocation takes effect on the next request",
+            "Every hub mutation is attributable to a key or a member in the audit trail"
+          ],
+          "tests": "Unit tests for scope matching, hashing and revocation; integration tests for the 401/403 split and one-time secret.",
+          "prerequisites": [
+            "1.1.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "Store only a hash plus a display prefix; never log a secret; scope names are part of the public API contract.",
+          "changelog": "Added scoped pool API keys with one-time secrets and audit",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.1.4",
+          "title": "Hub API error contract and OpenAPI extension",
+          "status": "pending",
+          "goal": "One error shape for the hub API: RFC 9457 problem details (type, title, status, detail, code, requestId) with application/problem+json, applied to every hub route, with a documented code taxonomy for the failures later phases return (unauthorized, missing scope, daemon_not_connected, configuration invalid, conflict). Extend the existing single `ROUTES` table and the OpenAPI job so hub routes and their required scopes are documented and drift still fails CI.",
+          "touches": [
+            "src/api/problem.rs",
+            "src/api/openapi.rs",
+            "src/middleware/",
+            ".github/workflows/ci.yml"
+          ],
+          "success": [
+            "Every hub route answers failures in the problem-details shape",
+            "Each documented route lists its required scope",
+            "The OpenAPI drift test fails if a hub route is missing from the table",
+            "The game API's existing error bodies are unchanged"
+          ],
+          "tests": "Unit tests per error constructor; integration tests asserting content-type and body for 400/401/403/404/409/422/503; cargo test openapi.",
+          "prerequisites": [
+            "1.1.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added the RFC 9457 hub error contract and OpenAPI scope documentation",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "1.2",
+      "title": "Hosts: enrollment, presence, capability",
+      "goal": "A host is one machine enrolled with the pool. Enrolling is an explicit two-step exchange that leaves the pool holding a hash and the host holding its own credential. The pool can then see whether the host is online, whether it is allowed to run agents at all, and what it can actually run.",
+      "prerequisites": [
+        "1.1"
+      ],
+      "tasks": [
+        {
+          "id": "1.2.1",
+          "title": "Host registry: immutable id, mutable slug",
+          "status": "pending",
+          "goal": "Migration and service for `hosts`: an immutable generated id, a friendly slug derived from the hostname and de-duplicated with a short suffix, a display name, status (approval required, connected, offline, revoked) and timestamps. Renaming the slug is allowed and does not change the id; an environment that referenced the old slug fails activation rather than failing at dispatch. Revoking from the pool ends the relationship while the host keeps running local work.",
+          "touches": [
+            "migrations/",
+            "src/entities/host.rs",
+            "src/services/hosts.rs",
+            "src/api/hosts.rs"
+          ],
+          "success": [
+            "Slug normalization lowercases and hyphenates, and never collides",
+            "Rename keeps the id and is visible in the API",
+            "Revoked hosts are refused at every endpoint and disappear from dispatch targets",
+            "A configuration referencing an unknown slug fails activation with a named field"
+          ],
+          "tests": "Unit tests for slug derivation, collision suffixing and normalization; integration tests for rename, revoke and unknown-slug activation.",
+          "prerequisites": [
+            "1.1.3"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added the pool host registry",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.2.2",
+          "title": "Enrollment tokens and host relationship credentials",
+          "status": "pending",
+          "goal": "POST /api/v1/hosts/enrollment-tokens (scope daemons:enroll, renamed hosts:enroll if the naming proposal lands) mints a short-lived single-use token, ten minutes, consumed on enrollment. The host exchanges it for its own long-lived relationship credential, which the host generates and keeps and the pool stores only as a hash. One host has at most one pool relationship; enrolling an already-enrolled host is refused. An enrollment token cannot be reused, and revoking the issuing key expires unconsumed tokens.",
+          "touches": [
+            "migrations/",
+            "src/entities/enrollment_token.rs",
+            "src/entities/host_credential.rs",
+            "src/services/enrollment.rs",
+            "src/api/enrollment.rs"
+          ],
+          "success": [
+            "A token expires after ten minutes and is refused after one use",
+            "The relationship credential is never returned by any read endpoint",
+            "A second enrollment for the same host is refused",
+            "Revoking the issuing API key expires its unconsumed tokens"
+          ],
+          "tests": "Unit tests for expiry, single-use and hash-only storage; integration tests for the full enroll exchange and the reuse/expiry refusals.",
+          "prerequisites": [
+            "1.2.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "This is the pool's trust boundary with a machine: single-use tokens, hashed credentials, no reuse, and a documented revocation path.",
+          "changelog": "Added host enrollment tokens and relationship credentials",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.2.3",
+          "title": "Host presence and heartbeat",
+          "status": "pending",
+          "goal": "An enrolled host holds a connection to the pool and the pool tracks presence: connected and accepting dispatch, offline, or revoked. A missed heartbeat marks the host offline and an event for an offline host fails dispatch with a named code (daemon_not_connected) instead of being queued for later, so the trigger must fire again. Presence is derived from the connection plus heartbeat, never from a client-supplied field.",
+          "touches": [
+            "src/services/host_presence.rs",
+            "src/api/hosts.rs",
+            "src/sockets/",
+            "src/middleware/metrics.rs"
+          ],
+          "success": [
+            "Connecting and disconnecting moves the host between online and offline",
+            "A stale heartbeat marks the host offline within the configured window",
+            "Dispatch to an offline host fails immediately with the documented code",
+            "A gauge reports connected hosts"
+          ],
+          "tests": "Unit tests with an injectable clock for heartbeat expiry; integration tests for connect, drop and dispatch-while-offline.",
+          "prerequisites": [
+            "1.2.2"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added host presence and heartbeat",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.2.4",
+          "title": "Host execution permission and capability report",
+          "status": "pending",
+          "goal": "Enrolling a host does not let the pool start agents on it. `host.execute` is a separate grant made from the machine, defaulting to no, and until it is granted the host is listed as connected-only. With the grant, the host reports what it can run: providers, models, execution modes and thinking options, each with the provider-native options it accepts. The pool asks for that report and validates a trigger's agent selection against it, so an agent a host cannot run is refused at save time with the field named, not at first run.",
+          "touches": [
+            "migrations/",
+            "src/entities/host_capability.rs",
+            "src/services/host_capability.rs",
+            "src/api/hosts.rs"
+          ],
+          "success": [
+            "A host without the grant cannot be selected as an execution target",
+            "Connecting-only hosts are labelled as such and show the grant operation",
+            "Saving a trigger naming an unavailable provider, model or mode is refused, naming the field",
+            "Only the grantable provider set is offered for pooled execution"
+          ],
+          "tests": "Unit tests for capability validation and field naming; integration tests for grant, revoke and save-time refusal.",
+          "prerequisites": [
+            "1.2.3"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "Execution authority is granted by the machine, never assumed by the pool; a permission grant is not a sandbox.",
+          "changelog": "Added host execution permission and capability reporting",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.2.5",
+          "title": "Pool host protocol and reference host agent",
+          "status": "pending",
+          "goal": "Write the pool host protocol down: connection and authentication with the relationship credential, presence heartbeat, capability report, create-agent intent with a stable execution id, idempotent replay after a pool restart or a lost response, observation of output, completion, and interruption. Ship a minimal reference host agent that implements it, so the hub is testable end to end before Limpet exists. The protocol is framed by the pool, versioned, and documented for Limpet to implement unchanged.",
+          "touches": [
+            "docs/HOST_PROTOCOL.md",
+            "src/services/host_protocol.rs",
+            "crates/tidepool-host-agent/",
+            "Cargo.toml"
+          ],
+          "success": [
+            "docs/HOST_PROTOCOL.md specifies every frame, version and failure mode",
+            "The reference agent can be enrolled, report capabilities, accept one create-agent intent and report completion",
+            "A resent create intent returns the existing execution instead of running the prompt twice",
+            "A host that loses and regains its connection recovers without duplicating an execution"
+          ],
+          "tests": "Unit tests for intent idempotency and replay; an end-to-end test that enrolls the reference agent and runs one execution against it.",
+          "prerequisites": [
+            "1.2.4"
+          ],
+          "complexity": "Very High",
+          "agent": "flagship",
+          "changelog": "Specified the pool host protocol and added a reference host agent",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "1.3",
+      "title": "Connections: GitHub, Slack, Discord",
+      "goal": "A connection is a provider account the pool may receive events from. Each provider has its own transport, its own verification, and its own resource identity (repository, workspace, guild). Configuring a connection is the operator's job; receiving an event is the pool's.",
+      "prerequisites": [
+        "1.2"
+      ],
+      "tasks": [
+        {
+          "id": "1.3.1",
+          "title": "Connection model and provider registry",
+          "status": "pending",
+          "goal": "Migration and service for `connections`: provider kind, slug, display name, the provider resource identities it may deliver for, credentials (secret references, never inline in configuration), and status. A trait per provider kind covers transport, signature verification and resource resolution, so triggers can be validated against a connection before anything is live. A complete environment configuration takes precedence over a saved one and is labelled as managed by environment.",
+          "touches": [
+            "migrations/",
+            "src/entities/connection.rs",
+            "src/services/connections/",
+            "src/api/connections.rs"
+          ],
+          "success": [
+            "A connection can be created, listed, renamed, disabled and deleted",
+            "Provider credentials are validated before saving and are never returned by a read",
+            "Environment-configured connections are labelled and take precedence",
+            "Adding a provider kind means adding one implementation of the trait"
+          ],
+          "tests": "Unit tests against a scripted provider trait for verify and resolve; integration tests for CRUD, precedence and secret redaction.",
+          "prerequisites": [
+            "1.1.4"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "Credentials live in the environment or a secret store, not in the pool's configuration documents; a read endpoint never echoes a secret.",
+          "changelog": "Added the connection model and provider registry",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.3.2",
+          "title": "GitHub connection",
+          "status": "pending",
+          "goal": "A GitHub App connection: webhook receipt with signature verification, delivery ids for deduplication, and resolution of a repository to the connection that owns it. Expose the events triggers may match: issue created, pull request created, issue comment created, pull request comment created, issue label added, pull request label added, plus the legacy events the trigger reference keeps compatible. A repository the organization has no connection for fails activation.",
+          "touches": [
+            "src/services/connections/github.rs",
+            "src/api/webhooks/github.rs",
+            "docs/CONNECTIONS.md"
+          ],
+          "success": [
+            "A delivery with a bad signature is rejected and never reaches trigger matching",
+            "A duplicate delivery id is recorded once",
+            "Every documented event maps to a typed internal event",
+            "An unknown repository is refused at configuration validation"
+          ],
+          "tests": "Unit tests with recorded delivery fixtures for signature verification, dedup and each event mapping; integration tests for the webhook route.",
+          "prerequisites": [
+            "1.3.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added GitHub connections and webhook intake",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.3.3",
+          "title": "Slack connection",
+          "status": "pending",
+          "goal": "A Slack connection supporting both socket mode (no public address needed) and the webhook transport, with mention events, team resource resolution and channel filters. Reply capability `slack.reply` is registered for steps that declare it, with a maximum and an optional required flag.",
+          "touches": [
+            "src/services/connections/slack.rs",
+            "src/api/webhooks/slack.rs",
+            "src/services/outputs.rs",
+            "docs/CONNECTIONS.md"
+          ],
+          "success": [
+            "Socket mode and webhook transport both deliver a mention event",
+            "The mention is removed before the request text is exposed to a prompt",
+            "A step that declares a required reply cannot finish without emitting one",
+            "Replies go to the channel or thread the event came from"
+          ],
+          "tests": "Unit tests for event normalization, mention stripping and output capability enforcement; integration tests for both transports.",
+          "prerequisites": [
+            "1.3.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added Slack connections with socket mode and webhooks",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.3.4",
+          "title": "Discord connection",
+          "status": "pending",
+          "goal": "A Discord connection over the bot gateway with guild resource resolution, channel filters and mention events, and the `discord.reply` output capability with the same maximum and required semantics as Slack.",
+          "touches": [
+            "src/services/connections/discord.rs",
+            "src/services/outputs.rs",
+            "docs/CONNECTIONS.md"
+          ],
+          "success": [
+            "A guild mention becomes a typed event",
+            "Gateway reconnection resumes without duplicating an already-received event",
+            "Replies land in the originating channel or thread",
+            "A guild the organization has no connection for fails activation"
+          ],
+          "tests": "Unit tests for event normalization and resume dedup; integration tests with a scripted gateway.",
+          "prerequisites": [
+            "1.3.3"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added Discord connections over the bot gateway",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "1.4",
+      "title": "Projects, triggers, workflows and dispatch",
+      "goal": "This is the hub's core loop. A project holds one active configuration revision, authored in the repository as declarative files. A trigger says which verified provider event may start a workflow and who is allowed to cause it. A workflow runs ordered steps, each on a named environment, with its own agent, prompt, limits and declared outputs. Dispatch ties it together: an event or a manual request becomes a run on a host, idempotently and recoverably.",
+      "prerequisites": [
+        "1.3"
+      ],
+      "tasks": [
+        {
+          "id": "1.4.1",
+          "title": "Project model and configuration revisions",
+          "status": "pending",
+          "goal": "Migration and service for `projects` (slug, name) and `configuration_revisions`: an immutable authored file set, a version number, an active flag, and the validation result. Validation resolves every reference in the bundle (connections, hosts, environments, named agents, partials) and either activates the new revision or, on failure, keeps the previous active revision and returns the named field errors. The exact authored files are stored, not a normalized form.",
+          "touches": [
+            "migrations/",
+            "src/entities/project.rs",
+            "src/entities/configuration_revision.rs",
+            "src/services/projects.rs",
+            "src/services/configuration.rs",
+            "src/api/projects.rs"
+          ],
+          "success": [
+            "A failed activation leaves the previous revision active and reports field issues",
+            "A revision is immutable once stored",
+            "Every reference type is resolved, and an unresolvable one names the field and the revision",
+            "Projects are scoped to the organization the credential belongs to"
+          ],
+          "tests": "Unit tests for reference resolution and each unresolvable case; integration tests for install-then-fail-then-still-active.",
+          "prerequisites": [
+            "1.3.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added the project model and configuration revisions",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.4.2",
+          "title": "Trigger schema and validation endpoint",
+          "status": "pending",
+          "goal": "The trigger document: the event it listens for, its filters, and the run it starts. `filters` is required and `from_users` must be present and non-empty, because the allowlist is what keeps a stranger's comment on a public issue from starting an agent on someone's machine. Filters cover the provider resource, the connection, the invoking user, channel or label, and a contains or pattern guard; all conditions must pass and there is no any mode. POST /api/v1/triggers/validate (scope configuration:validate) compiles one document, asks the named host to check the agent it names, and returns the trigger name and whether it is valid, without changing pool state.",
+          "touches": [
+            "src/services/triggers.rs",
+            "src/services/configuration.rs",
+            "src/api/triggers.rs"
+          ],
+          "success": [
+            "A trigger with no from_users is rejected",
+            "Validation resolves the connection, resource and host, and fails activation when one is unknown",
+            "An agent the named host cannot run is refused at validation, naming the field",
+            "Validation never writes pool state"
+          ],
+          "tests": "Unit tests for every filter predicate and each rejection; integration tests for validate against a connected and an offline host.",
+          "prerequisites": [
+            "1.4.1",
+            "1.2.4"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "from_users is a required non-empty allowlist by design; a missing allowlist is a hard rejection, never a default.",
+          "changelog": "Added the trigger schema and validation endpoint",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.4.3",
+          "title": "Trigger installation and revisions",
+          "status": "pending",
+          "goal": "POST /api/v1/triggers/install (scope configuration:install) validates the same document and then creates or replaces the project's trigger of that name, returning the trigger id, the revision, the version and whether it is active. Each installation is one request and a later failure does not undo an earlier success. Trigger names are unique per project; a replaced trigger keeps its identity so its history stays readable.",
+          "touches": [
+            "src/services/triggers.rs",
+            "src/api/triggers.rs",
+            "src/services/configuration.rs"
+          ],
+          "success": [
+            "Install creates on first call and replaces on the second",
+            "Replacement produces a new revision and deactivates the old one",
+            "An invalid document changes nothing",
+            "The response carries the trigger id, name, revision id, version and active flag"
+          ],
+          "tests": "Unit tests for create-then-replace and revision bookkeeping; integration tests for the partial-failure case across two installs.",
+          "prerequisites": [
+            "1.4.2"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added trigger installation and revision handling",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.4.4",
+          "title": "Workflow schema: steps, inputs, conditions, outputs, deadlines",
+          "status": "pending",
+          "goal": "A workflow holds one trigger and the ordered steps it starts. Steps run in file order; a step is an id, an environment, an agent (named or one complete inline configuration), a prompt built from ordered text and partial includes, an optional condition over inputs and earlier step output, an optional finite output schema whose enumerated or constant properties may bound a later choice, and the output capabilities it may emit. Deadlines are the workflow's maximum runtime and each step's own maximum runtime and idle timeout, with remaining workflow time capping both. A step may read only earlier steps; step ids are unique. The configuration bundle is capped: at most 100 files, 512-character paths, 1,000,000 characters per file, and 5,000,000 bytes of prompt partials in total, with unsafe, non-canonical, duplicate or extra paths rejected.",
+          "touches": [
+            "src/services/workflows.rs",
+            "src/services/configuration.rs",
+            "src/entities/workflow.rs"
+          ],
+          "success": [
+            "A step reading a later step is rejected",
+            "A dynamic inline agent object is rejected while a named or static one is accepted",
+            "A finite output schema bounds a later choice, and an unbounded one does not",
+            "The bundle caps are enforced with the failing path named"
+          ],
+          "tests": "Unit tests per rule and per cap; integration tests installing a two-step, one-partial workflow.",
+          "prerequisites": [
+            "1.4.1"
+          ],
+          "complexity": "Very High",
+          "agent": "flagship",
+          "changelog": "Added the workflow, step, condition and deadline schema",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.4.5",
+          "title": "Environment model",
+          "status": "pending",
+          "goal": "An environment names where a step runs: an enrolled host, a working directory that must already exist on that machine, and an optional worktree (mode, new branch, base ref). The pool never clones anything. A finite input may select one of several complete named environments; environments are never merged or overridden by a workflow. References are resolved at activation, so a host that no longer exists fails activation rather than failing at dispatch.",
+          "touches": [
+            "src/services/environments.rs",
+            "src/services/configuration.rs",
+            "src/entities/environment.rs"
+          ],
+          "success": [
+            "An environment naming an unknown host or a missing directory fails activation",
+            "No environment can be merged with another",
+            "A worktree template renders the execution id into the branch name",
+            "Dispatch to an environment needed by an offline host fails with the documented code"
+          ],
+          "tests": "Unit tests for reference resolution and template rendering; integration tests for worktree selection per execution.",
+          "prerequisites": [
+            "1.4.1",
+            "1.2.5"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added the environment model with host, directory and worktree",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.4.6",
+          "title": "Dispatch and run lifecycle",
+          "status": "pending",
+          "goal": "The pool turns a matched event or a manual request into a workflow run and evaluates its steps one at a time, honouring conditions and deadlines. A manual dispatch names the project, the trigger, the actor (which must be allowed by the trigger), an optional expected revision (rejected if no longer active), a stable client-supplied delivery key for deduplication, and an input string whose leading key=value tokens fill declared inputs while the rest becomes the request text. Hub owns creation, reconnect recovery, output observation and completion for the runs it starts, and leaves runs a person started alone. A lost create response or a pool restart resends the same create intent with the same execution id, and a host answers with the existing execution rather than running the prompt twice; an execution that closed or errored is recorded as interrupted and is never silently started again.",
+          "touches": [
+            "src/services/dispatch.rs",
+            "src/services/runs.rs",
+            "src/api/manual_runs.rs",
+            "src/entities/run.rs"
+          ],
+          "success": [
+            "A matched event creates exactly one run for its delivery key",
+            "A manual dispatch keeps the dedup promise while reserving no exactly-once delivery guarantee",
+            "Dispatch to an offline host fails with the documented code and queues nothing",
+            "A resubmitted create intent after a restart does not run the prompt twice",
+            "Conditions skip a step without failing the run, and a deadline that passes fails it and stops later steps"
+          ],
+          "tests": "Unit tests for input parsing, condition evaluation, deadlines and intent idempotency; integration tests for event dispatch, manual dispatch, dispatch-while-offline and restart recovery.",
+          "prerequisites": [
+            "1.4.3",
+            "1.4.4",
+            "1.4.5"
+          ],
+          "complexity": "Very High",
+          "agent": "flagship",
+          "changelog": "Added dispatch and the run lifecycle",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.4.7",
+          "title": "Runs, activity log and event receipts",
+          "status": "pending",
+          "goal": "A durable record of everything that arrived, what it matched, and what ran: one receipt per provider delivery (with deduplication), one row per trigger run, per step and per execution, with statuses and the output each step produced. An activity read API returns that history filtered by project, provider, trigger and status, and the run detail says whether an arrival created, continued or restored an agent. A trigger continuing a conversation reuses the agent for the same thread, issue or pull request, and steers it if it is busy, with each arrival keeping its own output limits and completion status.",
+          "touches": [
+            "migrations/",
+            "src/entities/activity.rs",
+            "src/services/activity.rs",
+            "src/api/activity.rs",
+            "src/services/dispatch.rs"
+          ],
+          "success": [
+            "Every delivery has a receipt, whether or not it matched",
+            "A duplicate delivery key does not create a second run",
+            "Activity filters combine without leaking across projects",
+            "A continuation keeps the arrival's own limits and records how it continued"
+          ],
+          "tests": "Unit tests for receipt dedup and continuation grouping; integration tests for the activity filters and page shape.",
+          "prerequisites": [
+            "1.4.6"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added the run record, activity log and event receipts",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "1.5",
+      "title": "Chatrooms and session relay",
+      "goal": "Tidepool's own surface, and the one the rest of the suite consumes: durable rooms people and agent sessions post into, read with a cursor and watched live, plus a relay so a session running on one machine can be followed from another. This is what Wheelhouse's ChatroomBackend and HubLink are written against.",
+      "prerequisites": [
+        "1.4"
+      ],
+      "tasks": [
+        {
+          "id": "1.5.1",
+          "title": "Chatroom schema",
+          "status": "pending",
+          "goal": "Migration for rooms, members and messages. A room belongs to a project, has a name, a visibility, an optional pool of origin (unset until federation lands) and timestamps. A member is a pool user or an agent session, with a join time and a role. A message has a stable id, an author reference (person or session), a body as markdown text, a creation time and an optional reply-to. Indexes support reading history by room and time and resolving a member's rooms; message ordering is server-defined and stable.",
+          "touches": [
+            "migrations/",
+            "src/entities/chatroom.rs",
+            "src/services/chatrooms.rs"
+          ],
+          "success": [
+            "Rooms, members and messages are modelled with named constraints and indexes",
+            "A message id is stable and never reused",
+            "The migration has a matching reversible down file and applies cleanly on a fresh MySQL 8",
+            "The pool-of-origin column exists and is null for every v1 room"
+          ],
+          "tests": "Apply up and down against a throwaway MySQL 8 the same way the game migrations are verified.",
+          "prerequisites": [
+            "1.1.3"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added the chatroom schema",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.5.2",
+          "title": "Chatroom HTTP API",
+          "status": "pending",
+          "goal": "List a member's rooms, list members, read room history with a cursor and a page size, and send a message. History paging is cursor-based and stable under concurrent writes; a client that has fallen behind can ask for everything after a cursor and only consider itself current when a read returns nothing newer. Sending validates body length and membership before any write.",
+          "touches": [
+            "src/api/chatrooms.rs",
+            "src/services/chatrooms.rs"
+          ],
+          "success": [
+            "Paging with a cursor is stable while new messages arrive",
+            "A non-member cannot read or send and cannot tell a private room from a missing one",
+            "Oversized or empty bodies are refused before any write",
+            "A read after the newest cursor returns an empty page, which is the currentness signal"
+          ],
+          "tests": "Unit tests for cursor arithmetic and membership gates; integration tests for concurrent-write paging and the 403/404 equivalence.",
+          "prerequisites": [
+            "1.5.1",
+            "1.1.4"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added the chatroom HTTP API with cursor paging",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.5.3",
+          "title": "Chatroom live stream and presence",
+          "status": "pending",
+          "goal": "A live stream of room messages for members, carrying the same ids the HTTP API returns so a reconnecting client can resume from a cursor without duplicating or dropping a message. Presence tracks who is currently watching a room and is explicitly not delivery: a stale presence must never make a message disappear, and a reconnected client is shown cached history labelled as catching up rather than pretending to be current.",
+          "touches": [
+            "src/services/chatrooms.rs",
+            "src/api/chatrooms.rs",
+            "src/sockets/"
+          ],
+          "success": [
+            "A client offline for a while resumes from its cursor and sees every message exactly once",
+            "Presence changes never remove a message from a client's view",
+            "A reconnecting client's history is labelled as catch-up until a fetch says it is current",
+            "The stream refuses a non-member connection"
+          ],
+          "tests": "Unit tests for resume and catch-up labelling; the existing WebSocket load-test harness proves 100 connections and 1000 messages with no drops.",
+          "prerequisites": [
+            "1.5.2"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "changelog": "Added the chatroom live stream and presence",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.5.4",
+          "title": "Agent sessions as chat participants",
+          "status": "pending",
+          "goal": "A session running on a host can join a room and post: a message authored by a session carries the session id and the project it belongs to, so a person can talk to an agent and other people can watch. Session messages use the same message model as people's, and an agent's presence in a room is shown distinctly from a person's.",
+          "touches": [
+            "src/services/chatrooms.rs",
+            "src/services/host_protocol.rs",
+            "src/entities/chatroom.rs"
+          ],
+          "success": [
+            "A session can be a room member and a message author",
+            "A message's author is rendered distinguishably for a person and a session",
+            "Session messages survive the session ending",
+            "An unknown session id cannot post"
+          ],
+          "tests": "Unit tests for the author model and membership; integration tests posting from a scripted session.",
+          "prerequisites": [
+            "1.5.3",
+            "1.2.5"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added agent sessions as chatroom participants",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.5.5",
+          "title": "Session relay",
+          "status": "pending",
+          "goal": "Publishing a session's events to the pool is opt-in per session and off by default, so nothing leaves a machine unless it is asked to. A subscribed client receives a published session's events and can fetch the events it missed, so a session started on one host can be followed from another machine or by a suite app. Publishing stops when the session ends or when the user stops it, and the relay carries no file contents, no secrets and no credential material.",
+          "touches": [
+            "src/services/relay.rs",
+            "src/api/relay.rs",
+            "docs/RELAY.md"
+          ],
+          "success": [
+            "Opt-in is per session and defaults to off",
+            "A subscriber that falls behind can backfill without duplication",
+            "Stopping publication is immediate",
+            "docs/RELAY.md states what a relayed event may and may not contain"
+          ],
+          "tests": "Unit tests for opt-in state, backfill and stop; integration tests following a scripted session across two clients.",
+          "prerequisites": [
+            "1.5.4"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "The relay is the one path that moves session data off a machine: default off, per-session opt-in, and an explicit allowlist of fields that may cross.",
+          "changelog": "Added the opt-in session relay",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "1.6",
+      "title": "Self-hosting and operations",
+      "goal": "A pool that an operator can actually run: one compose stack, a documented bootstrap, forward-only migrations with a backup story, metrics that say whether the hub is working, and a deployment on the VPS with TLS.",
+      "prerequisites": [
+        "1.5"
+      ],
+      "tasks": [
+        {
+          "id": "1.6.1",
+          "title": "Compose stack and bootstrap",
+          "status": "pending",
+          "goal": "A compose stack bringing up the pool with MySQL and Redis, a documented public origin setting, a bootstrap-from-environment path for unattended installs, and a browser setup path for the default case. The stack publishes one port and stores its data in a named volume. Document how to point a reverse proxy at it and which settings must change when the public origin changes.",
+          "touches": [
+            "docker-compose.yml",
+            "config/",
+            "docs/SELF_HOSTING.md",
+            ".env.example"
+          ],
+          "success": [
+            "`docker compose up -d` on a clean machine yields a reachable pool with no manual SQL",
+            "The bootstrap path creates the first operator without a browser",
+            "The public origin is one setting and its consequences are documented",
+            "Data survives a restart of the stack"
+          ],
+          "tests": "Bring the stack up on a clean checkout, bootstrap, sign in, restart, and confirm the account and configuration survive.",
+          "prerequisites": [
+            "1.4.7"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added the self-hosting compose stack and bootstrap",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.6.2",
+          "title": "Migrations, backup and restore",
+          "status": "pending",
+          "goal": "Migrations stay forward-only and run at startup, and the pool does not start listening when a migration fails. Document what the database holds (accounts, connection credentials, configuration revisions, execution history), how to back up and restore it, and what is lost by restoring an older copy. Embedded-database mode is not offered; MySQL is the single supported store per the standing decision.",
+          "touches": [
+            "src/main.rs",
+            "docs/SELF_HOSTING.md",
+            "docs/memory.md"
+          ],
+          "success": [
+            "A failed migration stops startup with a clear message",
+            "There is no code path that starts the pool against a partially migrated schema",
+            "docs/SELF_HOSTING.md has a tested backup and restore procedure",
+            "The MySQL-versus-embedded decision and its reasoning are recorded in docs/memory.md"
+          ],
+          "tests": "Run the pool against an intentionally broken migration and assert it exits; run the documented backup and restore against the dev stack.",
+          "prerequisites": [
+            "1.6.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Documented and enforced the migration, backup and restore contract",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.6.3",
+          "title": "Hub observability",
+          "status": "pending",
+          "goal": "Extend the existing Prometheus surface with the signals an operator needs for the hub: runs started and finished by outcome, dispatch failures by named code, connected hosts, connected chatroom viewers, enrollment tokens issued and consumed, and webhook deliveries accepted, deduplicated and rejected. Logs gain the request id from the error contract so a failure a client reports can be found in the log.",
+          "touches": [
+            "src/middleware/metrics.rs",
+            "src/api/metrics.rs",
+            "src/services/"
+          ],
+          "success": [
+            "Every named dispatch failure code has a counter",
+            "A gauge reports connected hosts and chatroom viewers",
+            "A rejected webhook and a deduplicated one are distinguishable",
+            "A request id in an error body can be found in the logs"
+          ],
+          "tests": "Unit tests asserting each new metric family renders after a sample; integration tests scraping /metrics after a dispatch and a rejected webhook.",
+          "prerequisites": [
+            "1.4.7",
+            "1.5.3"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "changelog": "Added hub observability metrics and request-id logging",
+          "created_at": "2026-10-19T00:00:00Z"
+        },
+        {
+          "id": "1.6.4",
+          "title": "VPS deployment with TLS",
+          "status": "pending",
+          "goal": "Deploy a pool to the VPS behind a TLS-terminating reverse proxy, with the public origin set, the bootstrap credential consumed and removed, and a documented upgrade procedure (pull, backup, deploy, verify). Record the hostname, the certificate renewal path and the rollback step.",
+          "touches": [
+            "docs/SELF_HOSTING.md",
+            "deploy/"
+          ],
+          "success": [
+            "The pool answers on its documented hostname over HTTPS only",
+            "The bootstrap password is removed from the environment after first sign-in",
+            "An upgrade and a rollback are both documented and were both performed once",
+            "No secret is present in the repository or in an image layer"
+          ],
+          "tests": "Deploy, sign in, enrol one host, dispatch one run, then roll back one version and confirm the pool still starts.",
+          "prerequisites": [
+            "1.6.2"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "security_notes": "Production deployment: TLS only, no bootstrap credential left in the environment, and secrets sourced outside the repository.",
+          "changelog": "Deployed a pool to the VPS with TLS",
+          "created_at": "2026-10-19T00:00:00Z"
+        }
+      ]
+    }
+  ]
+}

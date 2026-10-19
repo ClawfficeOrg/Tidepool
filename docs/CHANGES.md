@@ -2,6 +2,46 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-19 — Playzoid becomes Tidepool; TideTable is the plan
+
+Documentation and planning change only. No code, API, schema or config change
+yet; the rename tasks in `docs/todo-v1.json` (1.0.1–1.0.3, 1.0.5) carry the
+implementation.
+
+### Changed
+- **Product name: Playzoid → Tidepool.** The suite's design system
+  (`clawffice-design`) had already assigned this product the name Tidepool (hub
+  and game server, hue `tide`). The repository becomes `ClawfficeOrg/Tidepool`,
+  the crate and binary `tidepool`, and the Prometheus prefix `tidepool_*`.
+  Renaming the metric prefix is a **breaking change** for anyone scraping
+  `/metrics`: `playzoid_http_requests_total`,
+  `playzoid_http_request_duration_seconds`, `playzoid_ws_connections` and
+  `playzoid_db_pool_connections` become `tidepool_*`. GitHub keeps a redirect
+  from the old repository name. The game API surface does not change.
+- **The plan is now TideTable JSON.** `docs/todo-v1.json` (v1, ships `0.5.0`)
+  is the rename and the hub; `docs/todo-v2.json` (v2, ships `0.6.0`) is the
+  clients (contract, TypeScript/Rust/Python SDKs, CLI, Svelte control plane,
+  ratatui console, Zoid reference client). Task ids, the `task/vX.Y.Z` branch
+  pattern and the CI-green merge gate are unchanged.
+- `docs/todo-v0.md` and `docs/todo-v1.md` are **frozen** as the record of
+  releases 0.1–0.4 and take no new tasks; `docs/todo.md` is now the index and
+  points at the TideTable files.
+
+### Added
+- `docs/todo-v1.json` — TideTable v1 plan (rename, pool identity, hosts,
+  connections, triggers/workflows/dispatch, chatrooms + session relay,
+  self-hosting).
+- `docs/todo-v2.json` — TideTable v2 plan (the client surfaces above).
+- `docs/HUB_CAPABILITIES.md` — Paseo Hub read and mapped to Tidepool capability
+  by capability. Read for product shape only: no Paseo code, schema,
+  configuration format, database or wire protocol is copied or ported.
+
+### Notes
+- Cross-file prerequisites do not validate in TideTable, so `docs/todo-v2.json`
+  records its v1 dependencies in a `requires_v1` field (documented under
+  `meta.cross_file_dependencies`). A supervisor must not start a v2 task while
+  those entries are pending.
+
 ## [0.4.0] — 2026-08-27 — Analytics, Config, Feedback & Production Hardening
 
 Release of the full Phase 0.4 line (tasks 0.4.1–0.4.13). Highlights:
