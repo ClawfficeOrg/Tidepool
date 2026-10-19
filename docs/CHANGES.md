@@ -83,6 +83,16 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   22 route specs, 19 of them under `/v1/`, with only `/healthz`, `/metrics` and
   `/openapi.json` outside it.
 
+### TideTable task loop (task 1.0.6)
+- `skills/ralph.md` drives the TideTable plan: `validate`, `ready --disjoint`,
+  `next`, `start` to claim under a lease, `look-defer` when the PR opens and
+  `look-clear` after merge. It no longer parses markdown task lines, and the
+  frozen `todo-v0/v1` files are read-only history.
+- `scripts/check-tidetable.sh` fails with one sentence when `tidetable` is not
+  on PATH, naming where to install it from; `docs/todo.md` documents the same.
+- `docs/GUIDELINES.md` PR and release steps reference task ids in the TideTable
+  plan instead of the retired markdown files.
+
 ## [0.4.0] — 2026-08-27 — Analytics, Config, Feedback & Production Hardening
 
 Release of the full Phase 0.4 line (tasks 0.4.1–0.4.13). Highlights:

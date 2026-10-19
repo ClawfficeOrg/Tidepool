@@ -186,7 +186,7 @@
         {
           "id": "1.0.6",
           "title": "TideTable task-loop integration",
-          "status": "pending",
+          "status": "done",
           "goal": "Make the TideTable loop the documented way to run this repo's plan, and remove the friction in front of it. TideTable already ships both the `tidetable` and `tt` entrypoints (v0.12.0), so no alias or wrapper is needed: confirm one is installed, document the `--local` requirement, and give the editable install to use when it is absent, so every command in docs/todo.md works as written. Point `skills/ralph.md` at the JSON plan and at `tidetable next`/`start`/`done` for claiming work, keeping its existing gate and PR rules unchanged. Record in docs/todo.md where TideTable lives and how to run it when the CLI is not installed.",
           "touches": [
             "skills/ralph.md",
@@ -207,7 +207,8 @@
           "complexity": "Low",
           "agent": "basic_dev_agent",
           "changelog": "Wired the TideTable task loop into ralph and the docs",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T21:01:23Z"
         }
       ]
     },

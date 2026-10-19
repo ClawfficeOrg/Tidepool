@@ -37,6 +37,11 @@ TideTable is installed (`tidetable` and `tt`, v0.12.0) and works from any
 directory. `--local` is required when the first argument is a plan file:
 without it the CLI runs in hub/server mode and treats the path as a slug.
 
+If `tidetable` is not on PATH, stop: `scripts/check-tidetable.sh` prints the
+one-sentence install instruction and exits 1. Install with
+`uv tool install --editable ~/git_repos/clawffice/TideTable` (or `pipx`), or
+fall back to `(cd ~/git_repos/clawffice/TideTable && python3 -m tidetable --local ...)`.
+
 ```sh
 TODO=~/git_repos/Clawffice/Playzoid-Server/docs/todo-v1.json
 
@@ -47,11 +52,6 @@ tidetable --local next "$TODO" --json
 tidetable --local start "$TODO" 1.0.2 --owner ralph
 tidetable --local done "$TODO" 1.0.2
 ```
-
-If the CLI is ever missing, install it from the checkout:
-`uv tool install --editable ~/git_repos/clawffice/TideTable` (or
-`pipx install --editable ...`), or fall back to
-`(cd ~/git_repos/clawffice/TideTable && python3 -m tidetable --local ...)`.
 
 - One task per loop; `start` records the claim and the lease, so two agents
   cannot take the same task and a crashed session's task returns to the pool.
