@@ -6,8 +6,8 @@ markdown files are the historical record and take no new tasks.
 ## Current
 
 - [`todo-v1.json`](todo-v1.json) — **v1.x**, ships `0.5.0`: the rename from
-  Playzoid, pool identity, hosts, connections, triggers and workflows, dispatch
-  and the run record, chatrooms and the session relay, self-hosting.
+  its former name, pool identity, hosts, connections, triggers and workflows,
+  dispatch and the run record, chatrooms and the session relay, self-hosting.
   ⭐ active line.
 - [`todo-v2.json`](todo-v2.json) — **v2.x**, ships `0.6.0`: the clients. The
   hub API contract, TypeScript / Rust / Python SDKs with one conformance suite,

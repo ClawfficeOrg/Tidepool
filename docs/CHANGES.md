@@ -69,6 +69,20 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   applied. `docs/README.md` documents how to carry an existing `playzoid_dev`
   volume over to `tidepool_dev` without losing data.
 
+### Docs, branding and the game-API guard (task 1.0.5)
+- New root `README.md`: Tidepool's role (hub and game server, self-hostable,
+  open), the clawffice-design identity (tide hue, water current, rock-pool
+  creature), quick start, endpoints, metrics prefix and repository layout.
+  Design tokens are referenced from `clawffice-design`, not vendored.
+- `docs/README.md`, `docs/GUIDELINES.md`, `docs/TALO_API.md` and
+  `skills/ralph.md` no longer call the current project by its former name;
+  historical records (`CHANGES.md`, `memory.md`, `RECOVERY_PLAN.md`, the frozen
+  todo files, `ralph-log.md`, `learnings.md`) keep the old name where they
+  record history.
+- OpenAPI gains `game_routes_are_unmoved_under_v1`: the table must still hold
+  22 route specs, 19 of them under `/v1/`, with only `/healthz`, `/metrics` and
+  `/openapi.json` outside it.
+
 ## [0.4.0] — 2026-08-27 — Analytics, Config, Feedback & Production Hardening
 
 Release of the full Phase 0.4 line (tasks 0.4.1–0.4.13). Highlights:

@@ -2,7 +2,7 @@
 
 # Docs Index
 
-This docs/ directory contains design and implementation plans for the Playzoid-Server (Talo-compatible Rust backend).
+This docs/ directory contains design and implementation plans for the Tidepool project (Talo-compatible game server and hub).
 
 - PLAN.md — high-level plan and architecture notes
 - TaloRustServerPlan.md — detailed plan for the Rust replacement server

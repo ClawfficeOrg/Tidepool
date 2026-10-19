@@ -160,7 +160,7 @@
         {
           "id": "1.0.5",
           "title": "Docs, branding and design-token sweep",
-          "status": "pending",
+          "status": "done",
           "goal": "Rewrite the prose that still describes Playzoid as a Talo clone: README.md, docs/README.md, docs/GUIDELINES.md, docs/TALO_API.md's successor naming, skills/ralph.md, and the source doc comments. Adopt the clawffice-design Tidepool identity (product hue tide, current water, creature the rock pool) in the README. Vendor nothing at run time: the tokens are referenced, not imported. Also add the guard that proves the rename did not move the game API: the OpenAPI `ROUTES` table still describes the same 22 game routes under /v1.",
           "touches": [
             "README.md",
@@ -180,7 +180,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Renamed the docs and adopted the clawffice-design Tidepool identity",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-19T20:58:23Z"
         },
         {
           "id": "1.0.6",

@@ -2,3 +2,5 @@
 {"at": "2026-10-19T20:28:34Z", "event": "done", "task": "1.0.2", "owner": "opencode", "from": "in_progress", "to": "done"}
 {"at": "2026-10-19T20:44:13Z", "event": "start", "task": "1.0.3", "owner": "opencode", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-19T21:44:13Z"}
 {"at": "2026-10-19T20:46:08Z", "event": "done", "task": "1.0.3", "owner": "opencode", "from": "in_progress", "to": "done"}
+{"at": "2026-10-19T20:53:59Z", "event": "start", "task": "1.0.5", "owner": "opencode", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-19T21:53:59Z"}
+{"at": "2026-10-19T20:58:23Z", "event": "done", "task": "1.0.5", "owner": "opencode", "from": "in_progress", "to": "done"}
