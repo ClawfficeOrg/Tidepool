@@ -1,4 +1,4 @@
-//! Playzoid Server library crate.
+//! Tidepool Server library crate.
 //!
 //! Exposes all application modules so that integration tests in `tests/` can
 //! build a test `App` using the same route configuration and service layer as

@@ -293,7 +293,7 @@ fn document() -> OpenApi {
     .collect();
 
     let info = InfoBuilder::new()
-        .title("Playzoid Server API")
+        .title("Tidepool Server API")
         .version("1.0.0")
         .description(Some("Talo-compatible game backend API (v0.x line)"))
         .build();
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn document_has_expected_meta() {
         let doc = document();
-        assert_eq!(doc.info.title, "Playzoid Server API");
+        assert_eq!(doc.info.title, "Tidepool Server API");
         assert!(doc.paths.paths.contains_key("/v1/auth/register"));
         assert!(doc.paths.paths.contains_key("/metrics"));
         assert!(doc.paths.paths.contains_key("/openapi.json"));

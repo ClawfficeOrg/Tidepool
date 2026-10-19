@@ -4,9 +4,8 @@
 
 ## [Unreleased] — 2026-10-19 — Playzoid becomes Tidepool; TideTable is the plan
 
-Documentation and planning change only. No code, API, schema or config change
-yet; the rename tasks in `docs/todo-v1.json` (1.0.1–1.0.3, 1.0.5) carry the
-implementation.
+Documentation and planning change plus the first implementation task. The plan
+is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 
 ### Changed
 - **Product name: Playzoid → Tidepool.** The suite's design system
@@ -41,6 +40,24 @@ implementation.
   records its v1 dependencies in a `requires_v1` field (documented under
   `meta.cross_file_dependencies`). A supervisor must not start a v2 task while
   those entries are pending.
+
+### Crate, binary and Prometheus namespace (task 1.0.2)
+- The Cargo package is `tidepool`, so the binary is `target/{debug,release}/tidepool`
+  and the Docker entrypoint is `/app/tidepool`. `use playzoid_server::…` in
+  `src/` and `tests/` becomes `use tidepool::…`, and the CI OpenAPI job boots
+  `./target/debug/tidepool`.
+- **Breaking for scrapers:** the Prometheus prefix is now `tidepool_`. The four
+  series rename with no compatibility aliases:
+
+  | Old | New |
+  |---|---|
+  | `playzoid_http_requests_total` | `tidepool_http_requests_total` |
+  | `playzoid_http_request_duration_seconds` | `tidepool_http_request_duration_seconds` |
+  | `playzoid_ws_connections` | `tidepool_ws_connections` |
+  | `playzoid_db_pool_connections` | `tidepool_db_pool_connections` |
+
+  Dashboards, alerts and recording rules matching the old names must be updated.
+  The HTTP API surface is unchanged.
 
 ## [0.4.0] — 2026-08-27 — Analytics, Config, Feedback & Production Hardening
 

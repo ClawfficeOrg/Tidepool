@@ -11,7 +11,7 @@
 //!   recurses into the very alias holding the player and is always
 //!   `[Circular]` in upstream samples.
 //! - Upstream's `Player.groups` (`{ id, name }[]`) is not modelled yet;
-//!   Playzoid has no player-group persistence.
+//!   Tidepool has no player-group persistence.
 //! - Alias-level timestamps are `Option` because upstream serializes them in
 //!   channel payloads but omits them inside leaderboard entry samples.
 

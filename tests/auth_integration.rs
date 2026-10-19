@@ -4,20 +4,20 @@
 //! Run with: `cargo test --test auth_integration -- --ignored`
 //!
 //! Defaults to the Docker dev stack:
-//!   mysql://playzoid:password@127.0.0.1:3306/playzoid_dev
+//!   mysql://tidepool:password@127.0.0.1:3306/tidepool_dev
 //! Override with `DATABASE_URL` / `REDIS_URL` env vars.
 
 use actix_web::{App, http::StatusCode, test, web};
-use playzoid_server::{
+use redis::aio::ConnectionManager;
+use serde_json::Value;
+use tidepool::{
     api,
     config::{Config, RateLimitConfig},
     db,
 };
-use redis::aio::ConnectionManager;
-use serde_json::Value;
 use uuid::Uuid;
 
-const DEFAULT_DB_URL: &str = "mysql://playzoid:password@127.0.0.1:3306/playzoid_dev";
+const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";
 const JWT_SECRET: &str = "integration-test-jwt-secret-min-32-chars";
 

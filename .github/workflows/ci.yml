@@ -112,7 +112,7 @@ jobs:
 
       - name: Boot server (degraded) and validate served spec
         run: |
-          ./target/debug/playzoid_server &
+          ./target/debug/tidepool &
           PID=$!
           trap "kill $PID" EXIT
           ok=0

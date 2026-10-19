@@ -1689,35 +1689,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
-name = "playzoid_server"
-version = "0.4.0"
-dependencies = [
- "actix",
- "actix-web",
- "actix-web-actors",
- "anyhow",
- "argon2",
- "chrono",
- "dotenvy",
- "jsonwebtoken",
- "once_cell",
- "prometheus",
- "redis",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-actix-web",
- "tracing-subscriber",
- "url",
- "utoipa",
- "uuid",
- "validator",
-]
-
-[[package]]
 name = "potential_utf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2572,6 +2543,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "tidepool"
+version = "0.4.0"
+dependencies = [
+ "actix",
+ "actix-web",
+ "actix-web-actors",
+ "anyhow",
+ "argon2",
+ "chrono",
+ "dotenvy",
+ "jsonwebtoken",
+ "once_cell",
+ "prometheus",
+ "redis",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-actix-web",
+ "tracing-subscriber",
+ "url",
+ "utoipa",
+ "uuid",
+ "validator",
 ]
 
 [[package]]

@@ -4,21 +4,21 @@
 //! Run with: `cargo test --test saves_integration -- --ignored`
 //!
 //! Defaults to the Docker dev stack:
-//!   mysql://playzoid:password@127.0.0.1:3306/playzoid_dev
+//!   mysql://tidepool:password@127.0.0.1:3306/tidepool_dev
 //! Override with `DATABASE_URL` / `REDIS_URL` env vars.
 
 use actix_web::{App, http::StatusCode, test, web};
-use playzoid_server::{
+use redis::aio::ConnectionManager;
+use serde_json::Value;
+use sqlx::MySqlPool;
+use tidepool::{
     api,
     config::{Config, RateLimitConfig},
     db,
 };
-use redis::aio::ConnectionManager;
-use serde_json::Value;
-use sqlx::MySqlPool;
 use uuid::Uuid;
 
-const DEFAULT_DB_URL: &str = "mysql://playzoid:password@127.0.0.1:3306/playzoid_dev";
+const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";
 const JWT_SECRET: &str = "integration-test-jwt-secret-min-32-chars";
 
@@ -480,8 +480,7 @@ async fn create_save_rejects_oversized_save() {
         register_and_login(pool.clone(), mgr.clone(), cfg.clone(), &unique_username()).await;
     let app = saves_app!(pool, mgr, cfg);
 
-    let big =
-        serde_json::json!({ "data": "x".repeat(playzoid_server::services::saves::MAX_SAVE_BYTES) });
+    let big = serde_json::json!({ "data": "x".repeat(tidepool::services::saves::MAX_SAVE_BYTES) });
     let req = test::TestRequest::post()
         .uri("/v1/saves")
         .insert_header(("Authorization", format!("Bearer {token}")))
@@ -959,7 +958,7 @@ async fn create_save_rejects_oversized_metadata_returns_400() {
 
     // save fits alone, but metadata pushes the combined size over the cap.
     let big_metadata =
-        serde_json::json!({ "zone": "x".repeat(playzoid_server::services::saves::MAX_SAVE_BYTES) });
+        serde_json::json!({ "zone": "x".repeat(tidepool::services::saves::MAX_SAVE_BYTES) });
     let req = test::TestRequest::post()
         .uri("/v1/saves")
         .insert_header(("Authorization", format!("Bearer {token}")))

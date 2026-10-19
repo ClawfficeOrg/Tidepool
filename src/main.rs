@@ -1,5 +1,5 @@
 use actix_web::{App, HttpServer, web};
-use playzoid_server::{
+use tidepool::{
     api,
     config::Config,
     db,
@@ -56,7 +56,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    info!("Starting Playzoid server on {}", bind);
+    info!("Starting Tidepool server on {}", bind);
 
     HttpServer::new(move || {
         let mut app = App::new()

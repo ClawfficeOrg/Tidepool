@@ -4,21 +4,21 @@
 //! Run with: `cargo test --test game_settings_integration -- --ignored`
 //!
 //! Defaults to the Docker dev stack:
-//!   mysql://playzoid:password@127.0.0.1:3306/playzoid_dev
+//!   mysql://tidepool:password@127.0.0.1:3306/tidepool_dev
 //! Override with `DATABASE_URL` / `REDIS_URL` env vars.
 
 use actix_web::{App, http::StatusCode, test, web};
-use playzoid_server::{
+use redis::aio::ConnectionManager;
+use serde_json::Value;
+use sqlx::MySqlPool;
+use tidepool::{
     api,
     config::{Config, RateLimitConfig},
     db,
 };
-use redis::aio::ConnectionManager;
-use serde_json::Value;
-use sqlx::MySqlPool;
 use uuid::Uuid;
 
-const DEFAULT_DB_URL: &str = "mysql://playzoid:password@127.0.0.1:3306/playzoid_dev";
+const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
 const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6379";
 const JWT_SECRET: &str = "integration-test-jwt-secret-min-32-chars";
 
@@ -290,7 +290,7 @@ async fn put_oversized_config_returns_400() {
     let app = settings_app!(pool, mgr, cfg);
 
     let big = serde_json::json!({
-        "data": "x".repeat(playzoid_server::services::game_settings::MAX_CONFIG_BYTES)
+        "data": "x".repeat(tidepool::services::game_settings::MAX_CONFIG_BYTES)
     });
     let req = test::TestRequest::put()
         .uri(&format!("/v1/games/{}/settings", unique_game_id()))

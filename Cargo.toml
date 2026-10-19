@@ -1,5 +1,5 @@
 [package]
-name = "playzoid_server"
+name = "tidepool"
 version = "0.4.0"
 edition = "2024"
 
