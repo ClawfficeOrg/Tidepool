@@ -291,6 +291,11 @@ fn map_error(error: ConnectionError, req: &HttpRequest) -> HttpResponse {
             ProblemCode::ValidationFailed,
             format!("invalid credentials: {message}"),
         ),
+        ConnectionError::UnknownResource { field, value } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ProblemCode::ValidationFailed,
+            format!("{field}: no connection delivers for '{value}'"),
+        ),
         ConnectionError::Database(error) => {
             tracing::error!(error = %error, "connection operation failed");
             (

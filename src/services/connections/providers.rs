@@ -21,6 +21,25 @@ impl ConnectionProvider for GithubProvider {
         &["app_id", "private_key", "webhook_secret"]
     }
 
+    fn verify_webhook(
+        &self,
+        secret: &str,
+        headers: &actix_web::http::header::HeaderMap,
+        body: &[u8],
+    ) -> Result<(), ConnectionError> {
+        let signature = headers
+            .get("x-hub-signature-256")
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| ConnectionError::Invalid("missing X-Hub-Signature-256".into()))?;
+        if super::github::verify_signature(secret, signature, body) {
+            Ok(())
+        } else {
+            Err(ConnectionError::CredentialInvalid(
+                "invalid GitHub webhook signature".into(),
+            ))
+        }
+    }
+
     fn resolve_resource(
         &self,
         resource_kind: &str,

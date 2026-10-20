@@ -2063,3 +2063,132 @@ async fn connections_crud_redacts_credentials_and_environment_wins() {
         StatusCode::NO_CONTENT
     );
 }
+
+// ── GitHub webhook (task 1.3.2) ───────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn github_webhook_verifies_signature_deduplicates_and_resolves_repository() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+
+    // SAFETY: guarded by DB_LOCK.
+    unsafe {
+        std::env::set_var(
+            "TEST_GITHUB_CREDS",
+            r#"{"app_id":"1","private_key":"pk","webhook_secret":"whsec"}"#,
+        );
+        std::env::remove_var("TIDEPOOL_CONNECTIONS");
+    }
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::connections::config)
+            .configure(api::webhooks::github::config),
+    )
+    .await;
+
+    let create = test::TestRequest::post()
+        .uri("/v1/connections")
+        .insert_header(("Authorization", format!("Bearer {owner_token}")))
+        .set_json(serde_json::json!({
+            "provider": "github",
+            "slug": "acme-github",
+            "display_name": "Acme GitHub",
+            "credential_ref": "TEST_GITHUB_CREDS",
+            "resources": [
+                {"resource_kind": "repository", "external_id": "acme/repo"}
+            ]
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, create).await.status(),
+        StatusCode::CREATED
+    );
+
+    let body = serde_json::json!({
+        "action": "opened",
+        "repository": {"full_name": "acme/repo"},
+        "issue": {"number": 7, "title": "Bug"},
+        "sender": {"login": "alice"}
+    })
+    .to_string();
+    let signature = tidepool::services::connections::github::sign("whsec", body.as_bytes());
+
+    let delivery = |delivery_id: &str, signature: &str, body: &str| {
+        test::TestRequest::post()
+            .uri("/v1/webhooks/github/acme-github")
+            .insert_header(("X-Hub-Signature-256", signature.to_string()))
+            .insert_header(("X-GitHub-Delivery", delivery_id.to_string()))
+            .insert_header(("X-GitHub-Event", "issues"))
+            .insert_header(("content-type", "application/json"))
+            .set_payload(body.to_string())
+            .to_request()
+    };
+
+    let first = test::call_service(&app, delivery("delivery-1", &signature, &body)).await;
+    assert_eq!(first.status(), StatusCode::ACCEPTED);
+    let first_body: Value = test::read_body_json(first).await;
+    assert_eq!(first_body["event"], "issue.created");
+    assert_eq!(first_body["accepted"], true);
+    assert_eq!(first_body["duplicate"], false);
+
+    // Same delivery id is recorded once and acknowledged as a duplicate.
+    let duplicate = test::call_service(&app, delivery("delivery-1", &signature, &body)).await;
+    assert_eq!(duplicate.status(), StatusCode::ACCEPTED);
+    let duplicate_body: Value = test::read_body_json(duplicate).await;
+    assert_eq!(duplicate_body["duplicate"], true);
+
+    // Bad signature is rejected before matching and not recorded.
+    let bad = test::call_service(&app, delivery("delivery-2", "sha256=00", &body)).await;
+    assert_eq!(bad.status(), StatusCode::UNAUTHORIZED);
+
+    // A repository the connection does not own is acknowledged but not matched.
+    let unknown = serde_json::json!({
+        "action": "opened",
+        "repository": {"full_name": "other/repo"},
+        "issue": {"number": 8, "title": "Other"},
+        "sender": {"login": "bob"}
+    })
+    .to_string();
+    let unknown_signature =
+        tidepool::services::connections::github::sign("whsec", unknown.as_bytes());
+    let ignored =
+        test::call_service(&app, delivery("delivery-3", &unknown_signature, &unknown)).await;
+    assert_eq!(ignored.status(), StatusCode::ACCEPTED);
+    let ignored_body: Value = test::read_body_json(ignored).await;
+    assert_eq!(ignored_body["accepted"], false);
+
+    let deliveries: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM webhook_deliveries WHERE delivery_id = 'delivery-1'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("delivery count");
+    assert_eq!(deliveries, 1, "duplicate delivery must be recorded once");
+
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+    tidepool::services::connections::validate_repository(&pool, organization_id, "Acme/Repo")
+        .await
+        .expect("known repository validates");
+    let error =
+        tidepool::services::connections::validate_repository(&pool, organization_id, "other/repo")
+            .await
+            .expect_err("unknown repository must fail activation");
+    assert_eq!(
+        error.to_string(),
+        "repository: no connection delivers for 'other/repo'"
+    );
+
+    // SAFETY: guarded by DB_LOCK.
+    unsafe {
+        std::env::remove_var("TEST_GITHUB_CREDS");
+    }
+}

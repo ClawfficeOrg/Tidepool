@@ -32,6 +32,7 @@ const HUB_PREFIXES: &[&str] = &[
     "/v1/api-keys",
     "/v1/hosts",
     "/v1/connections",
+    "/v1/webhooks",
 ];
 
 /// True for a hub route (segment-boundary match, so `/v1/poolside` is not hub).
@@ -209,6 +210,7 @@ mod tests {
         assert!(is_hub_path("/v1/api-keys"));
         assert!(is_hub_path("/v1/hosts/abc"));
         assert!(is_hub_path("/v1/connections/env:acme"));
+        assert!(is_hub_path("/v1/webhooks/github/acme"));
         assert!(!is_hub_path("/v1/poolside"));
         assert!(!is_hub_path("/v1/auth/login"));
         assert!(!is_hub_path("/v1/players/abc"));

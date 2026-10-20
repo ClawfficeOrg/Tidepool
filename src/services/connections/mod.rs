@@ -19,6 +19,7 @@
 //! the API. A database row shadowed by the environment is preserved but not
 //! effective.
 
+pub mod github;
 pub mod providers;
 
 use crate::entities::connection::{
@@ -134,9 +135,34 @@ pub enum ConnectionError {
     /// Credential value is malformed or missing required fields.
     #[error("invalid credentials: {0}")]
     CredentialInvalid(String),
+    /// A provider resource referenced by configuration is unknown.
+    #[error("{field}: no connection delivers for '{value}'")]
+    UnknownResource {
+        /// Field name used by configuration validation.
+        field: &'static str,
+        /// Rejected resource identity.
+        value: String,
+    },
     /// Database failure.
     #[error("database error")]
     Database(#[source] sqlx::Error),
+}
+
+/// Effective connection used by provider transports.
+#[derive(Debug, Clone)]
+pub struct EffectiveConnection {
+    /// Public id (`env:<slug>` for environment entries).
+    pub public_id: String,
+    /// Provider kind.
+    pub provider: ProviderKind,
+    /// Friendly slug.
+    pub slug: String,
+    /// Active or disabled.
+    pub status: ConnectionStatus,
+    /// Secret reference, never exposed through the API.
+    pub credential_ref: String,
+    /// Resource identities.
+    pub resources: Vec<ConnectionResourceView>,
 }
 
 /// Input for creating a connection.
@@ -437,6 +463,104 @@ pub async fn resolve_resource_owner(
                 resource.resource_kind == resource_kind && resource.external_id == external_id
             })
     }))
+}
+
+/// Fetch an effective connection by slug (database or environment).
+pub async fn find_effective_by_slug(
+    pool: &MySqlPool,
+    organization_id: u64,
+    slug: &str,
+) -> Result<Option<EffectiveConnection>, ConnectionError> {
+    let slug = validate_slug(slug)?;
+
+    if let Some(entry) = environment_connections()?
+        .into_iter()
+        .find(|entry| entry.slug == slug)
+    {
+        return Ok(Some(EffectiveConnection {
+            public_id: format!("env:{}", entry.slug),
+            provider: entry.provider,
+            slug: entry.slug,
+            status: ConnectionStatus::Active,
+            credential_ref: entry.credential_ref,
+            resources: entry
+                .resources
+                .iter()
+                .map(|resource| ConnectionResourceView {
+                    resource_kind: resource.resource_kind.clone(),
+                    external_id: resource.external_id.clone(),
+                    display_name: resource.display_name.clone(),
+                })
+                .collect(),
+        }));
+    }
+
+    let connection = sqlx::query_as::<_, Connection>(
+        "SELECT id, public_id, organization_id, provider, slug, display_name, credential_ref, \
+                status, created_at, updated_at \
+         FROM connections WHERE organization_id = ? AND slug = ?",
+    )
+    .bind(organization_id)
+    .bind(&slug)
+    .fetch_optional(pool)
+    .await
+    .map_err(ConnectionError::Database)?;
+
+    let Some(connection) = connection else {
+        return Ok(None);
+    };
+    let resources = fetch_resources(pool, connection.id).await?;
+    Ok(Some(EffectiveConnection {
+        public_id: connection.public_id,
+        provider: connection.provider,
+        slug: connection.slug,
+        status: connection.status,
+        credential_ref: connection.credential_ref,
+        resources: resources.iter().map(ConnectionResourceView::from).collect(),
+    }))
+}
+
+/// Resolve credential material for an effective connection.
+///
+/// Used by provider transports after the connection is located; never exposed
+/// through the API.
+pub fn credential_material(reference: &str) -> Result<CredentialMaterial, ConnectionError> {
+    resolve_credentials(reference)
+}
+
+/// Find the active GitHub connection that owns a repository (case-insensitive).
+pub async fn resolve_repository_connection(
+    pool: &MySqlPool,
+    organization_id: u64,
+    repository: &str,
+) -> Result<Option<ConnectionView>, ConnectionError> {
+    let repository = repository.trim().to_ascii_lowercase();
+    let connections = list_connections(pool, organization_id).await?;
+    Ok(connections.into_iter().find(|connection| {
+        connection.provider == ProviderKind::Github
+            && connection.status == ConnectionStatus::Active
+            && connection.resources.iter().any(|resource| {
+                resource.resource_kind == "repository"
+                    && resource.external_id.to_ascii_lowercase() == repository
+            })
+    }))
+}
+
+/// Validate that a repository is owned by an active GitHub connection.
+///
+/// Fails with a named `repository` field so trigger configuration is refused at
+/// save time.
+pub async fn validate_repository(
+    pool: &MySqlPool,
+    organization_id: u64,
+    repository: &str,
+) -> Result<ConnectionView, ConnectionError> {
+    resolve_repository_connection(pool, organization_id, repository)
+        .await?
+        .ok_or_else(|| ConnectionError::UnknownResource {
+            field: "repository",
+            value: repository.to_string(),
+        })
 }
 
 // ── environment overlay ───────────────────────────────────────────────────

@@ -175,6 +175,22 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   mutated through the API.
 - Added `/v1/connections` CRUD, documented in `docs/CONNECTIONS.md`.
 
+### GitHub connection and webhooks (task 1.3.2)
+- Added `webhook_deliveries` (migration
+  `20261020000006_create_webhook_deliveries`) keyed uniquely on
+  `(connection_public_id, delivery_id)`.
+- `POST /v1/webhooks/github/{slug}` verifies `X-Hub-Signature-256` over the raw
+  body before matching, records each `X-GitHub-Delivery` once, resolves the
+  repository to its connection and maps the documented events to typed internal
+  events (`issue.created`, `pull_request.created`, issue/PR comments, review
+  comments/reviews, label-added, ping, installation lifecycle).
+- Legacy `issue_comment` on a pull request is normalised to
+  `pull_request.comment_created`; unknown events are typed `unsupported`.
+- `validate_repository` / `resolve_repository_connection` let configuration
+  validation refuse an unknown repository with a named `repository` field.
+- Documented the App credentials, webhook URL and event mapping in
+  `docs/CONNECTIONS.md`.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

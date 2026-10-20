@@ -1042,6 +1042,15 @@ implementation. `TIDEPOOL_CONNECTIONS` is an overlay: environment entries win
 on slug, are labelled and are immutable through the API; the shadowed database
 row is preserved.
 
+**GitHub webhooks:** signature verification happens before parsing/matching and
+uses the raw body; a bad signature is 401 and records nothing. Dedup is a unique
+`(connection_public_id, delivery_id)` insert with `INSERT IGNORE`, so GitHub
+retries are acknowledged once. Repository ownership is case-insensitive and
+resolved against the connection's `repository` resources; an unknown repository
+is acknowledged but `accepted:false`, while configuration validation fails with
+a named `repository` field. `issue_comment` on a PR normalises to the PR comment
+event.
+
 ---
 
 ## Open Questions / Assumptions
