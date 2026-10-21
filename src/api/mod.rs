@@ -2,6 +2,7 @@
 
 pub mod api_keys;
 pub mod auth;
+pub mod connections;
 pub mod enrollment;
 pub mod events;
 pub mod feedback;
@@ -16,3 +17,4 @@ pub mod pool_identity;
 pub mod problem;
 pub mod saves;
 pub mod socket_ticket;
+pub mod webhooks;

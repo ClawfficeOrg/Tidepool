@@ -1033,6 +1033,24 @@ even when the host is offline. Output is appended only while queued/running, so
 a late `execution_output` after completion cannot duplicate the final text. The
 reference agent keeps completions in memory; Limpet must persist them.
 
+**Connections and credentials:** a connection stores `credential_ref`, never a
+secret. Resolution happens at validation time from the environment/secret
+store; reads expose only `credential_configured`. Provider behaviour lives
+behind a synchronous object-safe `ConnectionProvider` trait so save-time
+validation cannot depend on provider availability and adding a kind is one
+implementation. `TIDEPOOL_CONNECTIONS` is an overlay: environment entries win
+on slug, are labelled and are immutable through the API; the shadowed database
+row is preserved.
+
+**GitHub webhooks:** signature verification happens before parsing/matching and
+uses the raw body; a bad signature is 401 and records nothing. Dedup is a unique
+`(connection_public_id, delivery_id)` insert with `INSERT IGNORE`, so GitHub
+retries are acknowledged once. Repository ownership is case-insensitive and
+resolved against the connection's `repository` resources; an unknown repository
+is acknowledged but `accepted:false`, while configuration validation fails with
+a named `repository` field. `issue_comment` on a PR normalises to the PR comment
+event.
+
 ---
 
 ## Open Questions / Assumptions

@@ -154,7 +154,7 @@ jobs:
                   if op["x-auth"] == "api_key":
                       assert op.get("x-required-scope"), \
                           f"drift: {method.upper()} {path} has no x-required-scope"
-          assert hub_ops >= 28, f"drift: only {hub_ops} hub operations documented"
+          assert hub_ops >= 34, f"drift: only {hub_ops} hub operations documented"
           whoami = doc["paths"]["/v1/api-keys/whoami"]["get"]
           assert whoami.get("x-required-scope") == "projects:read", whoami
           print(f"OK: {len(doc['paths'])} paths documented, {hub_ops} hub ops, spec {doc['openapi']}")
