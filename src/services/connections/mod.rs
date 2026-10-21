@@ -19,6 +19,7 @@
 //! the API. A database row shadowed by the environment is preserved but not
 //! effective.
 
+pub mod discord;
 pub mod github;
 pub mod providers;
 pub mod slack;

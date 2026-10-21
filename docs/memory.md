@@ -1076,6 +1076,32 @@ constructed from the event it answers (`ReplyTarget` has no public
 constructor), which makes a misaddressed reply unrepresentable instead of
 merely checked.
 
+**Discord's dedup window belongs to the session, not the socket (1.3.4):** the
+gateway's resume replays everything after the sequence the pool acknowledged,
+and it may replay an event already handled, so dedup state must outlive the
+connection that produced the duplicate. `DiscordGatewaySession` therefore holds
+the `(session_id, seq)` pair *and* the last 1024 message snowflakes, and the
+caller reuses one session across redials — the alternative, state on the
+socket, would make every reconnect a source of double runs. The in-memory
+window is bounded, so the unique `(connection_public_id, delivery_id)` key on
+`webhook_deliveries` remains the backstop across a restart. `op 9` with
+`d: false` clears the session id and sequence so the next handshake identifies
+rather than resuming a session the server dropped.
+
+**The gateway session holds no token:** frames needing the bot token are built
+as a `GatewayCommand` naming the credential field, and the value is injected
+only by `frame_with_token` at send time — the same split as Slack's
+`SlackApiRequest`, so the pool decides *what* to send and dispatch (1.4.6)
+decides *with which secret*. A consequence worth keeping: the ingest context
+cannot leak a token through `Debug`, because it never has one.
+
+**Discord threads need no thread field:** a thread is a channel in Discord, so
+a message in one carries the thread's id as its `channel_id`. Reply addressing
+is therefore the same code for a channel and a thread, and "replies land in the
+originating thread" holds by construction rather than by a branch. Replies also
+pin `allowed_mentions: {"parse": []}`, so agent-authored text cannot ping a
+user, a role or `@everyone` whatever it contains.
+
 ---
 
 ## Open Questions / Assumptions

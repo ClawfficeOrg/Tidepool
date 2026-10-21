@@ -1,4 +1,4 @@
-//! Declared step output capabilities (task 1.3.3).
+//! Declared step output capabilities (tasks 1.3.3 and 1.3.4).
 //!
 //! A workflow step declares the outputs it may emit. Each declaration names a
 //! registered capability, a `maximum` number of emissions, and whether it is
@@ -21,10 +21,13 @@
 //!    the run is recorded as failed rather than silently complete.
 //!
 //! Capabilities are registered centrally in [`CAPABILITIES`], so a provider
-//! task adds one entry (`slack.reply` here, `discord.reply` in task 1.3.4) and
-//! configuration validation picks it up with no further change.
+//! task adds one entry (`slack.reply`, `discord.reply`) and configuration
+//! validation picks it up with no further change. Every provider reply shares
+//! the same `maximum`/`required` semantics, enforced by the one ledger: the
+//! only provider-specific part is the payload each reply renders.
 
 use crate::entities::connection::ProviderKind;
+use crate::services::connections::discord::DiscordReply;
 use crate::services::connections::slack::SlackReply;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,6 +36,9 @@ use thiserror::Error;
 
 /// The `slack.reply` capability name.
 pub const SLACK_REPLY: &str = "slack.reply";
+
+/// The `discord.reply` capability name.
+pub const DISCORD_REPLY: &str = "discord.reply";
 
 /// One capability a step may declare.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,13 +56,22 @@ pub struct OutputCapabilitySpec {
 }
 
 /// Every registered output capability.
-pub const CAPABILITIES: &[OutputCapabilitySpec] = &[OutputCapabilitySpec {
-    name: SLACK_REPLY,
-    provider: ProviderKind::Slack,
-    default_maximum: 1,
-    hard_maximum: 20,
-    summary: "Post a message back to the channel or thread the event came from",
-}];
+pub const CAPABILITIES: &[OutputCapabilitySpec] = &[
+    OutputCapabilitySpec {
+        name: SLACK_REPLY,
+        provider: ProviderKind::Slack,
+        default_maximum: 1,
+        hard_maximum: 20,
+        summary: "Post a message back to the channel or thread the event came from",
+    },
+    OutputCapabilitySpec {
+        name: DISCORD_REPLY,
+        provider: ProviderKind::Discord,
+        default_maximum: 1,
+        hard_maximum: 20,
+        summary: "Reply in the channel or thread the Discord event came from",
+    },
+];
 
 /// Look up a capability by name.
 pub fn capability(name: &str) -> Option<&'static OutputCapabilitySpec> {
@@ -287,6 +302,15 @@ impl OutputLedger {
         self.emit(SLACK_REPLY, reply.post_message_body())
     }
 
+    /// Emit a Discord reply through `discord.reply`.
+    ///
+    /// The reply is already addressed to the event it answers (see
+    /// [`DiscordReply`]), so the payload is the `POST /channels/{id}/messages`
+    /// body; the channel is the thread when the event came from one.
+    pub fn emit_discord_reply(&mut self, reply: &DiscordReply) -> Result<(), OutputError> {
+        self.emit(DISCORD_REPLY, reply.create_message_body())
+    }
+
     /// Finish the step.
     ///
     /// Fails when a `required` capability was never emitted, which is how a
@@ -306,10 +330,31 @@ impl OutputLedger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::connections::discord::{DiscordIngestContext, DiscordMessageEvent};
     use crate::services::connections::slack::{
         SlackIngestContext, SlackMessageEvent, normalize_event,
     };
     use serde_json::json;
+
+    const DISCORD_BOT: &str = "900000000000000001";
+
+    fn discord_message() -> DiscordMessageEvent {
+        let context = DiscordIngestContext::new("conn-discord").with_bot_user_id(DISCORD_BOT);
+        let event = crate::services::connections::discord::normalize_event(
+            &context,
+            "MESSAGE_CREATE",
+            &json!({
+                "id": "300000000000000001",
+                "channel_id": "200000000000000001",
+                "guild_id": "100000000000000001",
+                "author": {"id": "400000000000000001", "bot": false},
+                "content": format!("<@{DISCORD_BOT}> status"),
+                "mentions": [{"id": DISCORD_BOT}],
+            }),
+        )
+        .expect("normalize");
+        event.message().expect("message").clone()
+    }
 
     fn message() -> SlackMessageEvent {
         let context = SlackIngestContext::new("conn-1", "secret")
@@ -445,6 +490,96 @@ mod tests {
                 "text": "done"
             })
         );
+    }
+
+    #[test]
+    fn discord_reply_is_registered_with_the_same_semantics_as_slack() {
+        let discord = capability(DISCORD_REPLY).expect("registered");
+        let slack = capability(SLACK_REPLY).expect("registered");
+        assert_eq!(discord.provider, ProviderKind::Discord);
+        assert_eq!(discord.default_maximum, slack.default_maximum);
+        assert_eq!(discord.hard_maximum, slack.hard_maximum);
+        assert!(capability("discord.shout").is_none());
+
+        let declarations: Vec<OutputDeclaration> = serde_json::from_value(json!([
+            {"capability": "discord.reply", "maximum": 3, "required": true}
+        ]))
+        .expect("parse");
+        let resolved = declarations[0].resolve().expect("resolve");
+        assert_eq!(resolved.maximum, 3);
+        assert!(resolved.required);
+        assert!(
+            OutputDeclaration::new(DISCORD_REPLY)
+                .with_maximum(discord.hard_maximum + 1)
+                .resolve()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn a_required_discord_reply_is_enforced_like_a_slack_one() {
+        let declarations = vec![OutputDeclaration::new(DISCORD_REPLY).required()];
+        let ledger = OutputLedger::new(&declarations).expect("ledger");
+        assert_eq!(
+            ledger.finish(),
+            Err(OutputError::RequiredMissing(DISCORD_REPLY.into()))
+        );
+
+        let message = discord_message();
+        let reply = crate::services::connections::discord::DiscordReply::to_event(&message, "done")
+            .expect("reply");
+
+        // Undeclared is refused outright.
+        let mut empty = OutputLedger::new(&[]).expect("ledger");
+        assert_eq!(
+            empty.emit_discord_reply(&reply),
+            Err(OutputError::NotDeclared(DISCORD_REPLY.into()))
+        );
+
+        let mut ledger = OutputLedger::new(&declarations).expect("ledger");
+        ledger.emit_discord_reply(&reply).expect("emit");
+        // The default maximum is one, so a second reply is refused.
+        assert_eq!(
+            ledger.emit_discord_reply(&reply),
+            Err(OutputError::MaximumExceeded {
+                capability: DISCORD_REPLY.into(),
+                maximum: 1
+            })
+        );
+        let summary = ledger.finish().expect("finish");
+        assert_eq!(summary.count(DISCORD_REPLY), 1);
+        assert_eq!(summary.outputs[0].capability, DISCORD_REPLY);
+        assert_eq!(
+            summary.outputs[0].payload["message_reference"]["message_id"],
+            json!("300000000000000001")
+        );
+    }
+
+    #[test]
+    fn the_two_reply_capabilities_are_counted_separately() {
+        let mut ledger = OutputLedger::new(&[
+            OutputDeclaration::new(SLACK_REPLY),
+            OutputDeclaration::new(DISCORD_REPLY),
+        ])
+        .expect("ledger");
+        let slack_message = message();
+        let slack_reply =
+            crate::services::connections::slack::SlackReply::to_event(&slack_message, "slack")
+                .expect("reply");
+        let discord_message = discord_message();
+        let discord_reply = crate::services::connections::discord::DiscordReply::to_event(
+            &discord_message,
+            "discord",
+        )
+        .expect("reply");
+
+        ledger.emit_slack_reply(&slack_reply).expect("slack");
+        ledger.emit_discord_reply(&discord_reply).expect("discord");
+        assert_eq!(ledger.count(SLACK_REPLY), 1);
+        assert_eq!(ledger.count(DISCORD_REPLY), 1);
+        assert_eq!(ledger.remaining(SLACK_REPLY), 0);
+        let summary = ledger.finish().expect("finish");
+        assert_eq!(summary.outputs.len(), 2);
     }
 
     #[test]

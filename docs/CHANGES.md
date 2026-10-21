@@ -222,6 +222,43 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Documented credentials, both transports, the event table and the reply
   capability in `docs/CONNECTIONS.md`.
 
+### Discord connections over the bot gateway (task 1.3.4)
+- Added the Discord transport (`src/services/connections/discord.rs`). Discord
+  has no inbound webhook for bot events, so there is no route: the pool dials
+  the gateway WebSocket and `DiscordGatewaySession` owns the protocol — hello,
+  identify or resume, heartbeat, dispatch, `op 7`/`op 9` — while
+  `run_gateway_session` pumps it over a frame channel, so a live socket and a
+  scripted test feed drive identical logic.
+- Events are typed `discord.mention` (a guild message mentioning the bot),
+  `discord.direct_message`, `discord.message`, `discord.ignored` (the bot's own
+  and other bots' posts, webhook posts, `MESSAGE_UPDATE`) and
+  `discord.unsupported`. A guild the connection does not own or a filtered
+  channel is handed on but `accepted: false` with a reason.
+- **A reconnect does not duplicate an event.** The session's dedup window (the
+  last 1024 message snowflakes) lives on the session rather than on the socket,
+  so it survives the redial that caused the replay and a resumed stream's
+  replayed events are handed on once. `webhook_deliveries` (`provider =
+  discord`, `gateway`/`gateway_resume` in `action`) backstops that window across
+  a restart.
+- The bot mention is stripped before the content is exposed: `<@id>` and the
+  nickname form `<@!id>` go, role mentions stay, and a normalized message
+  carries prompt-safe `content` plus `raw_content` for the record. `READY`
+  supplies the bot user id when credentials did not.
+- Added `discord.reply` to the output registry with the same semantics as
+  `slack.reply` (default `maximum` 1, hard maximum 20, optional `required`),
+  enforced by the same `OutputLedger`. A reply is built from its event, so it
+  lands in the originating channel — or the thread, which in Discord *is* the
+  channel — with `allowed_mentions: {"parse": []}` so no agent output can ping
+  anyone.
+- `validate_guild` / `validate_guilds_for_activation` fail activation with a
+  named `guild` field when the organization has no active connection for a
+  guild, so a trigger that could never fire is refused at save time.
+- The session never holds the bot token: frames that need it name the
+  credential field and the value is injected at send time, which stays with
+  dispatch (task 1.4.6) along with dialling the socket and the reply call.
+- Documented the handshake, the resume/dedup rule, the event table and the
+  reply capability in `docs/CONNECTIONS.md`.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

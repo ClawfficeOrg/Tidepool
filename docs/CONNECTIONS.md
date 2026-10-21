@@ -182,6 +182,116 @@ Replies are addressed and validated in the pool and performed as
 `chat.postMessage` with the connection's `bot_token`; the outbound HTTP call
 belongs to dispatch (task 1.4.6), as does dialling the socket-mode WebSocket.
 
+## Discord bot
+
+Credentials (`DISCORD_ACME_CREDS`) are a JSON object:
+
+```json
+// DISCORD_ACME_CREDS
+{
+  "bot_token": "...",
+  "bot_user_id": "900000000000000001"   // optional; READY supplies it otherwise
+}
+```
+
+Resources are the guilds the connection delivers for
+(`resource_kind: "guild"`, the Discord guild id) and, optionally, channel
+filters (`resource_kind: "channel"`). With no channel resource every channel in
+an owned guild is delivered; with one or more, only those channels are. Ids and
+names are matched case-insensitively and a leading `#` is ignored.
+
+Discord has **no inbound webhook** for bot events, so there is no route to
+point anything at: the pool dials the gateway WebSocket with the `bot_token`
+and identifies with the guilds, guild-messages, direct-messages and
+message-content intents.
+
+### The handshake, and what a reconnect costs
+
+```text
+server  {"op":10,"d":{"heartbeat_interval":41250}}   hello
+client  {"op":2, "d":{...}}                          identify   (first connect)
+server  {"op":0, "t":"READY","s":1,"d":{...}}        session_id, bot user
+server  {"op":0, "t":"MESSAGE_CREATE","s":2,"d":{}}  dispatch
+server  {"op":7}                                     reconnect, please
+client  {"op":6, "d":{"session_id":...,"seq":2}}      resume     (re-connect)
+server  {"op":0, "t":"MESSAGE_CREATE","s":2,"d":{}}  replayed!
+server  {"op":0, "t":"RESUMED","s":3,"d":{}}         replay finished
+```
+
+A resumed stream replays everything after the sequence the pool acknowledged,
+and Discord may replay an event the pool already handled.
+`DiscordGatewaySession` owns that protocol — hello, identify or resume,
+heartbeat, dispatch, `op 7`/`op 9` — and `run_gateway_session` pumps it over a
+frame channel, so the same logic runs behind a live socket and behind a
+scripted feed in tests.
+
+**Reconnects do not duplicate events.** The session remembers the last 1024
+delivery ids — the message snowflake, unique across Discord — and the dedup
+window lives on the session rather than on the socket, so it survives the
+reconnect that caused the replay: a replayed event is recognised and handed on
+once. One session is reused across redials for exactly this reason. Deliveries
+are also recorded in `webhook_deliveries` with `provider = discord` and
+`gateway` or `gateway_resume` in the `action` column, whose unique
+`(connection_public_id, delivery_id)` key backstops the in-memory window across
+a restart. An `op 9` with `d: false` clears the session id and sequence, so the
+next handshake identifies afresh instead of resuming a session the server has
+dropped.
+
+**No token in the session.** Frames that need the bot token are built as a
+`GatewayCommand` naming the credential field, and the value is injected only
+when the frame is sent (`frame_with_token`) — dispatch's job (task 1.4.6), as
+is dialling the socket.
+
+### Typed events
+
+| Discord dispatch | internal event |
+|---|---|
+| `MESSAGE_CREATE` in a guild, mentioning the bot | `discord.mention` |
+| `MESSAGE_CREATE` with no guild | `discord.direct_message` |
+| `MESSAGE_CREATE` elsewhere in an owned channel | `discord.message` |
+| the bot's own messages, other bots', webhook posts, `MESSAGE_UPDATE` | `discord.ignored` |
+| anything else | `discord.unsupported` |
+
+A delivery from a guild the connection does not own, or from a filtered
+channel, is handed on but marked `accepted: false` with a reason
+(`guild_not_owned`, `channel_filtered`, `self_authored`, `edited_message`,
+`unsupported_event`). A direct message has no guild, so guild resolution does
+not apply to it; channel filters still do.
+
+`validate_guild` (and `validate_guilds_for_activation` for a whole revision)
+lets configuration activation refuse a guild the organization has no active
+connection for, with a named `guild` field, rather than accepting a trigger
+that could never fire.
+
+**The mention never reaches a prompt.** A normalized message carries `content`
+with the bot mention already removed and `raw_content` as Discord sent it;
+prompt construction reads the stripped content. `<@123>` and the nickname form
+`<@!123>` are both removed, role mentions (`<@&456>`) and other people's
+mentions are left alone, runs of spaces collapse and newlines survive.
+
+### Replies (`discord.reply`)
+
+`discord.reply` has the same semantics as `slack.reply` — default `maximum` 1,
+hard maximum 20, optional `required` — enforced by the same per-step ledger:
+
+```yaml
+outputs:
+  - capability: discord.reply
+    maximum: 2        # default 1, hard maximum 20
+    required: true    # default false
+```
+
+A reply is built from the event it answers, so it can only go to the channel
+the event came from. In Discord a thread *is* a channel, so a mention inside a
+thread carries the thread's id as its `channel_id` and the reply lands in the
+thread by construction. The call is
+`POST /channels/{channel_id}/messages` with the connection's `bot_token`,
+`message_reference` attaching the reply to the message it answers
+(`fail_if_not_exists: false`, so a deleted original does not fail the send) and
+`allowed_mentions: {"parse": []}`, which means no agent output can ping a user,
+a role or `@everyone` whatever text it produced. Content is capped at Discord's
+own 2000 characters. The outbound HTTP call belongs to dispatch (task 1.4.6).
+
 ## API
 
 `GET/POST /v1/connections`, `GET/PATCH/DELETE /v1/connections/{id}`. PATCH can
