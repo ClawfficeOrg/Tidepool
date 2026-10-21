@@ -57,3 +57,5 @@
 {"at": "2026-10-21T09:19:01Z", "event": "done", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Added the trigger schema and validation endpoint"}
 {"at": "2026-10-21T09:19:24Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T17:19:24Z"}
 {"at": "2026-10-21T11:47:12Z", "event": "reset", "task": "1.4.3", "owner": "Michaels-MacBook-Pro.local:69153", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T11:47:19Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T19:47:19Z"}
+{"at": "2026-10-21T11:47:52Z", "event": "reset", "task": "1.4.3", "owner": "Michaels-MacBook-Pro.local:71846", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
