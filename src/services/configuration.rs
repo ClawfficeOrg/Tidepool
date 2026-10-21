@@ -10,7 +10,9 @@
 //!
 //! - **connections** — a slug must resolve to an active pool connection;
 //! - **hosts** — a slug must resolve to a live (non-revoked) host;
-//! - **environments** — named, and each references a host that must resolve;
+//! - **environments** — complete named objects: a host that must resolve, an
+//!   absolute working directory and an optional worktree whose branch template
+//!   embeds the execution id (see [`crate::services::environments`]);
 //! - **named agents** — named and well-formed (`provider`, `model`);
 //! - **partials** — named, and each references a file present in the bundle.
 //!
@@ -23,9 +25,11 @@ use crate::entities::configuration_revision::{
     RevisionStatus, RevisionView,
 };
 use crate::entities::connection::ConnectionStatus;
+use crate::entities::environment::Environment;
 use crate::entities::project::Project;
 use crate::services::api_keys::{self as audit_svc, AuditActor, AuditEntry};
 use crate::services::connections::{self as connection_svc, ConnectionError};
+use crate::services::environments as environment_svc;
 use crate::services::hosts::{self as host_svc, HostServiceError, normalize_slug};
 use serde::Deserialize;
 use sqlx::MySqlPool;
@@ -94,23 +98,15 @@ struct Manifest {
     /// Host slugs to resolve.
     #[serde(default)]
     hosts: Vec<String>,
-    /// Named environments, each referencing a host.
+    /// Named environments: complete objects with host, directory and worktree.
     #[serde(default)]
-    environments: Vec<ManifestEnvironment>,
+    environments: Vec<Environment>,
     /// Named agents.
     #[serde(default)]
     agents: Vec<ManifestAgent>,
     /// Named prompt partials, each referencing a bundle file.
     #[serde(default)]
     partials: Vec<ManifestPartial>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ManifestEnvironment {
-    /// Environment name.
-    name: String,
-    /// Host slug the environment runs on.
-    host: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -182,6 +178,15 @@ fn parse_manifest(files: &[ConfigFile]) -> Result<Manifest, ConfigurationError> 
     })
 }
 
+/// Parse the environment definitions authored in a revision bundle.
+///
+/// Dispatch (task 1.4.6) reads the active revision's environments through this
+/// function and resolves them with [`crate::services::environments`]. The
+/// documents are returned as authored, never normalized or merged.
+pub fn parse_environments(files: &[ConfigFile]) -> Result<Vec<Environment>, ConfigurationError> {
+    Ok(parse_manifest(files)?.environments)
+}
+
 /// Collect the connection and host slugs declared in the manifest.
 fn manifest_slugs(manifest: &Manifest) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut connections = BTreeSet::new();
@@ -239,37 +244,17 @@ fn resolve_references(
         }
     }
 
-    let mut seen_environments = BTreeSet::new();
-    for environment in &manifest.environments {
-        let name = environment.name.trim().to_string();
-        if name.is_empty() {
-            issues.push(FieldIssue {
-                field: "environments.name".into(),
+    // Environments are complete objects: the environment service owns every
+    // rule (name, host resolution, directory shape, worktree template).
+    issues.extend(
+        environment_svc::environment_issues(&manifest.environments, resolved_hosts)
+            .into_iter()
+            .map(|issue| FieldIssue {
+                field: issue.field,
                 revision,
-                message: "environment name is required".into(),
-            });
-        } else if !seen_environments.insert(name.clone()) {
-            issues.push(FieldIssue {
-                field: format!("environments.{name}.name"),
-                revision,
-                message: format!("duplicate environment name '{name}'"),
-            });
-        }
-        let host_key = normalize_slug(&environment.host);
-        if host_key.is_empty() {
-            issues.push(FieldIssue {
-                field: format!("environments.{name}.host"),
-                revision,
-                message: "host slug is required".into(),
-            });
-        } else if !resolved_hosts.contains(&host_key) {
-            issues.push(FieldIssue {
-                field: format!("environments.{name}.host"),
-                revision,
-                message: format!("unknown host slug '{}'", environment.host),
-            });
-        }
-    }
+                message: issue.message,
+            }),
+    );
 
     let mut seen_agents = BTreeSet::new();
     for agent in &manifest.agents {
@@ -716,9 +701,11 @@ mod tests {
         Manifest {
             connections: vec!["github-main".into()],
             hosts: vec!["studio-mac".into()],
-            environments: vec![ManifestEnvironment {
+            environments: vec![Environment {
                 name: "default".into(),
                 host: "studio-mac".into(),
+                directory: "/Users/you/code/repo".into(),
+                worktree: None,
             }],
             agents: vec![ManifestAgent {
                 name: "coder".into(),
@@ -779,9 +766,11 @@ mod tests {
     fn unresolvable_environment_host_is_named() {
         let (connections, hosts) = resolved();
         let mut manifest = manifest();
-        manifest.environments.push(ManifestEnvironment {
+        manifest.environments.push(Environment {
             name: "staging".into(),
             host: "no-such-host".into(),
+            directory: "/srv/staging".into(),
+            worktree: None,
         });
         let issues = resolve_references(&manifest, &file_paths(), &connections, &hosts, 3);
         assert_eq!(issues.len(), 1);
@@ -789,12 +778,53 @@ mod tests {
     }
 
     #[test]
+    fn an_environment_without_a_directory_fails_activation() {
+        let (connections, hosts) = resolved();
+        let mut manifest = manifest();
+        manifest.environments[0].directory = String::new();
+        let issues = resolve_references(&manifest, &file_paths(), &connections, &hosts, 2);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].field, "environments.default.directory");
+        assert_eq!(issues[0].revision, 2);
+    }
+
+    #[test]
+    fn an_environment_worktree_template_is_checked_at_activation() {
+        let (connections, hosts) = resolved();
+        let mut manifest = manifest();
+        let template = format!(
+            "trigger-{}",
+            crate::entities::environment::EXECUTION_ID_EXPRESSION
+        );
+        manifest.environments[0].worktree = Some(crate::entities::environment::Worktree {
+            mode: crate::entities::environment::WorktreeMode::BranchOff,
+            new_branch: Some(template),
+            base: Some("origin/main".into()),
+            branch: None,
+        });
+        assert!(
+            resolve_references(&manifest, &file_paths(), &connections, &hosts, 1).is_empty(),
+            "a branch template embedding the execution id activates"
+        );
+
+        manifest.environments[0]
+            .worktree
+            .as_mut()
+            .expect("worktree")
+            .new_branch = Some("trigger".into());
+        let issues = resolve_references(&manifest, &file_paths(), &connections, &hosts, 1);
+        assert_eq!(issues[0].field, "environments.default.worktree.newBranch");
+    }
+
+    #[test]
     fn duplicate_environment_is_named() {
         let (connections, hosts) = resolved();
         let mut manifest = manifest();
-        manifest.environments.push(ManifestEnvironment {
+        manifest.environments.push(Environment {
             name: "default".into(),
             host: "studio-mac".into(),
+            directory: "/Users/you/code/repo".into(),
+            worktree: None,
         });
         let issues = resolve_references(&manifest, &file_paths(), &connections, &hosts, 1);
         assert_eq!(issues.len(), 1);
@@ -912,7 +942,11 @@ mod tests {
                 r#"{
                     "connections": ["github-main"],
                     "hosts": ["studio-mac"],
-                    "environments": [{"name": "default", "host": "studio-mac"}],
+                    "environments": [{
+                        "name": "default",
+                        "host": "studio-mac",
+                        "directory": "/Users/you/code/repo"
+                    }],
                     "agents": [{"name": "coder", "provider": "anthropic", "model": "claude"}],
                     "partials": [{"name": "system", "path": "partials/system.txt"}]
                 }"#,
@@ -922,7 +956,38 @@ mod tests {
         assert_eq!(parsed.connections, vec!["github-main"]);
         assert_eq!(parsed.hosts, vec!["studio-mac"]);
         assert_eq!(parsed.environments.len(), 1);
+        assert_eq!(parsed.environments[0].directory, "/Users/you/code/repo");
         assert_eq!(parsed.agents.len(), 1);
         assert_eq!(parsed.partials.len(), 1);
+    }
+
+    #[test]
+    fn environments_are_parsed_for_dispatch() {
+        let files = bundle(&[
+            (
+                MANIFEST_FILE,
+                &manifest_json(
+                    r#"{
+                        "environments": [{
+                            "name": "review",
+                            "host": "studio-mac",
+                            "directory": "/Users/you/code/repo",
+                            "worktree": {
+                                "mode": "branch-off",
+                                "newBranch": "trigger-${{ paseo.execution.id }}",
+                                "base": "origin/main"
+                            }
+                        }]
+                    }"#,
+                ),
+            ),
+            ("partials/system.txt", "unused"),
+        ]);
+        let environments = parse_environments(&files).expect("parse environments");
+        assert_eq!(environments.len(), 1);
+        let environment = &environments[0];
+        assert_eq!(environment.name, "review");
+        let branch = environment.branch_for("exec-1").expect("render");
+        assert_eq!(branch.as_deref(), Some("trigger-exec-1"));
     }
 }

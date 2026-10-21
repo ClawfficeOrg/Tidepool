@@ -9,6 +9,7 @@ pub mod cache;
 pub mod configuration;
 pub mod connections;
 pub mod enrollment;
+pub mod environments;
 pub mod events;
 pub mod feedback;
 pub mod game_settings;

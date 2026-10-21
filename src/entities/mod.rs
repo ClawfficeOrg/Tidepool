@@ -8,6 +8,7 @@ pub mod api_key;
 pub mod configuration_revision;
 pub mod connection;
 pub mod enrollment_token;
+pub mod environment;
 pub mod game_channel;
 pub mod game_setting;
 pub mod host;

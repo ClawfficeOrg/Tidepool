@@ -304,6 +304,32 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   connection/resource/host and an agent the host cannot run are each reported
   as a named `{ field, message }` issue.
 
+### Environment model (task 1.4.5)
+- Added `Environment` (`src/entities/environment.rs`): a complete named object
+  with an enrolled host slug, an absolute working directory on that machine and
+  an optional worktree. The pool never clones, creates or rewrites the
+  directory. `deny_unknown_fields` means an `extends`/overlay key is a parse
+  error, so two environments can never be merged or partially overridden.
+- Worktrees carry a mode (`branch-off` or `checkout-branch`), a new branch
+  template and an optional base ref. `branch-off` renders
+  `${{ paseo.execution.id }}` (or `${{ tidepool.execution.id }}`) into the
+  branch, so every execution gets its own branch; any other expression, a
+  missing execution id, an unsafe execution id or an invalid rendered Git ref
+  fails activation. `checkout-branch` takes a literal branch only.
+- Configuration activation (`tidepool.json` `environments`) now runs the full
+  environment resolver: an unknown host, a missing/relative/non-canonical
+  directory, a duplicate name and a bad worktree each name their authored field
+  (`environments.<name>.<field>`) and keep the previous revision active.
+  `configuration::parse_environments` returns the authored definitions for
+  dispatch (task 1.4.6) unchanged.
+- Added the finite selector: a step names one environment literally or through
+  a finite input whose every declared choice must resolve at activation. A
+  selector resolves to exactly one complete environment.
+- Added dispatch resolution (`src/services/environments.rs`): the pure
+  `resolve_dispatch` picks the environment, requires its host and renders the
+  per-execution branch; the database wrapper asks presence. An offline host
+  fails with `daemon_not_connected` and nothing is queued.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

@@ -115,7 +115,11 @@ fn valid_manifest() -> String {
     json!({
         "connections": ["github-main"],
         "hosts": ["studio-mac"],
-        "environments": [{"name": "default", "host": "studio-mac"}],
+        "environments": [{
+            "name": "default",
+            "host": "studio-mac",
+            "directory": "/Users/you/code/repo"
+        }],
         "agents": [{"name": "coder", "provider": "anthropic", "model": "claude-sonnet-4-6"}],
         "partials": [{"name": "system", "path": "partials/system.txt"}]
     })

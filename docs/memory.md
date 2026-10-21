@@ -1190,6 +1190,52 @@ capability report; presence (connected/offline) is a dispatch-time concern and
 
 ---
 
+## 2026-10-21 — Environment model (task 1.4.5)
+
+**An environment is one complete named object, never a base plus overrides.**
+`Environment` is `{ host, directory, worktree? }`; the document sets
+`deny_unknown_fields`, so an `extends`, `override` or partial-worktree key is a
+parse error, and there is no code path that combines two environments. A step
+selects exactly one by name, or through a finite input whose every declared
+choice names a complete environment and must resolve at activation. Selection
+returns a borrow of the whole object, which is what makes "never merged or
+overridden by a workflow" structural rather than a convention.
+
+**The host slug is resolved at activation, the directory is declared there.**
+`configuration::validate`/`install` resolves `environments.<name>.host` against
+live hosts, so a host that was renamed or revoked fails activation with a named
+field instead of failing at dispatch. The directory is validated as a
+declaration: required, ≤4096 characters, absolute (POSIX or Windows drive) and
+canonical (no `.`/`..`, repeated separators, trailing separator or control
+characters). The pool has no filesystem access to a host and never clones,
+creates or rewrites the directory, so a remote `stat` is not part of activation;
+the host is the authority on existence when it prepares the execution. A
+missing declaration or a non-canonical path is caught at activation, which is
+the failure this task owns.
+
+**Worktree branch templates embed the execution id, and only that.** Only
+`${{ paseo.execution.id }}` (and the Tidepool spelling
+`${{ tidepool.execution.id }}`) is accepted in `newBranch`; any other expression
+is refused at the authored field. Activation renders the template with a sample
+UUID, so a template that only works for a short id still fails before dispatch.
+At dispatch the pool renders the real execution id and validates the resulting
+Git ref, which is what gives every execution its own branch and lets a retry or
+recovery reuse it. `checkout-branch` takes a literal branch and no expression.
+Execution ids are sanitised to `[A-Za-z0-9._-]` before they touch a ref, so a
+host or client supplied id cannot escape the branch namespace.
+
+**Dispatch is a pure decision plus one presence lookup.** `resolve_dispatch`
+takes the authored environments and host-availability facts and returns a
+`DispatchTarget` (environment, host public id, directory, rendered branch). An
+offline host yields `EnvironmentError::DaemonNotConnected`, whose `code()` is
+the documented `daemon_not_connected`; there is no queue, so the trigger must
+fire again. `require_for_dispatch` is the thin database wrapper
+(`resolve_for_activation` + `host_presence::require_connected`) around that pure
+function, which is what keeps the offline-rejection path unit-testable without
+MySQL.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

@@ -726,7 +726,7 @@
         {
           "id": "1.4.5",
           "title": "Environment model",
-          "status": "pending",
+          "status": "done",
           "goal": "An environment names where a step runs: an enrolled host, a working directory that must already exist on that machine, and an optional worktree (mode, new branch, base ref). The pool never clones anything. A finite input may select one of several complete named environments; environments are never merged or overridden by a workflow. References are resolved at activation, so a host that no longer exists fails activation rather than failing at dispatch.",
           "touches": [
             "src/services/environments.rs",
@@ -746,8 +746,9 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the environment model with host, directory and worktree",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Environment model",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-21T08:51:48Z"
         },
         {
           "id": "1.4.6",
