@@ -64,3 +64,4 @@
 {"at": "2026-10-21T12:11:11Z", "event": "look_clear", "task": "1.3.3", "owner": "opencode", "from": "needs_human_look", "to": "done"}
 {"at": "2026-10-21T12:11:11Z", "event": "look_clear", "task": "1.3.4", "owner": "opencode", "from": "needs_human_look", "to": "done"}
 {"at": "2026-10-21T12:11:11Z", "event": "look_clear", "task": "1.4.3", "owner": "opencode", "from": "needs_human_look", "to": "done"}
+{"at": "2026-10-21T12:13:05Z", "event": "start", "task": "1.4.6", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T20:13:05Z"}

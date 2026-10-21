@@ -390,6 +390,45 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   create/replace cycle, partial failure across two installs, an unknown project
   and per-project name uniqueness.
 
+### Dispatch and run lifecycle (task 1.4.6)
+- Added `runs` and `run_steps` (migration `20261021000003_create_runs`). A run
+  snapshots the dispatch-time workflow, environments and prompt partials, so a
+  restart evaluates exactly what was dispatched. The delivery key is unique per
+  trigger: an event retry or a manual resubmission returns the existing run.
+- Added `POST /v1/runs` (`runs:dispatch`, or a non-viewer member) for manual
+  dispatch: `{ project, trigger, actor, revision?, deliveryKey, input }`.
+  Leading `key=value` tokens fill declared inputs and the first non-assignment
+  token starts the request text. The actor must be in the trigger's
+  `from_users`; an expected revision that is no longer active is a 409. A new
+  run is 201; a key that already names one is 200 with `deduplicated: true` —
+  deduplication is promised, exactly-once delivery is not.
+- Added event dispatch (`services::dispatch::dispatch_event`): every active
+  trigger whose event, connection, resource, actor, channel, label, `contains`
+  and `pattern` filters all pass starts one run; `*`/`?` are the pattern's only
+  metacharacters.
+- Dispatch resolves every step's environment before inserting anything. An
+  offline host therefore fails with `daemon_not_connected` and writes no run or
+  step row — nothing is queued.
+- Added the run lifecycle (`services::runs`): one step at a time, conditions
+  skip a step without failing the run, and the workflow/step deadlines cap each
+  step. A passed deadline fails the run and skips every later step. Conditions
+  read declared inputs and earlier step outputs; prompts render `inputs.*`,
+  `request`, `steps.<id>` and `steps.<id>.<property>`.
+- Create-intent idempotency: the execution id is derived deterministically from
+  the run's public id and step id, stored before the frame is sent. A lost
+  response, host reconnect or pool restart re-sends the same id; the host
+  answers with the existing execution. A succeeded execution is recorded from
+  the ledger; a failed or interrupted one becomes `interrupted` and is never
+  started again.
+- Wired completion into the host socket and recovery into startup and host
+  reconnect (files outside the task's owned paths), so observed completions
+  advance the run and a reconnected host replays its pending intents.
+- Added unit tests for input parsing, filter matching, glob patterns,
+  condition evaluation, prompt rendering, deadline arithmetic, execution-id
+  determinism and the create decision, plus ignored live-MySQL integration
+  tests for event/manual dispatch, offline dispatch, restart replay and
+  condition/deadline outcomes.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

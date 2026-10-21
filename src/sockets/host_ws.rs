@@ -42,6 +42,20 @@ impl actix::Actor for HostWs {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         host_protocol::register_socket(&self.host_public_id, ctx.address());
+        let pool = self.pool.clone();
+        let public_id = self.host_public_id.clone();
+        actix::spawn(async move {
+            match crate::services::runs::recover_for_host(&pool, &public_id).await {
+                Ok(report) if report.scanned > 0 => tracing::info!(
+                    host = %public_id,
+                    scanned = report.scanned,
+                    replayed = report.replayed,
+                    "recovered runs after host reconnect"
+                ),
+                Ok(_) => {}
+                Err(error) => tracing::warn!(%error, "host run recovery failed"),
+            }
+        });
         ctx.run_interval(Duration::from_secs(HEARTBEAT_TICK_SECS), |actor, ctx| {
             if actor.last_client_heartbeat.elapsed()
                 > Duration::from_secs(HEARTBEAT_TIMEOUT_SECS as u64)
@@ -157,6 +171,16 @@ impl actix::StreamHandler<Result<ws::Message, ws::ProtocolError>> for HostWs {
                             .await
                             {
                                 tracing::warn!(error = %error, "failed to record execution completion");
+                            }
+                            if let Err(error) = crate::services::runs::observe_completion(
+                                &pool,
+                                &execution_id,
+                                &status,
+                                output.as_deref(),
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = %error, "failed to advance run on completion");
                             }
                         });
                     }

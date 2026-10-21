@@ -48,6 +48,23 @@ async fn main() -> std::io::Result<()> {
         tracing::warn!(error = %e, "failed to reset host presence at startup");
     }
 
+    // Recover runs that were mid-step when the process stopped. The create
+    // intent is replayed with the same execution id, so a host answers with
+    // the existing execution instead of running the prompt twice.
+    if let Some(pool) = pool.as_ref() {
+        match services::runs::recover_all(pool).await {
+            Ok(report) => info!(
+                scanned = report.scanned,
+                replayed = report.replayed,
+                completed = report.completed,
+                interrupted = report.interrupted,
+                deferred = report.deferred,
+                "run recovery complete"
+            ),
+            Err(e) => tracing::warn!(error = %e, "run recovery failed"),
+        }
+    }
+
     // Apply the unattended first-run bootstrap, if configured. This only ever
     // inserts: an existing organization is left untouched, so a restart cannot
     // re-apply the temporary password.
@@ -123,6 +140,7 @@ async fn main() -> std::io::Result<()> {
             .configure(api::connections::config)
             .configure(api::projects::config)
             .configure(api::triggers::config)
+            .configure(api::manual_runs::config)
             .configure(api::webhooks::github::config)
             .configure(api::webhooks::slack::config)
             .configure(api::players::config)
