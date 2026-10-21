@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "project": "Tidepool repository (Rust, axum + sqlx)",
+  "gate": [
+    {
+      "name": "fmt",
+      "cmd": ["cargo", "fmt", "--check"]
+    },
+    {
+      "name": "clippy",
+      "cmd": ["cargo", "clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+    },
+    {
+      "name": "test",
+      "cmd": ["cargo", "test"]
+    }
+  ],
+  "shell_allow": [
+    "cargo test*",
+    "cargo clippy*",
+    "cargo check*",
+    "cargo build*",
+    "cargo tree*",
+    "cargo fmt*"
+  ],
+  "shell_deny": [
+    "cargo install*",
+    "cargo publish*"
+  ],
+  "required_changed": ["docs/CHANGES.md"],
+  "rules": [
+    "Follow AGENTS.md: no unwrap/expect outside tests, thiserror for new error types, doc comments on all public items, parameterized sqlx queries only.",
+    "Do not start any server, daemon, or docker compose stack; tests must not require live MySQL or Redis.",
+    "Update docs/CHANGES.md with a task entry and append to docs/memory.md if an architectural choice was made."
+  ],
+  "extra_paths": []
+}
