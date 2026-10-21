@@ -36,3 +36,7 @@
 {"at": "2026-10-21T07:17:30Z", "event": "look_defer", "task": "1.3.4", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "needs_human_look", "note": "Replies land in the originating channel or thread (addressing tested, outbound send is 1.4.6); A guild the organization has no connection for fails activation (refusal tested, no activation path exists until 1.4.1)"}
 {"at": "2026-10-21T07:17:31Z", "event": "start", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T15:17:31Z"}
 {"at": "2026-10-21T07:24:07Z", "event": "reset", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T07:24:23Z", "event": "start", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T15:24:23Z"}
+{"at": "2026-10-21T07:53:11Z", "event": "done", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Project model and configuration revisions"}
+{"at": "2026-10-21T07:53:12Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T15:53:12Z"}
+{"at": "2026-10-21T08:09:03Z", "event": "look_defer", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "needs_human_look", "note": "Killed mid-task; WIP committed at wip(1.4.2), gate never run on this state. Finish trigger schema/validation endpoint."}
