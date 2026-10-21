@@ -21,6 +21,7 @@
 
 pub mod github;
 pub mod providers;
+pub mod slack;
 
 use crate::entities::connection::{
     Connection, ConnectionResource, ConnectionResourceView, ConnectionStatus, ConnectionView,

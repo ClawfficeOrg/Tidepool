@@ -191,6 +191,37 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Documented the App credentials, webhook URL and event mapping in
   `docs/CONNECTIONS.md`.
 
+### Slack connections with socket mode and webhooks (task 1.3.3)
+- Added the Slack transport (`src/services/connections/slack.rs`). Both
+  transports share normalization, workspace resolution and channel filters:
+  `POST /v1/webhooks/slack/{slug}` verifies `X-Slack-Signature` over
+  `v0:<timestamp>:<body>` with a five-minute replay window before parsing, and
+  socket mode (`SlackSocketSession` + `run_socket_session`) handles Slack's
+  envelopes over a frame channel so a pool with no public address needs no
+  webhook URL. Slack's `url_verification` handshake is answered with its
+  challenge.
+- Events are typed `slack.mention` (`app_mention`), `slack.direct_message`,
+  `slack.message`, `slack.ignored` (the bot's own posts, subtypes) and
+  `slack.unsupported`. A workspace the connection does not own or a filtered
+  channel is acknowledged but `accepted: false` with a reason; socket-mode
+  envelopes are acknowledged either way so Slack stops retrying.
+- Both transports deduplicate on Slack's `event_id` in `webhook_deliveries`
+  (`provider = slack`, transport in `action`), so a retry — or the same event
+  arriving on both transports — is recorded once. Socket-mode sessions also
+  dedup in memory across a reconnect.
+- The bot mention is stripped before the text is exposed: a normalized message
+  carries prompt-safe `text` plus `raw_text` for the record.
+- Added the declared-output registry (`src/services/outputs.rs`) with
+  `slack.reply`. `OutputLedger` refuses an undeclared capability, enforces
+  `maximum` (default 1, hard maximum 20) and fails `finish()` when a `required`
+  capability was never emitted, so a step that must answer cannot complete
+  silently. A reply is constructed from its event, so it can only land in the
+  channel and thread the event came from.
+- `validate_workspace` / `resolve_workspace_connection` let configuration
+  validation refuse an unknown workspace with a named `workspace` field.
+- Documented credentials, both transports, the event table and the reply
+  capability in `docs/CONNECTIONS.md`.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

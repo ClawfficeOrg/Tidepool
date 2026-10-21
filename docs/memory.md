@@ -1051,6 +1051,31 @@ is acknowledged but `accepted:false`, while configuration validation fails with
 a named `repository` field. `issue_comment` on a PR normalises to the PR comment
 event.
 
+**Slack has two transports and one ingest path:** everything after
+verification — normalization, workspace resolution, channel filters, the
+delivery record — is shared, so the webhook route and socket mode cannot drift.
+Webhook verification is the Slack `v0` HMAC over `v0:<timestamp>:<body>` with a
+five-minute replay window, checked before parsing; socket mode is verified by
+the `app_token` that dialled the socket. Both dedup on Slack's `event_id`
+(falling back to `channel:event_ts`), so a retry *and* the same event arriving
+on both transports collapse to one `webhook_deliveries` row. The socket-mode
+session is deliberately transport-agnostic: it takes frames as text and returns
+the frames to send, which keeps the protocol (hello / envelope / ack /
+disconnect) unit-testable and leaves dialling the WebSocket — and performing
+`chat.postMessage` — to dispatch (1.4.6), which owns the outbound client. The
+mention is stripped during normalization rather than at prompt-build time, so
+`text` is prompt-safe by construction and `raw_text` keeps the original.
+
+**Declared outputs are enforced per step, not per provider:**
+`services::outputs` holds the capability registry (`slack.reply` now,
+`discord.reply` next) and `OutputLedger` enforces all three rules in one place
+— undeclared capabilities cannot be emitted, `maximum` is a hard count, and
+`finish()` fails when a `required` capability was never emitted, so a step that
+must answer is recorded as failed rather than silently complete. A reply is
+constructed from the event it answers (`ReplyTarget` has no public
+constructor), which makes a misaddressed reply unrepresentable instead of
+merely checked.
+
 ---
 
 ## Open Questions / Assumptions

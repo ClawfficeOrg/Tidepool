@@ -16,6 +16,7 @@ pub mod host_presence;
 pub mod host_protocol;
 pub mod hosts;
 pub mod leaderboards;
+pub mod outputs;
 pub mod players;
 pub mod pool_identity;
 pub mod redis;

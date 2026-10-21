@@ -409,6 +409,16 @@ const ROUTES: &[RouteSpec] = &[
         success: "202",
     },
     RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/webhooks/slack/{slug}",
+        tag: "pool",
+        summary: "Receive a Slack Events API callback; signature verified and event deduplicated",
+        secure: false,
+        required_scope: None,
+        has_body: true,
+        success: "202",
+    },
+    RouteSpec {
         method: HttpMethod::Get,
         path: "/v1/connections",
         tag: "pool",
@@ -882,14 +892,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 56, "ROUTES must describe all 56 routes");
+        assert_eq!(ROUTES.len(), 57, "ROUTES must describe all 57 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            53,
-            "the 19 game route specs and 34 pool/host/connection routes must stay under /v1/"
+            54,
+            "the 19 game route specs and 35 pool/host/connection routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -1071,6 +1081,7 @@ mod tests {
         registered.extend(parse_scope(include_str!("hosts.rs")));
         registered.extend(parse_scope(include_str!("connections.rs")));
         registered.extend(parse_scope(include_str!("webhooks/github.rs")));
+        registered.extend(parse_scope(include_str!("webhooks/slack.rs")));
 
         let documented: std::collections::BTreeSet<(String, String)> = ROUTES
             .iter()
@@ -1087,6 +1098,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 34, "expected 34 hub operations");
+        assert_eq!(registered.len(), 35, "expected 35 hub operations");
     }
 }
