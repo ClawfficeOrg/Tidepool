@@ -2,6 +2,40 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-21 — Runs, activity log and event receipts
+
+### Added
+- Added `event_receipts` (migration `20261021000004_create_activity`): one
+  receipt per provider delivery, unique on
+  `(organization, provider, connection, delivery key)`. A retry increments
+  `duplicate_count` on the existing row, and matching finishes the receipt as
+  `matched`, `unmatched` or `rejected` with the run ids it produced.
+- Added `agent_conversations`: one row per trigger and thread/issue/pull
+  request, holding the agent execution serving it. A later arrival is recorded
+  as continuing the conversation, steers it when the agent is busy, or
+  restores the conversation when the agent is gone. Reusing a live agent's
+  execution is the session relay's job (1.5.5): every arrival still dispatches
+  its own executions, so no execution id is shared across runs.
+- Added `GET /v1/activity` — cursor-paged history combining receipts, runs,
+  steps and executions, filtered by project, provider, trigger, status and
+  kind. Every branch is organization-scoped, and filters combine over the
+  union so no project's rows can leak into another's page.
+- Added `GET /v1/activity/runs/{run}` — the run plus an `arrival` record:
+  `created`, `continued` or `restored`, the conversation key, whether it
+  steered a busy agent, the receipt, and the output limits that belong to that
+  arrival alone.
+- Runs now record `provider`, `receipt_public_id`, `conversation_key`,
+  `continuation`, `steered` and `output_limits_json`.
+  Each arrival keeps its own limits and completion status; a later revision
+  cannot rewrite an earlier arrival's snapshot.
+- `services::dispatch` now writes a receipt before matching, returns the
+  original runs for a duplicate delivery without creating another run, and
+  plans continuation per trigger before creating the run.
+- Added unit tests for receipt normalization/dedup, conversation grouping,
+  continuation steering/restoration, per-arrival output limits and activity
+  filter/cursor validation; added ignored MySQL integration tests for filter
+  isolation, page shape, receipt dedup and run arrival detail.
+
 ## [Unreleased] — 2026-10-19 — Playzoid becomes Tidepool; TideTable is the plan
 
 Documentation and planning change plus the first implementation task. The plan
@@ -389,6 +423,45 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   install-after-failure, plus ignored live-MySQL integration tests for the
   create/replace cycle, partial failure across two installs, an unknown project
   and per-project name uniqueness.
+
+### Dispatch and run lifecycle (task 1.4.6)
+- Added `runs` and `run_steps` (migration `20261021000003_create_runs`). A run
+  snapshots the dispatch-time workflow, environments and prompt partials, so a
+  restart evaluates exactly what was dispatched. The delivery key is unique per
+  trigger: an event retry or a manual resubmission returns the existing run.
+- Added `POST /v1/runs` (`runs:dispatch`, or a non-viewer member) for manual
+  dispatch: `{ project, trigger, actor, revision?, deliveryKey, input }`.
+  Leading `key=value` tokens fill declared inputs and the first non-assignment
+  token starts the request text. The actor must be in the trigger's
+  `from_users`; an expected revision that is no longer active is a 409. A new
+  run is 201; a key that already names one is 200 with `deduplicated: true` —
+  deduplication is promised, exactly-once delivery is not.
+- Added event dispatch (`services::dispatch::dispatch_event`): every active
+  trigger whose event, connection, resource, actor, channel, label, `contains`
+  and `pattern` filters all pass starts one run; `*`/`?` are the pattern's only
+  metacharacters.
+- Dispatch resolves every step's environment before inserting anything. An
+  offline host therefore fails with `daemon_not_connected` and writes no run or
+  step row — nothing is queued.
+- Added the run lifecycle (`services::runs`): one step at a time, conditions
+  skip a step without failing the run, and the workflow/step deadlines cap each
+  step. A passed deadline fails the run and skips every later step. Conditions
+  read declared inputs and earlier step outputs; prompts render `inputs.*`,
+  `request`, `steps.<id>` and `steps.<id>.<property>`.
+- Create-intent idempotency: the execution id is derived deterministically from
+  the run's public id and step id, stored before the frame is sent. A lost
+  response, host reconnect or pool restart re-sends the same id; the host
+  answers with the existing execution. A succeeded execution is recorded from
+  the ledger; a failed or interrupted one becomes `interrupted` and is never
+  started again.
+- Wired completion into the host socket and recovery into startup and host
+  reconnect (files outside the task's owned paths), so observed completions
+  advance the run and a reconnected host replays its pending intents.
+- Added unit tests for input parsing, filter matching, glob patterns,
+  condition evaluation, prompt rendering, deadline arithmetic, execution-id
+  determinism and the create decision, plus ignored live-MySQL integration
+  tests for event/manual dispatch, offline dispatch, restart replay and
+  condition/deadline outcomes.
 
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the

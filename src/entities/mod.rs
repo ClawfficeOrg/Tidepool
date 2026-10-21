@@ -3,6 +3,7 @@
 //! Concrete types land here as persistence and upstream-parity modelling
 //! progress (see `docs/TALO_API.md`).
 
+pub mod activity;
 pub mod analytics_event;
 pub mod api_key;
 pub mod configuration_revision;
@@ -24,5 +25,6 @@ pub mod pool_invitation;
 pub mod pool_user;
 pub mod project;
 pub mod prop;
+pub mod run;
 pub mod save;
 pub mod workflow;

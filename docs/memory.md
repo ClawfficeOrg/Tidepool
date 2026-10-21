@@ -1339,6 +1339,107 @@ accept and refuse exactly the documents validate does.
 
 ---
 
+## 2026-10-21 — Dispatch and run lifecycle (task 1.4.6)
+
+**A run is a snapshot, not a live revision pointer.** Creation copies the
+workflow, the environment definitions and the prompt partial contents onto the
+run, and every step stores its resolved environment, host, directory, rendered
+branch and execution id. Recovery therefore evaluates what was dispatched even
+after a newer revision is installed, and it needs no repository or manifest
+read. The activity log (1.4.7) can read the same immutable record.
+
+**Deduplication is per trigger and happens before any other work.** The unique
+key is `(trigger_id, delivery_key)`. A resubmission returns the existing run
+before environments are resolved, so a duplicate never fails because a host went
+offline in between. The database key is the concurrency arbiter: the insert
+loser reloads the winner instead of surfacing a 500. Manual dispatch reports
+`deduplicated: true` and never claims exactly-once delivery — the promise is
+that one key names one run.
+
+**Offline means "write nothing", and preflight is the enforcement.** Every
+step's environment is resolved through `environments::require_for_dispatch`
+before the run transaction opens. `daemon_not_connected` therefore leaves zero
+rows, matching the documented error contract. The presence check is not a
+queue: the trigger must fire again later. If a host vanishes between preflight
+and the first frame, the just-created run is deleted, preserving the same rule.
+
+**The execution id is deterministic and stored before the frame.** A step's id
+is `sha256(run_public_id + step_id)` shaped like a UUID. A crash between the
+row write and the send, a lost response and a restart all resend the same
+`create_agent`; the host answers with the existing execution. Recovery applies
+one decision table: absent → send, queued/running → replay, succeeded → record
+the ledger's completion, failed/interrupted → record interrupted and never send
+the prompt again. Startup recovery runs while hosts are still offline (so most
+intents defer); reconnect recovery per host replays them once the socket is
+live.
+
+**Conditions skip; deadlines stop.** A false condition marks only that step
+`skipped` and continues with the next step, so an optional branch cannot fail a
+run. The run deadline is the workflow runtime from creation; each step's
+effective maximum is capped by the remaining run time. A deadline check runs
+before every step start and again on completion; failing it marks the run
+`failed` and every later pending step `skipped` with `run_deadline`. Idle
+timeouts are stored on the workflow but not enforced yet: they need per-output
+timestamps, which belong to the activity/observation record in 1.4.7.
+
+**Manual input parsing is a prefix rule.** Only leading `name=value` tokens
+whose name is a declared input are consumed, each at most once; the first other
+token begins the request text, whitespace preserved after it. Defaults are
+applied before required checks. An unknown key at the start is prose, not an
+error, so a request that happens to contain `=` is never rejected.
+
+**Trigger pattern guards are globs, not regexes.** The schema has no regex
+dependency, so `*` and `?` are the only metacharacters and everything else is
+literal. That keeps an authored filter from becoming a regex denial-of-service
+and is pinned by unit tests.
+
+---
+
+## 2026-10-21 — Activity log, receipts and continuation (task 1.4.7)
+
+**A receipt is written before matching, so "arrived but matched nothing" is a
+recorded outcome.** The unique key is `(organization, provider, connection,
+delivery key)`. `INSERT IGNORE` is the arbiter: a retry increments
+`duplicate_count` on the same row and returns the run ids stored on it instead
+of dispatching again. The receipt is then finished as `matched`, `unmatched` or
+`rejected`, so a delivery that errors during matching is still visible. Manual
+dispatches keep their own `(trigger, delivery_key)` dedup rule and do not write
+provider receipts, because they are not provider deliveries.
+
+**The activity read is a union, not a second log to keep in sync.** Receipts,
+runs, run steps and executions are already durable; the read API unions them,
+orders by observation time and id, and filters the union. Every branch carries
+its own `organization_id` predicate, and project/provider/trigger/status are
+applied after the union, so combining filters cannot widen the scope. The
+trade-off is that a new record type must be added to the union, not just
+written to a table.
+
+**Continuation is decided before the run exists and recorded on it.** A
+conversation key is the provider plus resource plus the channel/thread/issue
+id the event carries. An existing conversation with an agent is continued; a
+busy agent is also marked `steered`. A conversation whose agent is gone is
+restored with a new agent. The run stores the decision, the reused execution
+id and its own resolved output limits, so each arrival's limits and completion
+status stay independent even when the conversation is shared. The host
+protocol has no separate steer frame yet, so steering is recorded as intent on
+the arrival; the create-intent replay remains the transport mechanism.
+
+**Execution ids are never shared across runs.** Conversation continuation
+records *intent* (`created`, `continued`, `restored`, `steered`), not a reused
+execution: `run_steps.execution_id` is unique per row and each arrival
+dispatches its own executions. Carrying a message into a live agent needs a
+message/steer frame the host protocol does not have yet, so actual agent reuse
+belongs to the session relay (1.5.5). Recording an unused
+`reused_execution_id` implied a reuse the lifecycle never performed, so the
+column and its API field were removed rather than left as dead state.
+
+**Output limits are snapshotted per arrival.** They are resolved from the
+run's workflow snapshot into `output_limits_json` at creation, alongside the
+existing workflow/environment/partial snapshots. A later revision cannot
+retroactively loosen or tighten what an earlier arrival was allowed to emit.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

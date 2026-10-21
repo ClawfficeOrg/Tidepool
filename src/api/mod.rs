@@ -1,5 +1,6 @@
 //! HTTP API handlers (scaffold)
 
+pub mod activity;
 pub mod api_keys;
 pub mod auth;
 pub mod connections;
@@ -10,6 +11,7 @@ pub mod game_settings;
 pub mod healthz;
 pub mod hosts;
 pub mod leaderboards;
+pub mod manual_runs;
 pub mod metrics;
 pub mod openapi;
 pub mod players;
