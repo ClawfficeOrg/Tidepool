@@ -777,7 +777,7 @@
         {
           "id": "1.4.7",
           "title": "Runs, activity log and event receipts",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "A durable record of everything that arrived, what it matched, and what ran: one receipt per provider delivery (with deduplication), one row per trigger run, per step and per execution, with statuses and the output each step produced. An activity read API returns that history filtered by project, provider, trigger and status, and the run detail says whether an arrival created, continued or restored an agent. A trigger continuing a conversation reuses the agent for the same thread, issue or pull request, and steers it if it is busy, with each arrival keeping its own output limits and completion status.",
           "touches": [
             "migrations/",
@@ -799,7 +799,9 @@
           "complexity": "High",
           "agent": "pro_dev_agent",
           "changelog": "Added the run record, activity log and event receipts",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-21T16:22:51Z",
+          "human_look": "Review FAILED: (1) conversation pinned to first arrival's execution, so steering detection breaks for later arrivals and stored busy flag is ignored; (2) 'restored' continuation unreachable (LEFT JOIN masks deleted agent, restore branch dead, no e2e test); (3) 'continued' reuses no agent context and reusedExecution is never used; (4) receipt crash-window leaves deliveries stuck 'received' with retries returning empty instead of re-matching. Gate passed."
         }
       ]
     },
