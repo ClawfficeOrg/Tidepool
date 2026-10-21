@@ -1289,6 +1289,56 @@ the referenced partial files, not every file in the bundle.
 
 ---
 
+## 2026-10-21 — Trigger installation and revisions (task 1.4.3)
+
+**A trigger's identity is per project, and its name is the replace key.** The
+`triggers` row holds `(project_id, name)` as a unique key and a stable
+`public_id`; installing a document whose name already exists replaces that row's
+document rather than inserting a second trigger. Two projects in one
+organization may each own a trigger called `auto-fix-issues`, which is what lets
+a repository's configuration be deployed per project. `updated_at` moves on a
+replace; `public_id` never does, so dispatch (1.4.6) and the activity log
+(1.4.7) can refer to one trigger across every version of it.
+
+**Revisions are append-only, so history stays readable.** A successful install
+inserts one `trigger_revisions` row — per-trigger `version`, the exact installed
+document as JSON, `active` — and flips `active` off on the trigger's previously
+active row in the same transaction. Nothing is updated in place and nothing is
+deleted (only a project cascade removes them), so `version N` always means the
+same document. Version is `max(version) + 1`, not `count(*) + 1`, so a swept row
+cannot make the next install collide on the unique `(trigger_id, version)` key.
+
+**An invalid document changes nothing, because it never reaches the writer.**
+Install validates first and then decides: `decide_install` returns
+`TriggerError::Invalid` with the named issues and *no plan*, so there is
+nothing for the database half to execute — no trigger row, no revision, no
+deactivation, no audit entry. This is the "a later failure does not undo an
+earlier success" contract from the task, and it is a property of the plan type
+rather than a convention. The HTTP result is 422 `configuration_invalid`
+naming every failing field. Note the deliberate asymmetry with configuration
+1.4.1: a rejected *bundle* is still stored as an `invalid` revision for the
+record, while a rejected *trigger* install is not stored at all, because the
+task says it changes nothing.
+
+**The bookkeeping is pure; only the write is not.** `RevisionPlan`,
+`ExistingTrigger`, `plan_install` and `decide_install` take the trigger's
+current state and return what will be written, so create-then-replace, version
+numbering, identity retention and the invalid-document rule are all unit-tested
+without a database. `install_trigger` then `SELECT ... FOR UPDATE`s the trigger
+row (or the project row when creating one) and applies the plan, so two
+concurrent installs of the same name serialize and cannot pick the same
+version.
+
+**The stored document is the canonical JSON of the authored one.** Installation
+serializes the parsed `TriggerDocument`, so dispatch reads back exactly the
+filters and run that were installed, with `deny_unknown_fields` having already
+rejected anything unrecognized. The install body itself is the document plus a
+`project` key and is parsed explicitly rather than with `#[serde(flatten)]`,
+because flattening silently disables `deny_unknown_fields` — install must
+accept and refuse exactly the documents validate does.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

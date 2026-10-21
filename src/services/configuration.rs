@@ -577,6 +577,21 @@ async fn require_project(
     .ok_or(ConfigurationError::ProjectNotFound)
 }
 
+/// Resolve a project's internal id, scoped to the organization.
+///
+/// Shared with trigger installation (task 1.4.3), which stores its revisions
+/// against the project without duplicating the project lookup or its
+/// organization scoping.
+pub async fn project_id(
+    pool: &MySqlPool,
+    organization_id: u64,
+    project_public_id: &str,
+) -> Result<u64, ConfigurationError> {
+    Ok(require_project(pool, organization_id, project_public_id)
+        .await?
+        .id)
+}
+
 /// The next version number for a project.
 async fn next_version(pool: &MySqlPool, project_id: u64) -> Result<u32, ConfigurationError> {
     let count: i64 =

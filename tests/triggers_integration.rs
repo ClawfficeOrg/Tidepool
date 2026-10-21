@@ -34,6 +34,8 @@ async fn pool() -> MySqlPool {
 
 async fn reset(pool: &MySqlPool) {
     for statement in [
+        "DELETE FROM trigger_revisions",
+        "DELETE FROM triggers",
         "DELETE FROM configuration_revision_files",
         "DELETE FROM configuration_revisions",
         "DELETE FROM projects",
@@ -442,4 +444,440 @@ async fn validate_writes_nothing() {
         status_after, "offline",
         "validation must not change host presence"
     );
+}
+
+// ── installation (task 1.4.3) ──────────────────────────────────────────────
+
+/// Seed a project and return its public id.
+async fn seed_project(pool: &MySqlPool, organization_id: u64, slug: &str) -> String {
+    let public_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO projects (public_id, organization_id, slug, name) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&public_id)
+    .bind(organization_id)
+    .bind(slug)
+    .bind("Nightly Builds")
+    .execute(pool)
+    .await
+    .expect("seed project");
+    public_id
+}
+
+fn install_body(project: &str, document: &Value) -> Value {
+    let mut body = document.clone();
+    body["project"] = json!(project);
+    body
+}
+
+macro_rules! install {
+    ($app:expr, $token:expr, $body:expr) => {{
+        let req = test::TestRequest::post()
+            .uri("/v1/triggers/install")
+            .insert_header(bearer($token))
+            .set_json($body)
+            .to_request();
+        let resp = test::call_service($app, req).await;
+        let status = resp.status();
+        let body: Value = test::read_body_json(resp).await;
+        (status, body)
+    }};
+}
+
+/// Stored revision state for a trigger, newest first: `(version, active)`.
+async fn stored_revisions(pool: &MySqlPool, trigger_id: &str) -> Vec<(u32, bool)> {
+    sqlx::query_as(
+        "SELECT r.version, r.active FROM trigger_revisions r \
+         JOIN triggers t ON t.id = r.trigger_id \
+         WHERE t.public_id = ? ORDER BY r.version DESC",
+    )
+    .bind(trigger_id)
+    .fetch_all(pool)
+    .await
+    .expect("stored revisions")
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn install_creates_then_replaces_keeping_identity() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+    let project_id = seed_project(&pool, organization_id, "nightly-builds").await;
+
+    let token = auth_svc::issue_jwt(JWT_SECRET, &owner_public_id, 3600).expect("jwt");
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::triggers::config),
+    )
+    .await;
+
+    // First call creates.
+    let (status, body) = install!(&app, &token, install_body(&project_id, &valid_document()));
+    assert_eq!(status, StatusCode::CREATED, "first install: {body}");
+    assert_eq!(body["name"], "auto-fix-issues");
+    assert_eq!(body["version"], 1);
+    assert_eq!(body["active"], true);
+    assert_eq!(body["replaced"], false);
+    let trigger_id = body["id"].as_str().expect("trigger id").to_string();
+    let first_revision = body["revision"].as_str().expect("revision id").to_string();
+
+    // Second call replaces: same trigger id, new revision, version 2.
+    let (status, body) = install!(&app, &token, install_body(&project_id, &valid_document()));
+    assert_eq!(status, StatusCode::CREATED, "second install: {body}");
+    assert_eq!(body["id"], trigger_id.as_str(), "identity is kept");
+    assert_eq!(body["version"], 2);
+    assert_eq!(body["active"], true);
+    assert_eq!(body["replaced"], true);
+    let second_revision = body["revision"].as_str().expect("revision id").to_string();
+    assert_ne!(
+        second_revision, first_revision,
+        "a new revision is produced"
+    );
+
+    // Exactly one trigger row, and revision 1 is deactivated while 2 is active.
+    let trigger_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM triggers WHERE project_id = (SELECT id FROM projects WHERE public_id = ?)")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .expect("trigger count");
+    assert_eq!(
+        trigger_rows, 1,
+        "a replace must not create a second trigger"
+    );
+
+    let revisions = stored_revisions(&pool, &trigger_id).await;
+    assert_eq!(
+        revisions,
+        vec![(2, true), (1, false)],
+        "the new revision is active and the old one deactivated"
+    );
+
+    // The stored document is the installed one, verbatim.
+    let stored: String = sqlx::query_scalar(
+        "SELECT document FROM trigger_revisions WHERE public_id = ? AND trigger_id = \
+         (SELECT id FROM triggers WHERE public_id = ?)",
+    )
+    .bind(&second_revision)
+    .bind(&trigger_id)
+    .fetch_one(&pool)
+    .await
+    .expect("stored document");
+    let stored: Value = serde_json::from_str(&stored).expect("document json");
+    assert_eq!(stored["name"], "auto-fix-issues");
+    assert_eq!(stored["filters"]["from_users"], json!(["alice"]));
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn a_later_failed_install_does_not_undo_an_earlier_success() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+    let project_id = seed_project(&pool, organization_id, "nightly-builds").await;
+
+    let token = auth_svc::issue_jwt(JWT_SECRET, &owner_public_id, 3600).expect("jwt");
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::triggers::config),
+    )
+    .await;
+
+    // A successful install.
+    let (status, body) = install!(&app, &token, install_body(&project_id, &valid_document()));
+    assert_eq!(status, StatusCode::CREATED);
+    let trigger_id = body["id"].as_str().expect("trigger id").to_string();
+    let first_version = body["version"].as_u64().expect("version");
+
+    // Two failing installs afterwards: one structurally invalid, one naming
+    // references that do not resolve.
+    let mut no_allowlist = valid_document();
+    no_allowlist["filters"]["from_users"] = json!([]);
+    let (status, body) = install!(&app, &token, install_body(&project_id, &no_allowlist));
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "invalid document is refused: {body}"
+    );
+    assert_eq!(body["code"], "configuration_invalid");
+    assert!(
+        body["detail"]
+            .as_str()
+            .expect("detail")
+            .contains("filters.from_users"),
+        "the failing field is named: {body}"
+    );
+
+    let mut unknown_host = valid_document();
+    unknown_host["run"]["host"] = json!("ghost-host");
+    let (status, body) = install!(&app, &token, install_body(&project_id, &unknown_host));
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        body["detail"]
+            .as_str()
+            .expect("detail")
+            .contains("run.host"),
+        "the failing host is named: {body}"
+    );
+
+    // The earlier success is untouched: one revision, still active, still v1.
+    let revisions = stored_revisions(&pool, &trigger_id).await;
+    assert_eq!(
+        revisions,
+        vec![(first_version as u32, true)],
+        "a failed install must change nothing"
+    );
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn install_requires_the_project_to_exist_in_the_organization() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+
+    let token = auth_svc::issue_jwt(JWT_SECRET, &owner_public_id, 3600).expect("jwt");
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::triggers::config),
+    )
+    .await;
+
+    let (status, body) = install!(
+        &app,
+        &token,
+        install_body("11111111-1111-4111-8111-111111111111", &valid_document())
+    );
+    assert_eq!(status, StatusCode::NOT_FOUND, "unknown project: {body}");
+    assert_eq!(body["code"], "not_found");
+
+    let triggers: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM triggers")
+        .fetch_one(&pool)
+        .await
+        .expect("trigger count");
+    assert_eq!(triggers, 0, "a missing project writes nothing");
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn two_projects_may_each_have_a_trigger_of_the_same_name() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+    let first_project = seed_project(&pool, organization_id, "first-project").await;
+    let second_project = seed_project(&pool, organization_id, "second-project").await;
+
+    let token = auth_svc::issue_jwt(JWT_SECRET, &owner_public_id, 3600).expect("jwt");
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::triggers::config),
+    )
+    .await;
+
+    let (status, first) = install!(
+        &app,
+        &token,
+        install_body(&first_project, &valid_document())
+    );
+    assert_eq!(status, StatusCode::CREATED, "{first}");
+    let (status, second) = install!(
+        &app,
+        &token,
+        install_body(&second_project, &valid_document())
+    );
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+    assert_ne!(
+        first["id"], second["id"],
+        "names are unique per project, not per pool"
+    );
+    assert_eq!(second["version"], 1, "each project starts its own history");
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn install_needs_configuration_install_not_just_validate() {
+    use tidepool::entities::api_key::ApiKeyScope;
+    use tidepool::services::api_keys as api_key_svc;
+
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, _owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+    let project_id = seed_project(&pool, organization_id, "nightly-builds").await;
+
+    let organization_row: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("organization id");
+    let (_validate_key, validate_secret) = api_key_svc::create_api_key(
+        &pool,
+        organization_row,
+        None,
+        "validate only",
+        &[ApiKeyScope::ConfigurationValidate],
+    )
+    .await
+    .expect("create validate key");
+    let (_install_key, install_secret) = api_key_svc::create_api_key(
+        &pool,
+        organization_row,
+        None,
+        "install",
+        &[ApiKeyScope::ConfigurationInstall],
+    )
+    .await
+    .expect("create install key");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::triggers::config),
+    )
+    .await;
+
+    // A validate-only key cannot install.
+    let req = test::TestRequest::post()
+        .uri("/v1/triggers/install")
+        .insert_header(("X-API-Key", validate_secret))
+        .set_json(install_body(&project_id, &valid_document()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let problem: Value = test::read_body_json(resp).await;
+    assert_eq!(problem["code"], "missing_scope");
+
+    // The install scope installs and reports the created trigger.
+    let req = test::TestRequest::post()
+        .uri("/v1/triggers/install")
+        .insert_header(("X-API-Key", install_secret))
+        .set_json(install_body(&project_id, &valid_document()))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["name"], "auto-fix-issues");
+    assert_eq!(body["version"], 1);
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn concurrent_installs_of_one_name_serialize_their_versions() {
+    // Two installs of the same name racing: the project row lock serializes
+    // them, so the result is version 1 and version 2 with exactly one active
+    // revision — never a duplicate version or two trigger rows.
+    use tidepool::services::api_keys::AuditActor;
+    use tidepool::services::triggers as trigger_svc;
+
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, _owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+    let project_id = seed_project(&pool, organization_id, "nightly-builds").await;
+
+    let document: trigger_svc::TriggerDocument =
+        serde_json::from_value(valid_document()).expect("document");
+
+    let first = trigger_svc::install_trigger(
+        &pool,
+        organization_id,
+        &project_id,
+        &document,
+        AuditActor::member("owner", "owner@example.com"),
+    );
+    let second = trigger_svc::install_trigger(
+        &pool,
+        organization_id,
+        &project_id,
+        &document,
+        AuditActor::member("owner", "owner@example.com"),
+    );
+    let (first, second) = tokio::join!(first, second);
+    let first = first.expect("first install");
+    let second = second.expect("second install");
+
+    assert_eq!(first.id, second.id, "both installs share one trigger");
+    let mut versions = vec![first.version, second.version];
+    versions.sort_unstable();
+    assert_eq!(
+        versions,
+        vec![1, 2],
+        "versions are 1 and 2, not a collision"
+    );
+
+    let revisions = stored_revisions(&pool, &first.id).await;
+    assert_eq!(revisions, vec![(2, true), (1, false)]);
+
+    let trigger_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM triggers WHERE public_id = ?")
+        .bind(&first.id)
+        .fetch_one(&pool)
+        .await
+        .expect("trigger count");
+    assert_eq!(trigger_rows, 1);
+}
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn a_name_that_differs_only_in_case_replaces_the_same_trigger() {
+    // Names are unique per project under a case-insensitive collation, so
+    // 'Auto-Fix-Issues' is the same trigger as 'auto-fix-issues': it gains a
+    // revision rather than becoming a second trigger.
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (organization_id, owner_public_id) = seed_organization(&pool).await;
+    seed_github_connection(&pool, organization_id, "github-main", "org/repo").await;
+    seed_host(&pool, organization_id, "connected", true).await;
+    let project_id = seed_project(&pool, organization_id, "nightly-builds").await;
+
+    let token = auth_svc::issue_jwt(JWT_SECRET, &owner_public_id, 3600).expect("jwt");
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::triggers::config),
+    )
+    .await;
+
+    let (status, first) = install!(&app, &token, install_body(&project_id, &valid_document()));
+    assert_eq!(status, StatusCode::CREATED, "{first}");
+
+    let mut cased = valid_document();
+    cased["name"] = json!("Auto-Fix-Issues");
+    let (status, second) = install!(&app, &token, install_body(&project_id, &cased));
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+    assert_eq!(second["id"], first["id"], "the same trigger is replaced");
+    assert_eq!(second["version"], 2);
+    assert_eq!(second["replaced"], true);
+
+    let trigger_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM triggers")
+        .fetch_one(&pool)
+        .await
+        .expect("trigger count");
+    assert_eq!(trigger_rows, 1, "no second trigger for a case variant");
 }

@@ -364,6 +364,32 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Added unit tests per rule and per cap plus an ignored live-MySQL integration
   test that installs a two-step, one-partial workflow.
 
+### Trigger installation and revisions (task 1.4.3)
+- Added `triggers` and `trigger_revisions` (migration
+  `20261021000002_create_triggers`). A trigger belongs to one project and its
+  name is unique per project (`(project_id, name)`), so two projects may each
+  own an `auto-fix-issues`. A revision is write-once: it carries a per-trigger
+  `version`, an `active` flag and the exact installed document as JSON.
+- Added `POST /v1/triggers/install` (`configuration:install`, or a non-viewer
+  member). It validates the document with the same resolver validate uses and
+  then creates or replaces the project's trigger of that name, returning
+  `{ id, name, revision, version, active, replaced }`.
+- A first install creates the trigger at version 1. A second install of the
+  same name keeps the trigger's `public_id` (its identity, so the history stays
+  one readable history), appends a new revision and deactivates the previous
+  one. Old revisions are never renumbered or deleted.
+- An invalid document writes nothing at all: no trigger row, no revision, no
+  deactivation, no audit entry. The failure is a 422 `configuration_invalid`
+  naming every failing field, so a later failure never undoes an earlier
+  success. A missing project is a 404.
+- The install body is the trigger document plus one `project` key, parsed so
+  `deny_unknown_fields` still applies; a missing or unusable `project` is a 400.
+- Added unit tests for create-then-replace, revision numbering (including a
+  version gap), identity retention, the invalid-document rule and
+  install-after-failure, plus ignored live-MySQL integration tests for the
+  create/replace cycle, partial failure across two installs, an unknown project
+  and per-project name uniqueness.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

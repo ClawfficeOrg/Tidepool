@@ -1,4 +1,4 @@
-//! Trigger schema and validation (task 1.4.2).
+//! Trigger schema, validation and installation (tasks 1.4.2 and 1.4.3).
 //!
 //! A trigger is one document: the provider [`TriggerEvent`] it listens for, the
 //! [`TriggerFilters`] that decide which events are allowed through, and the
@@ -25,9 +25,20 @@
 //! for shape only here; matching an event against them is dispatch's job
 //! (task 1.4.6). Every condition is a conjunction — all must pass, and there is
 //! no "any" mode.
+//!
+//! [`install_trigger`] runs the same validation and then creates or replaces the
+//! project's trigger of that name. Names are unique per project, and a
+//! replacement keeps the trigger's `public_id`, so its revisions stay one
+//! readable history: each successful install appends one immutable
+//! `trigger_revisions` row, activates it and deactivates the previous one. A
+//! document that fails validation writes nothing at all, so a later failure
+//! never undoes an earlier success.
 
 use crate::entities::connection::{ConnectionStatus, ProviderKind};
 use crate::entities::host_capability::AgentSelection;
+use crate::services::api_keys as audit_svc;
+use crate::services::api_keys::{AuditActor, AuditEntry};
+use crate::services::configuration::{self as configuration_svc, ConfigurationError};
 use crate::services::connections::{self as connection_svc, ConnectionError};
 use crate::services::host_capability::{self as capability_svc, HostCapabilityError};
 use crate::services::hosts::{self as host_svc, HostServiceError, normalize_slug};
@@ -55,7 +66,7 @@ pub const MAX_FROM_USERS: usize = 10_000;
 pub const MAX_USER_CHARS: usize = 255;
 
 /// The complete trigger document: event, filters and the run it starts.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TriggerDocument {
     /// Trigger name, unique per project once installed.
@@ -69,7 +80,7 @@ pub struct TriggerDocument {
 }
 
 /// The provider event a trigger listens for.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TriggerEvent {
     /// Provider kind (`github`, `slack`, `discord`).
@@ -80,7 +91,7 @@ pub struct TriggerEvent {
 }
 
 /// Filters that gate which events may start the run.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TriggerFilters {
     /// Connection slug the event must arrive through.
@@ -106,7 +117,7 @@ pub struct TriggerFilters {
 }
 
 /// A provider resource identity (`kind` + `id`).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceFilter {
     /// Resource kind (`repository`, `workspace`, `guild`, `channel`).
@@ -116,7 +127,7 @@ pub struct ResourceFilter {
 }
 
 /// The run an allowed event starts: a host and the agent to run on it.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TriggerRun {
     /// Host slug the run dispatches to.
@@ -145,12 +156,175 @@ pub struct TriggerValidateOutcome {
     pub errors: Vec<TriggerIssue>,
 }
 
-/// Domain errors for trigger validation.
+/// Domain errors for trigger validation and installation.
 #[derive(Debug, Error)]
 pub enum TriggerError {
-    /// Database failure while resolving a reference.
+    /// Database failure while resolving a reference or storing a revision.
     #[error("database error")]
     Database(#[source] sqlx::Error),
+    /// No project with that id in this organization.
+    #[error("project not found")]
+    ProjectNotFound,
+    /// The document failed validation; nothing was written.
+    #[error("trigger document is invalid")]
+    Invalid(Vec<TriggerIssue>),
+    /// The document could not be encoded for storage.
+    #[error("trigger document could not be encoded: {0}")]
+    Encoding(String),
+}
+
+/// Result of one successful [`install_trigger`] call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TriggerInstallResult {
+    /// Immutable trigger id; a replacement keeps it.
+    pub id: String,
+    /// The trigger name, unique per project.
+    pub name: String,
+    /// Public id of the revision this install produced.
+    pub revision: String,
+    /// Per-trigger revision number, starting at 1.
+    pub version: u32,
+    /// True when this revision is the trigger's active document.
+    pub active: bool,
+    /// True when an existing trigger was replaced rather than created.
+    pub replaced: bool,
+}
+
+/// Identity of an already-installed trigger, as install bookkeeping needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExistingTrigger {
+    /// The trigger's public id; a replacement keeps it.
+    pub public_id: String,
+}
+
+/// One stored revision of a trigger, as version bookkeeping needs it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RevisionState {
+    /// Per-trigger revision number.
+    pub version: u32,
+    /// Whether this revision is the trigger's active document.
+    pub active: bool,
+}
+
+/// What the next install of a trigger does to its stored revisions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionPlan {
+    /// Revision number the install produces (`max + 1`).
+    pub version: u32,
+    /// True when a currently active revision must be deactivated.
+    pub deactivates_previous: bool,
+}
+
+impl RevisionPlan {
+    /// Plan the next revision from the trigger's existing revisions.
+    ///
+    /// Pure: the unit-testable half of revision bookkeeping. The version is
+    /// `max(version) + 1` rather than `count + 1`, so a gap can never produce a
+    /// duplicate; any currently active revision is deactivated by the install.
+    pub fn from_existing(existing: &[RevisionState]) -> Self {
+        let version = existing
+            .iter()
+            .map(|revision| revision.version)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        Self {
+            version,
+            deactivates_previous: existing.iter().any(|revision| revision.active),
+        }
+    }
+}
+
+/// Resolve the public id an install uses: the existing trigger's id when it is
+/// replaced, or the freshly generated one when it is created.
+pub fn trigger_identity(existing: Option<&ExistingTrigger>, generated: &str) -> (String, bool) {
+    match existing {
+        Some(trigger) => (trigger.public_id.clone(), true),
+        None => (generated.to_string(), false),
+    }
+}
+
+/// The stored name of a trigger: trimmed, as authored otherwise.
+pub fn trigger_name(document: &TriggerDocument) -> String {
+    document.name.trim().to_string()
+}
+
+/// What one install does to the trigger's stored state.
+///
+/// Pure output of [`plan_install`], so the create/replace and revision
+/// bookkeeping is unit-testable without a database. The database layer only
+/// executes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallPlan {
+    /// Trigger id the install writes: the existing one when replaced.
+    pub id: String,
+    /// Stored trigger name.
+    pub name: String,
+    /// Public id of the revision this install appends.
+    pub revision: String,
+    /// Per-trigger revision number.
+    pub version: u32,
+    /// True: a valid install is always the active document.
+    pub active: bool,
+    /// True when an existing trigger with this name was replaced.
+    pub replaced: bool,
+    /// True when a new `triggers` row must be inserted.
+    pub creates_trigger: bool,
+    /// True when the previously active revision must be deactivated.
+    pub deactivates_previous: bool,
+}
+
+/// Plan one install from the trigger's current state.
+///
+/// Create-then-replace: with no existing trigger the given id is used and
+/// version 1 is written; with an existing trigger its id is kept (so the
+/// history stays one history), the next version is appended and the previous
+/// active revision is deactivated. Every other revision is left untouched.
+pub fn plan_install(
+    document: &TriggerDocument,
+    existing: Option<&ExistingTrigger>,
+    revisions: &[RevisionState],
+    generated_trigger_id: &str,
+    generated_revision_id: &str,
+) -> InstallPlan {
+    let (id, replaced) = trigger_identity(existing, generated_trigger_id);
+    let revision_plan = RevisionPlan::from_existing(revisions);
+    InstallPlan {
+        id,
+        name: trigger_name(document),
+        revision: generated_revision_id.to_string(),
+        version: revision_plan.version,
+        active: true,
+        replaced,
+        creates_trigger: existing.is_none(),
+        deactivates_previous: revision_plan.deactivates_previous,
+    }
+}
+
+/// Turn a validation outcome into the install plan, or the rejection.
+///
+/// Pure: the whole "invalid document changes nothing" rule lives here, because
+/// the plan is what the database layer executes. A document with any named
+/// issue yields [`TriggerError::Invalid`] and no plan at all, so no call is
+/// made to create, replace, deactivate or append anything.
+pub fn decide_install(
+    document: &TriggerDocument,
+    outcome: &TriggerValidateOutcome,
+    existing: Option<&ExistingTrigger>,
+    revisions: &[RevisionState],
+    generated_trigger_id: &str,
+    generated_revision_id: &str,
+) -> Result<InstallPlan, TriggerError> {
+    if !outcome.valid || !outcome.errors.is_empty() {
+        return Err(TriggerError::Invalid(outcome.errors.clone()));
+    }
+    Ok(plan_install(
+        document,
+        existing,
+        revisions,
+        generated_trigger_id,
+        generated_revision_id,
+    ))
 }
 
 /// How the named host and its ability to run the agent resolved.
@@ -436,6 +610,216 @@ pub async fn validate_trigger(
         valid: errors.is_empty(),
         errors,
     })
+}
+
+// ── installation ───────────────────────────────────────────────────────────
+
+/// Validate and then create or replace the project's trigger of that name.
+///
+/// One request installs one trigger. The document is compiled exactly as
+/// [`validate_trigger`] compiles it; when it reports any issue nothing at all is
+/// written, so an invalid document cannot disturb an earlier success. A valid
+/// document appends one immutable revision, activates it and deactivates the
+/// trigger's previous revision, keeping the trigger's identity so its history
+/// stays readable. Repeating the same document is therefore a new revision, not
+/// a no-op.
+pub async fn install_trigger(
+    pool: &MySqlPool,
+    organization_id: u64,
+    project_public_id: &str,
+    document: &TriggerDocument,
+    actor: AuditActor,
+) -> Result<TriggerInstallResult, TriggerError> {
+    let project_id = configuration_svc::project_id(pool, organization_id, project_public_id)
+        .await
+        .map_err(map_configuration_error)?;
+
+    // Validate before the transaction: a rejected document must write nothing,
+    // so nothing is locked, inserted, deactivated or audited.
+    let outcome = validate_trigger(pool, organization_id, document).await?;
+
+    let name = trigger_name(document);
+    let stored_document = serde_json::to_string(document).map_err(|error| {
+        TriggerError::Encoding(format!("trigger document is not serializable: {error}"))
+    })?;
+
+    let mut tx = pool.begin().await.map_err(TriggerError::Database)?;
+
+    // Lock the project row so two concurrent installs against the same project
+    // serialize: state is read and the plan built under the lock, so they
+    // cannot both pick the same revision number or both create the trigger.
+    sqlx::query("SELECT id FROM projects WHERE id = ? FOR UPDATE")
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(TriggerError::Database)?;
+
+    let existing = find_trigger(&mut *tx, project_id, &name).await?;
+    let revisions = match existing.as_ref() {
+        Some(trigger) => load_revisions(&mut *tx, trigger.trigger_id).await?,
+        None => Vec::new(),
+    };
+    let identity = existing.as_ref().map(TriggerRow::identity);
+    let generated_trigger_id = uuid::Uuid::new_v4().to_string();
+    let generated_revision_id = uuid::Uuid::new_v4().to_string();
+    let plan = decide_install(
+        document,
+        &outcome,
+        identity.as_ref(),
+        &revisions,
+        &generated_trigger_id,
+        &generated_revision_id,
+    )?;
+
+    let trigger_id = match existing.as_ref() {
+        Some(trigger) => {
+            // A case-variant of the same name matches under the DB's
+            // case-insensitive collation, so the stored name follows the
+            // latest authored spelling.
+            if trigger.stored_name != plan.name {
+                sqlx::query("UPDATE triggers SET name = ? WHERE id = ?")
+                    .bind(&plan.name)
+                    .bind(trigger.trigger_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(TriggerError::Database)?;
+            }
+            trigger.trigger_id
+        }
+        None => {
+            let result =
+                sqlx::query("INSERT INTO triggers (public_id, project_id, name) VALUES (?, ?, ?)")
+                    .bind(&plan.id)
+                    .bind(project_id)
+                    .bind(&plan.name)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(TriggerError::Database)?;
+            result.last_insert_id()
+        }
+    };
+
+    if plan.deactivates_previous {
+        sqlx::query("UPDATE trigger_revisions SET active = 0 WHERE trigger_id = ? AND active = 1")
+            .bind(trigger_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(TriggerError::Database)?;
+    }
+
+    sqlx::query(
+        "INSERT INTO trigger_revisions (public_id, trigger_id, version, active, document) \
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&plan.revision)
+    .bind(trigger_id)
+    .bind(plan.version)
+    .bind(plan.active)
+    .bind(&stored_document)
+    .execute(&mut *tx)
+    .await
+    .map_err(TriggerError::Database)?;
+
+    tx.commit().await.map_err(TriggerError::Database)?;
+
+    audit_svc::audit(
+        pool,
+        AuditEntry {
+            organization_id,
+            actor,
+            action: "trigger.install",
+            target_kind: Some("trigger"),
+            target_public_id: Some(&plan.id),
+            detail: serde_json::json!({
+                "project": project_public_id,
+                "name": name,
+                "revision": plan.version,
+                "replaced": plan.replaced,
+            }),
+        },
+    )
+    .await;
+
+    Ok(TriggerInstallResult {
+        id: plan.id,
+        name,
+        revision: plan.revision,
+        version: plan.version,
+        active: plan.active,
+        replaced: plan.replaced,
+    })
+}
+
+fn map_configuration_error(error: ConfigurationError) -> TriggerError {
+    match error {
+        ConfigurationError::Database(error) => TriggerError::Database(error),
+        ConfigurationError::ProjectNotFound => TriggerError::ProjectNotFound,
+        // The project lookup is the only configuration call made here.
+        _ => TriggerError::ProjectNotFound,
+    }
+}
+
+/// A trigger row as install bookkeeping needs it.
+struct TriggerRow {
+    /// Internal id used by the revision queries.
+    trigger_id: u64,
+    /// Immutable public id returned to the caller; a replacement keeps it.
+    public_id: String,
+    /// The name as currently stored (may differ in case from the document).
+    stored_name: String,
+}
+
+impl TriggerRow {
+    /// Borrow the identity the pure install planner expects.
+    fn identity(&self) -> ExistingTrigger {
+        ExistingTrigger {
+            public_id: self.public_id.clone(),
+        }
+    }
+}
+
+/// Find the project's trigger by name, scoped to the project.
+async fn find_trigger<'e, E>(
+    executor: E,
+    project_id: u64,
+    name: &str,
+) -> Result<Option<TriggerRow>, TriggerError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::MySql>,
+{
+    let row: Option<(u64, String, String)> = sqlx::query_as(
+        "SELECT id, public_id, name FROM triggers WHERE project_id = ? AND name = ?",
+    )
+    .bind(project_id)
+    .bind(name)
+    .fetch_optional(executor)
+    .await
+    .map_err(TriggerError::Database)?;
+    Ok(row.map(|(trigger_id, public_id, stored_name)| TriggerRow {
+        trigger_id,
+        public_id,
+        stored_name,
+    }))
+}
+
+/// Load the version/active state of a trigger's revisions.
+async fn load_revisions<'e, E>(
+    executor: E,
+    trigger_id: u64,
+) -> Result<Vec<RevisionState>, TriggerError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::MySql>,
+{
+    let rows: Vec<(u32, bool)> =
+        sqlx::query_as("SELECT version, active FROM trigger_revisions WHERE trigger_id = ?")
+            .bind(trigger_id)
+            .fetch_all(executor)
+            .await
+            .map_err(TriggerError::Database)?;
+    Ok(rows
+        .into_iter()
+        .map(|(version, active)| RevisionState { version, active })
+        .collect())
 }
 
 /// Resolve `filters.connection` to `(provider, active)`, or `None` when unknown.
@@ -923,5 +1307,311 @@ mod tests {
         assert!(fields.contains(&"filters.connection"));
         assert!(fields.contains(&"filters.resource"));
         assert!(fields.contains(&"run.agent.provider"));
+    }
+
+    // ── installation planning (create-then-replace) ────────────────────────
+
+    #[test]
+    fn a_first_install_creates_the_trigger_at_version_one() {
+        let document = document();
+        let plan = plan_install(&document, None, &[], "trigger-1", "revision-1");
+        assert_eq!(plan.id, "trigger-1", "a create uses the generated id");
+        assert_eq!(plan.name, "auto-fix-issues");
+        assert_eq!(plan.version, 1);
+        assert_eq!(plan.revision, "revision-1");
+        assert!(plan.active);
+        assert!(!plan.replaced);
+        assert!(plan.creates_trigger);
+        assert!(
+            !plan.deactivates_previous,
+            "nothing is active before the first install"
+        );
+    }
+
+    #[test]
+    fn a_second_install_replaces_but_keeps_the_trigger_identity() {
+        let document = document();
+        let existing = ExistingTrigger {
+            public_id: "trigger-1".into(),
+        };
+        let revisions = [RevisionState {
+            version: 1,
+            active: true,
+        }];
+        let plan = plan_install(
+            &document,
+            Some(&existing),
+            &revisions,
+            "generated-should-not-be-used",
+            "revision-2",
+        );
+        assert_eq!(plan.id, "trigger-1", "replacement keeps the trigger id");
+        assert_eq!(plan.version, 2, "replacement produces a new revision");
+        assert_eq!(plan.revision, "revision-2");
+        assert!(plan.active);
+        assert!(plan.replaced);
+        assert!(!plan.creates_trigger);
+        assert!(
+            plan.deactivates_previous,
+            "the old active revision is deactivated"
+        );
+    }
+
+    #[test]
+    fn replacement_history_keeps_the_previous_revisions_readable() {
+        // The planner never renumbers or drops a revision: version is max + 1
+        // and only the active flag is flipped, so the older revisions stay.
+        let previous = [
+            RevisionState {
+                version: 1,
+                active: false,
+            },
+            RevisionState {
+                version: 2,
+                active: false,
+            },
+            RevisionState {
+                version: 3,
+                active: true,
+            },
+        ];
+        let plan = RevisionPlan::from_existing(&previous);
+        assert_eq!(plan.version, 4);
+        assert!(plan.deactivates_previous);
+        assert_eq!(previous.len(), 3, "existing revisions are not discarded");
+    }
+
+    #[test]
+    fn a_gap_in_versions_cannot_produce_a_duplicate() {
+        // Version is max + 1, not count + 1, so a swept revision cannot make the
+        // next install collide on (trigger_id, version).
+        let with_gap = [
+            RevisionState {
+                version: 1,
+                active: false,
+            },
+            RevisionState {
+                version: 5,
+                active: true,
+            },
+        ];
+        assert_eq!(RevisionPlan::from_existing(&with_gap).version, 6);
+    }
+
+    #[test]
+    fn a_trigger_with_no_active_revision_has_nothing_to_deactivate() {
+        let revisions = [RevisionState {
+            version: 1,
+            active: false,
+        }];
+        let plan = RevisionPlan::from_existing(&revisions);
+        assert_eq!(plan.version, 2);
+        assert!(!plan.deactivates_previous);
+    }
+
+    #[test]
+    fn the_generated_id_is_used_only_when_creating() {
+        let (id, replaced) = trigger_identity(None, "fresh");
+        assert_eq!(id, "fresh");
+        assert!(!replaced);
+
+        let existing = ExistingTrigger {
+            public_id: "kept".into(),
+        };
+        let (id, replaced) = trigger_identity(Some(&existing), "fresh");
+        assert_eq!(id, "kept", "a replaced trigger keeps its identity");
+        assert!(replaced);
+    }
+
+    #[test]
+    fn the_stored_name_is_trimmed() {
+        let mut json = document_json();
+        json["name"] = serde_json::json!("  auto-fix-issues  ");
+        let document: TriggerDocument = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(trigger_name(&document), "auto-fix-issues");
+        // The plan stores the trimmed name, so a padded document replaces the
+        // trigger of the same name rather than creating a second one.
+        let plan = plan_install(&document, None, &[], "trigger-1", "revision-1");
+        assert_eq!(plan.name, "auto-fix-issues");
+    }
+
+    #[test]
+    fn an_invalid_document_produces_a_named_rejection_not_a_plan() {
+        // Install validates before planning through the same pure resolver, so
+        // a rejected document yields issues (and the caller writes nothing).
+        let mut json = document_json();
+        json["filters"]["from_users"] = serde_json::json!([]);
+        let document: TriggerDocument = serde_json::from_value(json).expect("deserialize");
+        let issues = resolve_issues(&resolution(&document));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.field == "filters.from_users"),
+            "a rejected document names the field: {issues:?}"
+        );
+    }
+
+    #[test]
+    fn an_installed_document_round_trips_as_stored_json() {
+        // The stored document is the canonical JSON of the authored document,
+        // so a later dispatch reads back exactly what was installed.
+        let document = document();
+        let stored = serde_json::to_string(&document).expect("serialize");
+        let parsed: TriggerDocument = serde_json::from_str(&stored).expect("parse");
+        assert_eq!(parsed.name, document.name);
+        assert_eq!(parsed.event.event_type, document.event.event_type);
+        assert_eq!(parsed.filters.from_users, document.filters.from_users);
+        assert_eq!(parsed.run.agent, document.run.agent);
+        assert_eq!(
+            resolve_issues(&resolution(&parsed)),
+            Vec::<TriggerIssue>::new()
+        );
+    }
+
+    // ── install decisions (what gets written) ──────────────────────────────
+
+    fn valid_outcome(document: &TriggerDocument) -> TriggerValidateOutcome {
+        TriggerValidateOutcome {
+            name: document.name.clone(),
+            valid: true,
+            errors: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn an_invalid_document_yields_no_plan_and_names_its_issues() {
+        // The whole "invalid document changes nothing" rule is here: with no
+        // plan there is nothing for the database layer to execute.
+        let document = document();
+        let outcome = TriggerValidateOutcome {
+            name: document.name.clone(),
+            valid: false,
+            errors: vec![TriggerIssue {
+                field: "filters.from_users".into(),
+                message: "from_users must be present and non-empty".into(),
+            }],
+        };
+        let error = decide_install(&document, &outcome, None, &[], "trigger-1", "revision-1")
+            .expect_err("an invalid document must not install");
+        match error {
+            TriggerError::Invalid(issues) => {
+                assert_eq!(issues.len(), 1);
+                assert_eq!(issues[0].field, "filters.from_users");
+            }
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_document_that_merely_claims_valid_but_carries_issues_is_refused() {
+        // Defence in depth: `valid` and an empty issue list must agree.
+        let document = document();
+        let outcome = TriggerValidateOutcome {
+            name: document.name.clone(),
+            valid: true,
+            errors: vec![TriggerIssue {
+                field: "run.host".into(),
+                message: "unknown host slug 'studio-mac'".into(),
+            }],
+        };
+        assert!(matches!(
+            decide_install(&document, &outcome, None, &[], "t", "r"),
+            Err(TriggerError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn a_valid_document_installs_and_a_second_install_replaces_it() {
+        // Create-then-replace, end to end at the decision layer: the same
+        // in-memory state the database layer keeps.
+        let document = document();
+        let outcome = valid_outcome(&document);
+
+        // First call: no trigger, no revisions.
+        let first = decide_install(&document, &outcome, None, &[], "trigger-1", "revision-1")
+            .expect("first install");
+        assert!(!first.replaced);
+        assert_eq!(first.version, 1);
+        assert_eq!(first.id, "trigger-1");
+
+        // The database now holds the trigger and revision 1, active.
+        let existing = ExistingTrigger {
+            public_id: first.id.clone(),
+        };
+        let revisions = [RevisionState {
+            version: first.version,
+            active: first.active,
+        }];
+
+        // Second call: same name, so the trigger is replaced, not created.
+        let second = decide_install(
+            &document,
+            &outcome,
+            Some(&existing),
+            &revisions,
+            "trigger-should-not-be-used",
+            "revision-2",
+        )
+        .expect("second install");
+        assert!(second.replaced, "the second install replaces");
+        assert_eq!(second.id, first.id, "identity is kept across a replace");
+        assert_eq!(second.version, 2, "a new revision is produced");
+        assert_ne!(second.revision, first.revision);
+        assert!(
+            second.deactivates_previous,
+            "the previous revision is deactivated"
+        );
+        assert!(second.active);
+    }
+
+    #[test]
+    fn a_failed_install_after_a_success_leaves_the_success_in_place() {
+        // Sequence: valid install, then an invalid one. The second attempt
+        // produces no plan, so the caller writes nothing and revision 1 stays
+        // active — "a later failure does not undo an earlier success".
+        let document = document();
+        let first = decide_install(
+            &document,
+            &valid_outcome(&document),
+            None,
+            &[],
+            "trigger-1",
+            "revision-1",
+        )
+        .expect("first install");
+        let state_after_first = (
+            ExistingTrigger {
+                public_id: first.id.clone(),
+            },
+            vec![RevisionState {
+                version: first.version,
+                active: first.active,
+            }],
+        );
+
+        let rejected = TriggerValidateOutcome {
+            name: document.name.clone(),
+            valid: false,
+            errors: vec![TriggerIssue {
+                field: "filters.resource".into(),
+                message: "no active github connection delivers for 'repository' 'org/repo'".into(),
+            }],
+        };
+        assert!(
+            decide_install(
+                &document,
+                &rejected,
+                Some(&state_after_first.0),
+                &state_after_first.1,
+                "unused",
+                "unused",
+            )
+            .is_err()
+        );
+
+        // Nothing about the earlier success changed.
+        assert_eq!(state_after_first.0.public_id, "trigger-1");
+        assert_eq!(state_after_first.1.len(), 1);
+        assert!(state_after_first.1[0].active);
     }
 }
