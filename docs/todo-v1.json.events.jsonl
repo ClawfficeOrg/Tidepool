@@ -41,3 +41,23 @@
 {"at": "2026-10-21T07:53:12Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T15:53:12Z"}
 {"at": "2026-10-21T08:09:03Z", "event": "look_defer", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "needs_human_look", "note": "Killed mid-task; WIP committed at wip(1.4.2), gate never run on this state. Finish trigger schema/validation endpoint."}
 {"at": "2026-10-21T08:14:06Z", "event": "reset", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "needs_human_look", "to": "pending"}
+{"at": "2026-10-21T08:15:10Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:15:10Z"}
+{"at": "2026-10-21T08:17:01Z", "event": "reset", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T08:18:05Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:18:05Z"}
+{"at": "2026-10-21T08:19:34Z", "event": "reset", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T08:19:54Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:19:54Z"}
+{"at": "2026-10-21T08:31:29Z", "event": "start", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:31:29Z"}
+{"at": "2026-10-21T08:35:06Z", "event": "start", "task": "1.4.5", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:35:06Z"}
+{"at": "2026-10-21T08:51:48Z", "event": "done", "task": "1.4.5", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Environment model"}
+{"at": "2026-10-21T08:52:35Z", "event": "reset", "task": "1.4.2", "owner": "Michaels-MacBook-Pro.local:97687", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T08:52:35Z", "event": "reset", "task": "1.4.4", "owner": "Michaels-MacBook-Pro.local:97688", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T08:52:44Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:52:44Z"}
+{"at": "2026-10-21T08:55:36Z", "event": "start", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:55:36Z"}
+{"at": "2026-10-21T09:17:44Z", "event": "done", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Workflow schema: steps, inputs, conditions, outputs, deadlines"}
+{"at": "2026-10-21T09:19:01Z", "event": "done", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Added the trigger schema and validation endpoint"}
+{"at": "2026-10-21T09:19:24Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T17:19:24Z"}
+{"at": "2026-10-21T11:47:12Z", "event": "reset", "task": "1.4.3", "owner": "Michaels-MacBook-Pro.local:69153", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T11:47:19Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T19:47:19Z"}
+{"at": "2026-10-21T11:47:52Z", "event": "reset", "task": "1.4.3", "owner": "Michaels-MacBook-Pro.local:71846", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T11:47:59Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T19:47:59Z"}
+{"at": "2026-10-21T11:53:58Z", "event": "look_defer", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "needs_human_look", "note": "Run stopped on request. Checkpoint at f7edf0f (wip(1.4.3)); gate never run on that state. Finish trigger install/revision endpoint."}
