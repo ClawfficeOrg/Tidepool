@@ -38,3 +38,4 @@
 {"at": "2026-10-21T07:24:07Z", "event": "reset", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
 {"at": "2026-10-21T07:24:23Z", "event": "start", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T15:24:23Z"}
 {"at": "2026-10-21T07:53:11Z", "event": "done", "task": "1.4.1", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Project model and configuration revisions"}
+{"at": "2026-10-21T07:53:12Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T15:53:12Z"}

@@ -18,4 +18,5 @@ pub mod problem;
 pub mod projects;
 pub mod saves;
 pub mod socket_ticket;
+pub mod triggers;
 pub mod webhooks;

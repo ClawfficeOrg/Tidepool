@@ -23,3 +23,4 @@ pub mod pool_identity;
 pub mod projects;
 pub mod redis;
 pub mod saves;
+pub mod triggers;
