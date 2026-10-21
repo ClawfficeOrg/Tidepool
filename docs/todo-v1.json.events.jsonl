@@ -59,3 +59,5 @@
 {"at": "2026-10-21T11:47:12Z", "event": "reset", "task": "1.4.3", "owner": "Michaels-MacBook-Pro.local:69153", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
 {"at": "2026-10-21T11:47:19Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T19:47:19Z"}
 {"at": "2026-10-21T11:47:52Z", "event": "reset", "task": "1.4.3", "owner": "Michaels-MacBook-Pro.local:71846", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T11:47:59Z", "event": "start", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T19:47:59Z"}
+{"at": "2026-10-21T11:53:58Z", "event": "look_defer", "task": "1.4.3", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "needs_human_look", "note": "Run stopped on request. Checkpoint at f7edf0f (wip(1.4.3)); gate never run on that state. Finish trigger install/revision endpoint."}
