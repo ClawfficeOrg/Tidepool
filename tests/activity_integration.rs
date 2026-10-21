@@ -209,7 +209,7 @@ async fn an_unmatched_delivery_still_gets_a_receipt() {
         .expect("unmatched dispatch");
     assert!(outcomes.is_empty(), "no trigger matched");
 
-    let (status, _): (String, i64) = sqlx::query_as(
+    let (status, _): (String, u32) = sqlx::query_as(
         "SELECT status, duplicate_count FROM event_receipts \
          WHERE organization_id = ? AND delivery_key = ?",
     )
@@ -225,7 +225,7 @@ async fn an_unmatched_delivery_still_gets_a_receipt() {
         .await
         .expect("duplicate unmatched dispatch");
     assert!(again.is_empty());
-    let (status, duplicated): (String, i64) = sqlx::query_as(
+    let (status, duplicated): (String, u32) = sqlx::query_as(
         "SELECT status, duplicate_count FROM event_receipts \
          WHERE organization_id = ? AND delivery_key = ?",
     )
