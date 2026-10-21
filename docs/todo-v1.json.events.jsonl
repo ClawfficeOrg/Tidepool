@@ -46,3 +46,4 @@
 {"at": "2026-10-21T08:18:05Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:18:05Z"}
 {"at": "2026-10-21T08:19:34Z", "event": "reset", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
 {"at": "2026-10-21T08:19:54Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:19:54Z"}
+{"at": "2026-10-21T08:31:29Z", "event": "start", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:31:29Z"}

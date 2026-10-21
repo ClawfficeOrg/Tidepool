@@ -6,7 +6,7 @@
       "model": "muse-spark-1.3-contributor"
     },
     "mid_dev_agent": {
-      "provider": "opencode-go",
+      "provider": "deeprelay",
       "model": "deepseek-v4.1-flash"
     },
     "pro_dev_agent": {
