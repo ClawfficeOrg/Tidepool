@@ -700,6 +700,109 @@ mod tests {
         assert!(resolve_issues(&resolution(&document)).is_empty());
     }
 
+    #[test]
+    fn every_optional_guard_is_accepted_when_present() {
+        // All guards are conjunctive: a document may carry all of them and each
+        // one is checked, never treated as an alternative.
+        let mut json = document_json();
+        json["filters"]["channel"] = serde_json::json!("C0123456");
+        json["filters"]["label"] = serde_json::json!("ready");
+        json["filters"]["contains"] = serde_json::json!("/fix");
+        json["filters"]["pattern"] = serde_json::json!(r"^/fix\b");
+        let document: TriggerDocument = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(document.filters.channel.as_deref(), Some("C0123456"));
+        assert_eq!(document.filters.label.as_deref(), Some("ready"));
+        assert_eq!(document.filters.contains.as_deref(), Some("/fix"));
+        assert_eq!(document.filters.pattern.as_deref(), Some(r"^/fix\b"));
+        assert!(resolve_issues(&resolution(&document)).is_empty());
+    }
+
+    #[test]
+    fn filters_is_required() {
+        let mut json = document_json();
+        json.as_object_mut().expect("document").remove("filters");
+        assert!(
+            serde_json::from_value::<TriggerDocument>(json).is_err(),
+            "a trigger without filters must not parse"
+        );
+    }
+
+    #[test]
+    fn any_mode_is_refused() {
+        // There is no any/all switch: extra keys are a parse error rather than
+        // an alternate mode.
+        let mut json = document_json();
+        json["filters"]["any"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<TriggerDocument>(json).is_err());
+    }
+
+    #[test]
+    fn blank_thinking_option_is_named() {
+        let mut json = document_json();
+        json["run"]["agent"]["thinking_option"] = serde_json::json!("  ");
+        let document: TriggerDocument = serde_json::from_value(json).expect("deserialize");
+        let issues = resolve_issues(&resolution(&document));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.field == "run.agent.thinking_option"),
+            "got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn every_field_cap_is_enforced() {
+        let mut json = document_json();
+        json["name"] = serde_json::json!("n".repeat(MAX_NAME_CHARS + 1));
+        json["event"]["type"] = serde_json::json!("e".repeat(MAX_EVENT_CHARS + 1));
+        json["filters"]["connection"] = serde_json::json!("c");
+        json["filters"]["resource"]["kind"] = serde_json::json!("k".repeat(MAX_KIND_CHARS + 1));
+        json["filters"]["resource"]["id"] = serde_json::json!("i".repeat(MAX_RESOURCE_CHARS + 1));
+        json["filters"]["from_users"] = serde_json::json!(
+            (0..=MAX_FROM_USERS)
+                .map(|index| format!("user{index}"))
+                .collect::<Vec<_>>()
+        );
+        json["filters"]["channel"] = serde_json::json!("c".repeat(MAX_CHANNEL_CHARS + 1));
+        json["filters"]["label"] = serde_json::json!("l".repeat(MAX_CHANNEL_CHARS + 1));
+        json["filters"]["contains"] = serde_json::json!("c".repeat(MAX_CONTAINS_CHARS + 1));
+        json["filters"]["pattern"] = serde_json::json!("p".repeat(MAX_PATTERN_CHARS + 1));
+
+        let document: TriggerDocument = serde_json::from_value(json).expect("deserialize");
+        let issues = resolve_issues(&resolution(&document));
+        let fields: Vec<&str> = issues.iter().map(|issue| issue.field.as_str()).collect();
+        for expected in [
+            "name",
+            "event.type",
+            "filters.resource.kind",
+            "filters.resource.id",
+            "filters.from_users",
+            "filters.channel",
+            "filters.label",
+            "filters.contains",
+            "filters.pattern",
+        ] {
+            assert!(
+                fields.contains(&expected),
+                "missing {expected} in {fields:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_over_long_user_handle_is_named_by_index() {
+        let mut json = document_json();
+        json["filters"]["from_users"] = serde_json::json!(["u".repeat(MAX_USER_CHARS + 1)]);
+        let document: TriggerDocument = serde_json::from_value(json).expect("deserialize");
+        let issues = resolve_issues(&resolution(&document));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.field == "filters.from_users[0]"),
+            "got {issues:?}"
+        );
+    }
+
     // ── reference resolution ───────────────────────────────────────────────
 
     #[test]

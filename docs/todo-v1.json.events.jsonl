@@ -51,3 +51,4 @@
 {"at": "2026-10-21T08:51:48Z", "event": "done", "task": "1.4.5", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Environment model"}
 {"at": "2026-10-21T08:52:35Z", "event": "reset", "task": "1.4.2", "owner": "Michaels-MacBook-Pro.local:97687", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
 {"at": "2026-10-21T08:52:35Z", "event": "reset", "task": "1.4.4", "owner": "Michaels-MacBook-Pro.local:97688", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
+{"at": "2026-10-21T08:52:44Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:52:44Z"}
