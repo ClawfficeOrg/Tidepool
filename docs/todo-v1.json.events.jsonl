@@ -52,3 +52,5 @@
 {"at": "2026-10-21T08:52:35Z", "event": "reset", "task": "1.4.2", "owner": "Michaels-MacBook-Pro.local:97687", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
 {"at": "2026-10-21T08:52:35Z", "event": "reset", "task": "1.4.4", "owner": "Michaels-MacBook-Pro.local:97688", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
 {"at": "2026-10-21T08:52:44Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:52:44Z"}
+{"at": "2026-10-21T08:55:36Z", "event": "start", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:55:36Z"}
+{"at": "2026-10-21T09:17:44Z", "event": "done", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Workflow schema: steps, inputs, conditions, outputs, deadlines"}

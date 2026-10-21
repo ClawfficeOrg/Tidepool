@@ -25,3 +25,4 @@ pub mod pool_user;
 pub mod project;
 pub mod prop;
 pub mod save;
+pub mod workflow;

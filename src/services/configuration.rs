@@ -27,13 +27,15 @@ use crate::entities::configuration_revision::{
 use crate::entities::connection::ConnectionStatus;
 use crate::entities::environment::Environment;
 use crate::entities::project::Project;
+use crate::entities::workflow::Workflow;
 use crate::services::api_keys::{self as audit_svc, AuditActor, AuditEntry};
 use crate::services::connections::{self as connection_svc, ConnectionError};
 use crate::services::environments as environment_svc;
 use crate::services::hosts::{self as host_svc, HostServiceError, normalize_slug};
+use crate::services::workflows as workflow_svc;
 use serde::Deserialize;
 use sqlx::MySqlPool;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
 /// Path of the manifest file that declares the bundle's references.
@@ -45,6 +47,8 @@ pub const MAX_FILES: usize = 100;
 pub const MAX_PATH_CHARS: usize = 512;
 /// Maximum number of characters in a single authored file.
 pub const MAX_FILE_CHARS: usize = 1_000_000;
+/// Maximum total bytes of prompt partial files in one bundle.
+pub const MAX_PARTIAL_BYTES: usize = 5_000_000;
 
 const PROJECT_FIELDS: &str = "id, public_id, organization_id, slug, name, created_at, updated_at";
 const REVISION_FIELDS: &str =
@@ -107,6 +111,9 @@ struct Manifest {
     /// Named prompt partials, each referencing a bundle file.
     #[serde(default)]
     partials: Vec<ManifestPartial>,
+    /// Workflows declared inline, in authored order.
+    #[serde(default)]
+    workflows: Vec<Workflow>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -127,7 +134,54 @@ struct ManifestPartial {
     path: String,
 }
 
+/// Why a bundle path is unsafe or not canonical.
+fn bundle_path_problem(path: &str) -> Option<&'static str> {
+    if path.is_empty() {
+        return Some("must not be empty");
+    }
+    if path != path.trim() {
+        return Some("must not have leading or trailing whitespace");
+    }
+    if path.chars().count() > MAX_PATH_CHARS {
+        return Some("is too long");
+    }
+    if path.chars().any(char::is_control) {
+        return Some("must not contain control characters");
+    }
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Some("must be relative to the bundle root");
+    }
+    if path.starts_with('~') {
+        return Some("must not use a home-directory shorthand");
+    }
+    if path.contains('\\') {
+        return Some("must use '/' separators");
+    }
+    let bytes = path.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return Some("must not carry a drive prefix");
+    }
+    if path.ends_with('/') {
+        return Some("must not end with a separator");
+    }
+    for component in path.split('/') {
+        if component.is_empty() {
+            return Some("must not contain a repeated separator");
+        }
+        if component == "." {
+            return Some("must not contain a '.' component");
+        }
+        if component == ".." {
+            return Some("must not contain a '..' component");
+        }
+    }
+    None
+}
+
 /// Validate the bundle's structure and return its exact file paths.
+///
+/// Every cap names the offending path: the 101st file, an over-long or
+/// non-canonical path, and an over-long file content.
 fn validate_bundle(files: &[ConfigFile]) -> Result<BTreeSet<String>, ConfigurationError> {
     if files.is_empty() {
         return Err(ConfigurationError::Invalid(
@@ -135,22 +189,25 @@ fn validate_bundle(files: &[ConfigFile]) -> Result<BTreeSet<String>, Configurati
         ));
     }
     if files.len() > MAX_FILES {
+        let offending = &files[MAX_FILES];
         return Err(ConfigurationError::Invalid(format!(
-            "configuration bundle exceeds {MAX_FILES} files"
+            "file '{}' exceeds the {MAX_FILES}-file bundle cap",
+            offending.path
         )));
     }
 
     let mut paths = BTreeSet::new();
     for file in files {
-        let trimmed = file.path.trim();
-        if trimmed.is_empty() || trimmed.chars().count() > MAX_PATH_CHARS {
+        if let Some(problem) = bundle_path_problem(&file.path) {
             return Err(ConfigurationError::Invalid(format!(
-                "file path must be 1-{MAX_PATH_CHARS} characters: '{trimmed}'"
+                "file path '{}' {problem} (1-{MAX_PATH_CHARS} characters)",
+                file.path
             )));
         }
         if file.content.chars().count() > MAX_FILE_CHARS {
             return Err(ConfigurationError::Invalid(format!(
-                "file '{trimmed}' exceeds {MAX_FILE_CHARS} characters"
+                "file '{}' exceeds {MAX_FILE_CHARS} characters",
+                file.path
             )));
         }
         if !paths.insert(file.path.clone()) {
@@ -161,6 +218,57 @@ fn validate_bundle(files: &[ConfigFile]) -> Result<BTreeSet<String>, Configurati
         }
     }
     Ok(paths)
+}
+
+/// Enforce bundle-level rules that need the parsed manifest: at most
+/// [`MAX_PARTIAL_BYTES`] bytes of referenced prompt partials, and no extra
+/// files beyond the manifest and the files it references.
+fn bundle_reference_issues(
+    files: &[ConfigFile],
+    manifest: &Manifest,
+    revision: u32,
+) -> Vec<FieldIssue> {
+    let mut issues = Vec::new();
+    let referenced: BTreeSet<&str> = manifest
+        .partials
+        .iter()
+        .map(|partial| partial.path.as_str())
+        .collect();
+
+    for file in files {
+        if file.path == MANIFEST_FILE || referenced.contains(file.path.as_str()) {
+            continue;
+        }
+        issues.push(FieldIssue {
+            field: format!("files.{}", file.path),
+            revision,
+            message: format!(
+                "extra file '{}' is not referenced by the manifest",
+                file.path
+            ),
+        });
+    }
+
+    let mut partial_bytes = 0usize;
+    for file in files {
+        if !referenced.contains(file.path.as_str()) {
+            continue;
+        }
+        partial_bytes += file.content.len();
+        if partial_bytes > MAX_PARTIAL_BYTES {
+            issues.push(FieldIssue {
+                field: format!("partials.{}", file.path),
+                revision,
+                message: format!(
+                    "prompt partials exceed {MAX_PARTIAL_BYTES} bytes at '{}'",
+                    file.path
+                ),
+            });
+            break;
+        }
+    }
+
+    issues
 }
 
 /// Find and parse the manifest file.
@@ -187,6 +295,31 @@ pub fn parse_environments(files: &[ConfigFile]) -> Result<Vec<Environment>, Conf
     Ok(parse_manifest(files)?.environments)
 }
 
+/// Parse the workflows authored in a revision bundle.
+///
+/// Dispatch (task 1.4.6) reads the active revision's workflows through this
+/// function. Steps are returned in authored order; this function performs no
+/// resolution. The same rules are enforced at activation by
+/// [`workflow_svc::workflow_issues`] through [`resolve_references`].
+pub fn parse_workflows(files: &[ConfigFile]) -> Result<Vec<Workflow>, ConfigurationError> {
+    Ok(parse_manifest(files)?.workflows)
+}
+
+/// Map each declared partial name to its authored text.
+fn partial_texts(files: &[ConfigFile], manifest: &Manifest) -> BTreeMap<String, String> {
+    let mut texts = BTreeMap::new();
+    for partial in &manifest.partials {
+        let name = partial.name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        if let Some(file) = files.iter().find(|file| file.path == partial.path) {
+            texts.insert(name.to_string(), file.content.clone());
+        }
+    }
+    texts
+}
+
 /// Collect the connection and host slugs declared in the manifest.
 fn manifest_slugs(manifest: &Manifest) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut connections = BTreeSet::new();
@@ -201,12 +334,33 @@ fn manifest_slugs(manifest: &Manifest) -> (BTreeSet<String>, BTreeSet<String>) {
 
 /// Resolve every declared reference against the pre-computed resolution sets
 /// and the bundle's own files. Pure and unit-testable: no database access.
+#[cfg(test)]
 fn resolve_references(
     manifest: &Manifest,
     file_paths: &BTreeSet<String>,
     resolved_connections: &BTreeSet<String>,
     resolved_hosts: &BTreeSet<String>,
     revision: u32,
+) -> Vec<FieldIssue> {
+    resolve_references_with_partial_texts(
+        manifest,
+        file_paths,
+        resolved_connections,
+        resolved_hosts,
+        revision,
+        &BTreeMap::new(),
+    )
+}
+
+/// [`resolve_references`], also scanning partial text for step-output
+/// expressions that must name an earlier step.
+fn resolve_references_with_partial_texts(
+    manifest: &Manifest,
+    file_paths: &BTreeSet<String>,
+    resolved_connections: &BTreeSet<String>,
+    resolved_hosts: &BTreeSet<String>,
+    revision: u32,
+    partial_texts: &BTreeMap<String, String>,
 ) -> Vec<FieldIssue> {
     let mut issues = Vec::new();
 
@@ -319,6 +473,36 @@ fn resolve_references(
             });
         }
     }
+
+    // Workflows are validated against the same revision: complete
+    // environments, named agents and prompt partials.
+    let agent_names: BTreeSet<String> = manifest
+        .agents
+        .iter()
+        .map(|agent| agent.name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect();
+    let partial_names: BTreeSet<String> = manifest
+        .partials
+        .iter()
+        .map(|partial| partial.name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .collect();
+    issues.extend(
+        workflow_svc::workflow_issues_with_partial_texts(
+            &manifest.workflows,
+            &manifest.environments,
+            &agent_names,
+            &partial_names,
+            partial_texts,
+        )
+        .into_iter()
+        .map(|issue| FieldIssue {
+            field: issue.field,
+            revision,
+            message: issue.message,
+        }),
+    );
 
     issues
 }
@@ -467,13 +651,15 @@ pub async fn validate(
     let resolved_connections =
         resolve_connection_slugs(pool, organization_id, &connection_slugs).await?;
     let resolved_hosts = resolve_host_slugs(pool, organization_id, &host_slugs).await?;
-    let errors = resolve_references(
+    let mut errors = resolve_references_with_partial_texts(
         &manifest,
         &file_paths,
         &resolved_connections,
         &resolved_hosts,
         version,
+        &partial_texts(files, &manifest),
     );
+    errors.extend(bundle_reference_issues(files, &manifest, version));
     Ok(ValidateResult {
         valid: errors.is_empty(),
         version,
@@ -522,13 +708,15 @@ pub async fn install(
             .map_err(ConfigurationError::Database)?;
     let version = count as u32 + 1;
 
-    let errors = resolve_references(
+    let mut errors = resolve_references_with_partial_texts(
         &manifest,
         &file_paths,
         &resolved_connections,
         &resolved_hosts,
         version,
+        &partial_texts(files, &manifest),
     );
+    errors.extend(bundle_reference_issues(files, &manifest, version));
     let valid = errors.is_empty();
     let status = if valid {
         RevisionStatus::Valid
@@ -716,6 +904,7 @@ mod tests {
                 name: "system".into(),
                 path: "partials/system.txt".into(),
             }],
+            workflows: Vec::new(),
         }
     }
 
@@ -989,5 +1178,344 @@ mod tests {
         assert_eq!(environment.name, "review");
         let branch = environment.branch_for("exec-1").expect("render");
         assert_eq!(branch.as_deref(), Some("trigger-exec-1"));
+    }
+
+    fn workflow_manifest() -> String {
+        serde_json::json!({
+            "connections": ["github-main"],
+            "hosts": ["studio-mac"],
+            "environments": [{
+                "name": "default",
+                "host": "studio-mac",
+                "directory": "/Users/you/code/repo"
+            }],
+            "agents": [{"name": "coder", "provider": "anthropic", "model": "claude"}],
+            "partials": [{"name": "system", "path": "partials/system.txt"}],
+            "workflows": [{
+                "name": "triage",
+                "trigger": "issue-comment",
+                "maxRuntime": 900,
+                "inputs": [{"name": "route"}],
+                "steps": [
+                    {
+                        "id": "classify",
+                        "environment": "default",
+                        "agent": "coder",
+                        "prompt": {
+                            "parts": [
+                                {"text": "Classify the request."},
+                                {"partial": "system"}
+                            ]
+                        },
+                        "output": {
+                            "properties": {"route": {"enum": ["bug", "docs"]}}
+                        },
+                        "maxRuntime": 300,
+                        "idleTimeout": 60
+                    },
+                    {
+                        "id": "fix",
+                        "environment": "default",
+                        "agent": {
+                            "provider": "anthropic",
+                            "model": "claude",
+                            "execution_mode": "default"
+                        },
+                        "prompt": [{"text": "Fix it."}],
+                        "if": {
+                            "left": {"input": "route"},
+                            "op": "in",
+                            "right": {"step": "classify", "property": "route"}
+                        },
+                        "reads": ["classify"]
+                    }
+                ]
+            }]
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_two_step_one_partial_workflow_resolves_cleanly() {
+        let files = bundle(&[
+            (MANIFEST_FILE, &workflow_manifest()),
+            ("partials/system.txt", "You are a triage engineer."),
+        ]);
+        let paths = validate_bundle(&files).expect("bundle structure");
+        assert!(paths.contains("partials/system.txt"));
+        let manifest = parse_manifest(&files).expect("manifest");
+        assert_eq!(manifest.workflows.len(), 1);
+        assert_eq!(manifest.workflows[0].steps.len(), 2);
+        assert!(
+            bundle_reference_issues(&files, &manifest, 1).is_empty(),
+            "two-step, one-partial bundle is referenced exactly"
+        );
+        let (connections, hosts) = resolved();
+        let issues = resolve_references(&manifest, &paths, &connections, &hosts, 1);
+        assert!(issues.is_empty(), "expected no issues, got {issues:?}");
+
+        let workflows = parse_workflows(&files).expect("workflows");
+        let ids: Vec<&str> = workflows[0]
+            .steps
+            .iter()
+            .map(|step| step.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["classify", "fix"], "steps stay in file order");
+    }
+
+    #[test]
+    fn a_configured_step_reading_a_later_step_is_rejected() {
+        let mut manifest =
+            parse_manifest(&bundle(&[(MANIFEST_FILE, &workflow_manifest())])).expect("manifest");
+        manifest.workflows[0].steps[1].reads = vec!["fix".into()];
+        manifest.workflows[0].steps[0].reads = vec!["fix".into()];
+        let (connections, hosts) = resolved();
+        let issues = resolve_references(&manifest, &file_paths(), &connections, &hosts, 1);
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.field == "workflows.triage.steps[0].reads[0]"
+                    && issue.revision == 1),
+            "got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn a_partial_reading_a_later_step_fails_activation() {
+        let files = bundle(&[
+            (MANIFEST_FILE, &workflow_manifest()),
+            ("partials/system.txt", "Use ${{ steps.fix.output }}"),
+        ]);
+        let manifest = parse_manifest(&files).expect("manifest");
+        let (connections, hosts) = resolved();
+        let issues = resolve_references_with_partial_texts(
+            &manifest,
+            &file_paths(),
+            &connections,
+            &hosts,
+            1,
+            &partial_texts(&files, &manifest),
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.field == "workflows.triage.steps[0].prompt[1].partial"),
+            "got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn bundle_paths_must_be_safe_and_canonical() {
+        for path in [
+            "../outside.txt",
+            "/absolute.txt",
+            "./relative.txt",
+            "dir//file.txt",
+            "dir/./file.txt",
+            "dir/../file.txt",
+            "dir/",
+            "C:/windows.txt",
+            "dir\\windows.txt",
+            "~/.ssh/id_rsa",
+            " padded.txt",
+            "control\u{0000}.txt",
+        ] {
+            let files = bundle(&[(path, "x")]);
+            let error = validate_bundle(&files).expect_err("unsafe path must fail");
+            assert!(
+                error.to_string().contains(path),
+                "error must name '{path}': {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_bundle_cap_names_the_failing_path() {
+        // File count: the 101st file is named.
+        let too_many = (0..=MAX_FILES)
+            .map(|index| ConfigFile {
+                path: format!("file-{index}.txt"),
+                content: "x".into(),
+            })
+            .collect::<Vec<_>>();
+        let error = validate_bundle(&too_many).expect_err("file cap");
+        assert!(error.to_string().contains("file-100.txt"), "{error}");
+
+        // Path length: the over-long path is named.
+        let long_path = format!("{}.txt", "p".repeat(MAX_PATH_CHARS));
+        let error = validate_bundle(&bundle(&[(&long_path, "x")])).expect_err("path cap");
+        assert!(error.to_string().contains(&long_path), "{error}");
+
+        // File characters: the over-long file is named.
+        let long_content = "x".repeat(MAX_FILE_CHARS + 1);
+        let error =
+            validate_bundle(&bundle(&[("partials/big.txt", &long_content)])).expect_err("file cap");
+        assert!(error.to_string().contains("partials/big.txt"), "{error}");
+
+        // Duplicate path is named.
+        let duplicate = bundle(&[("a.txt", "1"), ("a.txt", "2")]);
+        let error = validate_bundle(&duplicate).expect_err("duplicate");
+        assert!(error.to_string().contains("a.txt"), "{error}");
+    }
+
+    #[test]
+    fn extra_files_are_rejected_and_named() {
+        let files = bundle(&[
+            (
+                MANIFEST_FILE,
+                r#"{"partials":[{"name":"system","path":"partials/system.txt"}]}"#,
+            ),
+            ("partials/system.txt", "used"),
+            ("partials/extra.txt", "not referenced"),
+        ]);
+        let manifest = parse_manifest(&files).expect("manifest");
+        let issues = bundle_reference_issues(&files, &manifest, 2);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].field, "files.partials/extra.txt");
+        assert!(issues[0].message.contains("partials/extra.txt"));
+        assert_eq!(issues[0].revision, 2);
+    }
+
+    #[test]
+    fn the_total_prompt_partial_cap_names_the_crossing_path() {
+        let mut files = Vec::new();
+        let mut partials = Vec::new();
+        for index in 0..6 {
+            let path = format!("partials/part-{index}.txt");
+            files.push(ConfigFile {
+                path: path.clone(),
+                content: "x".repeat(MAX_FILE_CHARS),
+            });
+            partials.push(serde_json::json!({"name": format!("part-{index}"), "path": path}));
+        }
+        let manifest_json = serde_json::json!({"partials": partials}).to_string();
+        let mut all = vec![ConfigFile {
+            path: MANIFEST_FILE.into(),
+            content: manifest_json,
+        }];
+        all.extend(files);
+        let manifest = parse_manifest(&all).expect("manifest");
+        let issues = bundle_reference_issues(&all, &manifest, 3);
+        assert_eq!(issues.len(), 1, "only the crossing path is reported");
+        assert_eq!(issues[0].field, "partials.partials/part-5.txt");
+        assert!(issues[0].message.contains("partials/part-5.txt"));
+    }
+
+    #[test]
+    fn partials_within_the_total_cap_are_accepted() {
+        let files = bundle(&[
+            (
+                MANIFEST_FILE,
+                r#"{"partials":[
+                    {"name":"one","path":"partials/one.txt"},
+                    {"name":"two","path":"partials/two.txt"}
+                ]}"#,
+            ),
+            ("partials/one.txt", "first"),
+            ("partials/two.txt", "second"),
+        ]);
+        let manifest = parse_manifest(&files).expect("manifest");
+        assert!(bundle_reference_issues(&files, &manifest, 1).is_empty());
+    }
+
+    #[actix_web::test]
+    #[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+    async fn installs_a_two_step_one_partial_workflow() {
+        use crate::services::pool_identity::{self as identity_svc, NewOrganization};
+
+        const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
+        let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB_URL.into());
+        let pool = crate::db::build_pool(&db_url)
+            .await
+            .expect("DB connection failed — is Docker up?");
+
+        for statement in [
+            "DELETE FROM configuration_revision_files",
+            "DELETE FROM configuration_revisions",
+            "DELETE FROM projects",
+            "DELETE FROM connection_resources",
+            "DELETE FROM connections",
+            "DELETE FROM host_capabilities",
+            "DELETE FROM host_executions",
+            "DELETE FROM host_credentials",
+            "DELETE FROM enrollment_tokens",
+            "DELETE FROM hosts",
+            "DELETE FROM audit_events",
+            "DELETE FROM api_keys",
+            "DELETE FROM pool_invitations",
+            "DELETE FROM pool_users",
+            "DELETE FROM organizations",
+        ] {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("clear table");
+        }
+
+        let (organization, _owner) = identity_svc::setup_pool(
+            &pool,
+            NewOrganization {
+                organization_name: "Workflow Integration Pool".into(),
+                email: "owner-workflows@example.com".into(),
+                display_name: "Workflow Owner".into(),
+                password: "integration-password-1".into(),
+            },
+        )
+        .await
+        .expect("setup pool");
+
+        sqlx::query(
+            "INSERT INTO hosts (public_id, organization_id, slug, display_name, hostname, status) \
+             VALUES (?, ?, 'studio-mac', 'Studio Mac', 'studio-mac', 'connected')",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(organization.id)
+        .execute(&pool)
+        .await
+        .expect("seed host");
+        sqlx::query(
+            "INSERT INTO connections \
+             (public_id, organization_id, provider, slug, display_name, credential_ref, status) \
+             VALUES (?, ?, 'github', 'github-main', 'GitHub', 'unused', 'active')",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(organization.id)
+        .execute(&pool)
+        .await
+        .expect("seed connection");
+
+        let project_public_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO projects (public_id, organization_id, slug, name) \
+             VALUES (?, ?, 'workflow-project', 'Workflow Project')",
+        )
+        .bind(&project_public_id)
+        .bind(organization.id)
+        .execute(&pool)
+        .await
+        .expect("seed project");
+
+        let files = bundle(&[
+            (MANIFEST_FILE, &workflow_manifest()),
+            ("partials/system.txt", "You are a triage engineer."),
+        ]);
+        let result = install(
+            &pool,
+            organization.id,
+            &project_public_id,
+            &files,
+            AuditActor::member("integration-owner", "owner-workflows@example.com"),
+        )
+        .await
+        .expect("install workflow bundle");
+
+        assert!(result.activated, "a valid workflow bundle activates");
+        assert_eq!(result.revision.version, 1);
+        assert_eq!(result.revision.status, RevisionStatus::Valid);
+        assert_eq!(result.revision.files.len(), 2, "manifest and one partial");
+        let workflows = parse_workflows(&files).expect("workflows");
+        assert_eq!(workflows[0].steps.len(), 2);
+        assert_eq!(workflows[0].steps[0].id, "classify");
+        assert_eq!(workflows[0].steps[1].id, "fix");
     }
 }

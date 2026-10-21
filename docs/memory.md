@@ -1236,6 +1236,59 @@ MySQL.
 
 ---
 
+## 2026-10-21 — Workflow schema (task 1.4.4)
+
+**A workflow is one trigger and an ordered step list, validated against the
+same revision.** `Workflow` is `{ name, trigger, maxRuntime, inputs, steps }`;
+each `Step` is `{ id, environment, agent, prompt, if?, output?, outputs,
+maxRuntime?, idleTimeout?, reads? }`. Steps run in authored order and the
+authored JSON is stored verbatim in the revision (no normalized workflow
+document is written). `configuration::parse_workflows` returns the authored
+list for dispatch (1.4.6).
+
+**Only earlier steps are readable, enforced at every read site.** A `reads`
+entry, any condition operand naming a step, and any `${{ steps.<id>... }}`
+prompt expression must name a step that appears before the reader. A later
+step, the reader itself or an unknown id is a named rejection, so dispatch
+never needs to reason about forward references. Step ids are unique and limited
+to `[A-Za-z0-9][A-Za-z0-9_-]*`; dots are excluded so the prompt expression
+parser can separate an id from its output property unambiguously.
+
+**An agent is a name or one complete static inline configuration, never a
+dynamic inline object.** `AgentRef` has `Named(String)`, `Inline(InlineAgent)`
+and a catch-all `Dynamic(map)`. The catch-all exists so an authored
+`{ "input": ... }` object parses and receives a named validation issue instead
+of turning the whole bundle into malformed JSON; it is never accepted.
+`InlineAgent` denies unknown keys and refuses `${{ ... }}` values, which is
+what keeps an inline agent complete and static.
+
+**A finite output schema can bound a later choice; an unbounded one cannot.**
+An output property is finite when it declares `const` or a non-empty `enum`.
+When a condition compares a declared input to an earlier step's output property
+with `in`/`eq`, every declared input choice must be inside the finite set. A
+property without `enum`/`const` yields no bound, so the later choice stays
+unconstrained. `finite_choice_bounds` exposes the intersection for dispatch;
+the validation error names the input and the offending choice.
+
+**Deadlines nest; the remaining workflow time is the outer bound.** A
+workflow's `maxRuntime` defaults to one hour and is capped at seven days. A
+step's `maxRuntime` defaults to the workflow's remaining time, and both that
+value and the step's `idleTimeout` are capped by the remaining workflow time
+(the idle timeout is also capped by the step's maximum runtime).
+`Workflow::effective_deadlines` is pure so 1.4.6 can apply it at each step
+start.
+
+**Bundle caps are structural, named, and reject extras.** The 100-file,
+512-character-path, 1,000,000-character-file and 5,000,000-byte-partial caps
+each report the offending path. Paths must be relative and canonical: no
+absolute or drive prefix, no backslash, no `.`/`..`, repeated or trailing
+separator, control character or padding. Duplicate paths are refused, and any
+bundle file other than `tidepool.json` that the manifest does not reference as
+a partial is an "extra file" and fails activation. The partial byte cap sums
+the referenced partial files, not every file in the bundle.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

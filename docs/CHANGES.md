@@ -330,6 +330,40 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   per-execution branch; the database wrapper asks presence. An offline host
   fails with `daemon_not_connected` and nothing is queued.
 
+### Workflow schema (task 1.4.4)
+- Added `Workflow` (`src/entities/workflow.rs`): one trigger name and an
+  ordered list of steps. A step carries a unique id, an environment selector, a
+  named or complete static inline agent, an ordered prompt of text and partial
+  includes, an optional condition over declared inputs and earlier step output,
+  an optional finite output schema, its declared output capabilities, and its
+  own maximum runtime and idle timeout.
+- Steps run in authored order. A `reads` entry, a condition operand and a
+  `${{ steps.<id>... }}` prompt expression may reference only an earlier step;
+  a later step or the step itself is rejected. Step ids are unique and stable
+  (`[A-Za-z0-9][A-Za-z0-9_-]*`).
+- An agent is either a named agent or one complete static inline
+  configuration. A dynamic inline object is parsed so validation can name it
+  and is then refused; an inline field carrying an expression is refused too.
+- Added `src/services/workflows.rs`, which validates workflows against the
+  revision's environments, named agents and prompt partials and reports a
+  named `{ field, message }` issue for every failure. Output capabilities are
+  checked through the existing `OutputLedger` registry.
+- A finite output property (`enum` or `const`) may bound a later input choice:
+  every declared choice must be in the finite set. An unbounded property does
+  not constrain the choice. `finite_choice_bounds` exposes the resulting bound
+  for dispatch.
+- Deadlines compose: the workflow maximum runtime is the outer bound, and the
+  remaining time caps both a step's maximum runtime and its idle timeout
+  (`Workflow::effective_deadlines`).
+- Configuration activation now validates the `workflows` array in
+  `tidepool.json` and adds `configuration::parse_workflows` for dispatch. The
+  bundle caps are enforced with the failing path named: at most 100 files, a
+  512-character path, 1,000,000 characters per file and 5,000,000 bytes of
+  referenced prompt partials. Paths must be relative and canonical; unsafe,
+  duplicate and extra (unreferenced) files are rejected.
+- Added unit tests per rule and per cap plus an ignored live-MySQL integration
+  test that installs a two-step, one-partial workflow.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

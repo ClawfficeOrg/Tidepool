@@ -25,3 +25,4 @@ pub mod projects;
 pub mod redis;
 pub mod saves;
 pub mod triggers;
+pub mod workflows;
