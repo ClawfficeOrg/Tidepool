@@ -284,6 +284,26 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
   `GET /v1/projects/{id}/revisions[/{revision_id}]` the history. The manifest
   is `tidepool.json`; the authored files are stored exactly, never normalized.
 
+### Trigger schema and validation endpoint (task 1.4.2)
+- Added the trigger document: the provider `event` it listens for
+  (`{ provider, type }`), its `filters`, and the `run` it starts
+  (`{ host, agent }`, where `agent` is a `provider`/`model`/`execution_mode`/
+  `thinking_option` selection).
+- `filters` is required and `from_users` must be present and non-empty. The
+  allowlist is the one layer that keeps a stranger's comment on a public issue
+  from starting an agent on someone's machine, so a missing or empty allowlist
+  is a hard rejection, never a default.
+- Filters cover the provider resource (`resource.kind` + `resource.id`), the
+  connection (`connection` slug), the invoking user (`from_users`), a
+  `channel` or `label`, and a `contains` or `pattern` guard. Every condition is
+  a conjunction — all must pass, and there is no "any" mode.
+- Added `POST /v1/triggers/validate` (`configuration:validate`, or a
+  non-viewer member). It compiles one document, resolves the connection,
+  resource and host, and asks the named host whether it can run the agent,
+  returning `{ name, valid, errors }` without writing pool state. Unknown
+  connection/resource/host and an agent the host cannot run are each reported
+  as a named `{ field, message }` issue.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

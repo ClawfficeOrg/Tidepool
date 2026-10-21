@@ -1145,6 +1145,51 @@ own), and every query filters on it; the API resolves it from the credential
 
 ---
 
+## 2026-10-21 — Trigger schema and validation (task 1.4.2)
+
+**The trigger is one document, and `from_users` is a hard-required allowlist.**
+A trigger declares the provider `event` it listens for (`{ provider, type }`),
+its `filters`, and the `run` it starts (`{ host, agent }` where `agent` is the
+same `provider`/`model`/`execution_mode`/`thinking_option` selection the
+host-capability check already accepts). `filters` is required and
+`from_users` must be present and non-empty; a missing or empty allowlist is a
+named `filters.from_users` rejection, never a silent default. This is the
+security boundary from `HUB_CAPABILITIES.md` — the allowlist is what keeps a
+stranger's comment on a public issue from starting an agent on someone's
+machine.
+
+**Filters are a conjunction, not a disjunction.** The filter dimensions are the
+provider resource (`resource.kind` + `resource.id`), the connection
+(`connection` slug), the invoking user (`from_users`), a `channel` or `label`,
+and a `contains` or `pattern` guard. Every present condition must pass; there
+is no "any" mode. In 1.4.2 the `channel`/`label`/`contains`/`pattern` guards are
+validated for shape only — matching an event against them is dispatch's job
+(1.4.6).
+
+**Validation is read-only and reports every failure at once.** `POST
+/v1/triggers/validate` (`configuration:validate`, or a non-viewer member)
+resolves three things by name — the connection (slug → active connection whose
+provider matches the event), the resource (an active connection of the event
+provider delivers for `kind` + `id`), and the host (slug → live host, then the
+host must hold `host.execute` and be able to run `run.agent` via
+`host_capability::validate_agent_for_host`). Each failure is a named
+`{ field, message }` issue; the response is `{ name, valid, errors }`. Nothing
+is written: no audit row, no revision, no presence change.
+
+**Resolution is split pure/Db, mirroring 1.4.1.** `structural_issues` (shape)
+and `resolve_issues` (a pure function over a `TriggerResolution` snapshot of the
+resolved facts) carry every rejection, so each filter predicate and each
+rejection is unit-testable without a database; the DB half is three thin
+lookups (`find_effective_by_slug`, `resolve_resource_owner`,
+`resolve_for_activation` + `validate_agent_for_host`).
+
+**An offline host still validates.** Validation resolves a host by slug and its
+capability report; presence (connected/offline) is a dispatch-time concern and
+`daemon_not_connected` remains dispatch-only (1.2.3/1.4.6). Trigger install
+(1.4.3) will build on this resolver and the document shape.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve
