@@ -669,7 +669,7 @@
         {
           "id": "1.4.3",
           "title": "Trigger installation and revisions",
-          "status": "in_progress",
+          "status": "pending",
           "goal": "POST /api/v1/triggers/install (scope configuration:install) validates the same document and then creates or replaces the project's trigger of that name, returning the trigger id, the revision, the version and whether it is active. Each installation is one request and a later failure does not undo an earlier success. Trigger names are unique per project; a replaced trigger keeps its identity so its history stays readable.",
           "touches": [
             "src/services/triggers.rs",
@@ -690,10 +690,7 @@
           "agent": "mid_dev_agent",
           "changelog": "Added trigger installation and revision handling",
           "created_at": "2026-10-19T00:00:00Z",
-          "updated_at": "2026-10-21T09:19:24Z",
-          "claimed_by": "tkrun-2026-10-21",
-          "claimed_at": "2026-10-21T09:19:24Z",
-          "lease_expires_at": "2026-10-21T17:19:24Z"
+          "updated_at": "2026-10-21T11:47:12Z"
         },
         {
           "id": "1.4.4",
