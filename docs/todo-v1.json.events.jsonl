@@ -54,3 +54,4 @@
 {"at": "2026-10-21T08:52:44Z", "event": "start", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:52:44Z"}
 {"at": "2026-10-21T08:55:36Z", "event": "start", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T16:55:36Z"}
 {"at": "2026-10-21T09:17:44Z", "event": "done", "task": "1.4.4", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Workflow schema: steps, inputs, conditions, outputs, deadlines"}
+{"at": "2026-10-21T09:19:01Z", "event": "done", "task": "1.4.2", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "done", "changelog": "Added the trigger schema and validation endpoint"}

@@ -640,7 +640,7 @@
         {
           "id": "1.4.2",
           "title": "Trigger schema and validation endpoint",
-          "status": "in_progress",
+          "status": "done",
           "goal": "The trigger document: the event it listens for, its filters, and the run it starts. `filters` is required and `from_users` must be present and non-empty, because the allowlist is what keeps a stranger's comment on a public issue from starting an agent on someone's machine. Filters cover the provider resource, the connection, the invoking user, channel or label, and a contains or pattern guard; all conditions must pass and there is no any mode. POST /api/v1/triggers/validate (scope configuration:validate) compiles one document, asks the named host to check the agent it names, and returns the trigger name and whether it is valid, without changing pool state.",
           "touches": [
             "src/services/triggers.rs",
@@ -663,11 +663,8 @@
           "security_notes": "from_users is a required non-empty allowlist by design; a missing allowlist is a hard rejection, never a default.",
           "changelog": "Added the trigger schema and validation endpoint",
           "created_at": "2026-10-19T00:00:00Z",
-          "updated_at": "2026-10-21T08:52:44Z",
-          "human_look": "Killed mid-task; WIP committed at wip(1.4.2), gate never run on this state. Finish trigger schema/validation endpoint.",
-          "claimed_by": "tkrun-2026-10-21",
-          "claimed_at": "2026-10-21T08:52:44Z",
-          "lease_expires_at": "2026-10-21T16:52:44Z"
+          "updated_at": "2026-10-21T09:19:01Z",
+          "human_look": "Killed mid-task; WIP committed at wip(1.4.2), gate never run on this state. Finish trigger schema/validation endpoint."
         },
         {
           "id": "1.4.3",
