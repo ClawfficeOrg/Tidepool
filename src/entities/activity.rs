@@ -178,8 +178,6 @@ pub struct ContinuationPlan {
     pub mode: ContinuationMode,
     /// True when the existing agent is busy and this arrival steers it.
     pub steer: bool,
-    /// Existing agent execution to reuse, when there is one.
-    pub reuse_execution_id: Option<String>,
 }
 
 impl Default for ContinuationPlan {
@@ -187,7 +185,6 @@ impl Default for ContinuationPlan {
         Self {
             mode: ContinuationMode::Created,
             steer: false,
-            reuse_execution_id: None,
         }
     }
 }
@@ -201,21 +198,22 @@ impl ContinuationPlan {
 
 /// Decide how an arrival continues its conversation.
 ///
-/// An existing agent is always reused. It is steered when it is busy, and the
-/// conversation is restored when the previous agent no longer exists.
+/// The conversation's agent is never reused by a later arrival: every arrival
+/// dispatches its own executions, and carrying a message into a live agent is
+/// the session relay's job. What is recorded here is the intent — a first
+/// arrival creates, a follow-up continues (steering when the previous agent is
+/// still busy), and a follow-up whose agent is gone restores the conversation.
 pub fn plan_continuation(existing: Option<&ConversationState>) -> ContinuationPlan {
     match existing {
         None => ContinuationPlan::created(),
         Some(state) => match state.agent_execution_id.as_deref() {
-            Some(agent_execution_id) => ContinuationPlan {
+            Some(_) => ContinuationPlan {
                 mode: ContinuationMode::Continued,
                 steer: state.busy,
-                reuse_execution_id: Some(agent_execution_id.to_string()),
             },
             None => ContinuationPlan {
                 mode: ContinuationMode::Restored,
                 steer: false,
-                reuse_execution_id: None,
             },
         },
     }
@@ -708,8 +706,6 @@ pub struct ArrivalDetail {
     pub conversation_key: Option<String>,
     /// True when this arrival steered a busy agent.
     pub steered: bool,
-    /// Existing agent execution reused by this arrival.
-    pub reused_execution: Option<String>,
     /// Receipt that recorded the arrival.
     pub receipt: Option<String>,
     /// Output limits that apply to this arrival alone.
@@ -800,7 +796,6 @@ mod tests {
             ContinuationPlan {
                 mode: ContinuationMode::Created,
                 steer: false,
-                reuse_execution_id: None,
             }
         );
 
@@ -813,7 +808,6 @@ mod tests {
             ContinuationPlan {
                 mode: ContinuationMode::Continued,
                 steer: false,
-                reuse_execution_id: Some("agent-1".into()),
             }
         );
 
@@ -826,7 +820,6 @@ mod tests {
             ContinuationPlan {
                 mode: ContinuationMode::Continued,
                 steer: true,
-                reuse_execution_id: Some("agent-1".into()),
             }
         );
 
@@ -839,7 +832,6 @@ mod tests {
             ContinuationPlan {
                 mode: ContinuationMode::Restored,
                 steer: false,
-                reuse_execution_id: None,
             }
         );
     }

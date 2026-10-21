@@ -635,10 +635,10 @@ async fn create_run(
         "INSERT INTO runs (public_id, organization_id, project_id, project_public_id, \
                            trigger_id, trigger_public_id, trigger_name, workflow_name, \
                            revision_id, provider, receipt_public_id, conversation_key, \
-                           continuation, steered, reused_execution_id, output_limits_json, \
+                           continuation, steered, output_limits_json, \
                            origin, actor, delivery_key, request_text, inputs_json, \
                            workflow_json, environments_json, partials_json, status, deadline_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
                  'pending', ?)",
     )
     .bind(&run_public_id)
@@ -655,7 +655,6 @@ async fn create_run(
     .bind(new.conversation_key)
     .bind(new.continuation.mode.as_str())
     .bind(if new.continuation.steer { 1_i32 } else { 0_i32 })
-    .bind(new.continuation.reuse_execution_id.as_deref())
     .bind(&output_limits_json)
     .bind(new.origin.as_str())
     .bind(new.actor)

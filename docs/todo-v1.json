@@ -746,7 +746,7 @@
         {
           "id": "1.4.6",
           "title": "Dispatch and run lifecycle",
-          "status": "needs_human_look",
+          "status": "done",
           "goal": "The pool turns a matched event or a manual request into a workflow run and evaluates its steps one at a time, honouring conditions and deadlines. A manual dispatch names the project, the trigger, the actor (which must be allowed by the trigger), an optional expected revision (rejected if no longer active), a stable client-supplied delivery key for deduplication, and an input string whose leading key=value tokens fill declared inputs while the rest becomes the request text. Hub owns creation, reconnect recovery, output observation and completion for the runs it starts, and leaves runs a person started alone. A lost create response or a pool restart resends the same create intent with the same execution id, and a host answers with the existing execution rather than running the prompt twice; an execution that closed or errored is recorded as interrupted and is never silently started again.",
           "touches": [
             "src/services/dispatch.rs",
@@ -771,13 +771,13 @@
           "agent": "flagship",
           "changelog": "Added dispatch and the run lifecycle",
           "created_at": "2026-10-19T00:00:00Z",
-          "updated_at": "2026-10-21T15:27:25Z",
+          "updated_at": "2026-10-21T23:09:22Z",
           "human_look": "Runner stopped mid-task; WIP checkpointed, gate never run. Dispatch/run lifecycle incomplete."
         },
         {
           "id": "1.4.7",
           "title": "Runs, activity log and event receipts",
-          "status": "needs_human_look",
+          "status": "done",
           "goal": "A durable record of everything that arrived, what it matched, and what ran: one receipt per provider delivery (with deduplication), one row per trigger run, per step and per execution, with statuses and the output each step produced. An activity read API returns that history filtered by project, provider, trigger and status, and the run detail says whether an arrival created, continued or restored an agent. A trigger continuing a conversation reuses the agent for the same thread, issue or pull request, and steers it if it is busy, with each arrival keeping its own output limits and completion status.",
           "touches": [
             "migrations/",
@@ -800,7 +800,7 @@
           "agent": "pro_dev_agent",
           "changelog": "Added the run record, activity log and event receipts",
           "created_at": "2026-10-19T00:00:00Z",
-          "updated_at": "2026-10-21T16:22:51Z",
+          "updated_at": "2026-10-21T23:09:23Z",
           "human_look": "Review FAILED: (1) conversation pinned to first arrival's execution, so steering detection breaks for later arrivals and stored busy flag is ignored; (2) 'restored' continuation unreachable (LEFT JOIN masks deleted agent, restore branch dead, no e2e test); (3) 'continued' reuses no agent context and reusedExecution is never used; (4) receipt crash-window leaves deliveries stuck 'received' with retries returning empty instead of re-matching. Gate passed."
         }
       ]

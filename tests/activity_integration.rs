@@ -98,7 +98,6 @@ async fn seed_run(
     status: &str,
     continuation: &str,
     steered: bool,
-    reused_execution_id: Option<&str>,
     conversation_key: Option<&str>,
     output_limits_json: Option<&str>,
 ) -> String {
@@ -107,10 +106,10 @@ async fn seed_run(
         "INSERT INTO runs \
          (public_id, organization_id, project_id, project_public_id, trigger_id, \
           trigger_public_id, trigger_name, workflow_name, revision_id, provider, \
-          receipt_public_id, conversation_key, continuation, steered, reused_execution_id, \
+          receipt_public_id, conversation_key, continuation, steered, \
           output_limits_json, origin, actor, delivery_key, request_text, inputs_json, \
           workflow_json, environments_json, partials_json, status, started_at, completed_at) \
-         VALUES (?, ?, ?, ?, 1, ?, ?, 'triage', NULL, 'github', NULL, ?, ?, ?, ?, ?, \
+         VALUES (?, ?, ?, ?, 1, ?, ?, 'triage', NULL, 'github', NULL, ?, ?, ?, ?, \
                  'event', 'alice', ?, 'please fix it', '{}', '{}', '[]', '{}', ?, \
                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
     )
@@ -123,7 +122,6 @@ async fn seed_run(
     .bind(conversation_key)
     .bind(continuation)
     .bind(if steered { 1_i32 } else { 0_i32 })
-    .bind(reused_execution_id)
     .bind(output_limits_json)
     .bind(format!("delivery-{public_id}"))
     .bind(status)
@@ -265,7 +263,6 @@ async fn activity_filters_combine_without_leaking_across_projects() {
         false,
         None,
         None,
-        None,
     )
     .await;
     let second_run = seed_run(
@@ -277,7 +274,6 @@ async fn activity_filters_combine_without_leaking_across_projects() {
         "failed",
         "created",
         false,
-        None,
         None,
         None,
     )
@@ -381,7 +377,6 @@ async fn run_detail_records_continuation_and_per_arrival_limits() {
         "running",
         "continued",
         true,
-        Some("agent-1"),
         Some("slack:channel:C1:thread-1"),
         Some(&limits),
     )
@@ -397,7 +392,6 @@ async fn run_detail_records_continuation_and_per_arrival_limits() {
         false,
         None,
         None,
-        None,
     )
     .await;
 
@@ -406,7 +400,6 @@ async fn run_detail_records_continuation_and_per_arrival_limits() {
         .expect("continued run detail");
     assert_eq!(detail.arrival.mode.as_str(), "continued");
     assert!(detail.arrival.steered);
-    assert_eq!(detail.arrival.reused_execution.as_deref(), Some("agent-1"));
     assert_eq!(
         detail.arrival.conversation_key.as_deref(),
         Some("slack:channel:C1:thread-1")
@@ -462,7 +455,6 @@ async fn a_duplicate_receipt_returns_the_original_runs_and_writes_no_second_one(
         "succeeded",
         "created",
         false,
-        None,
         None,
         None,
     )

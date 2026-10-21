@@ -11,19 +11,21 @@
   `duplicate_count` on the existing row, and matching finishes the receipt as
   `matched`, `unmatched` or `rejected` with the run ids it produced.
 - Added `agent_conversations`: one row per trigger and thread/issue/pull
-  request, holding the agent execution serving it. A later arrival continues
-  the same agent, steers it when it is busy, or restores the conversation when
-  the agent is gone.
+  request, holding the agent execution serving it. A later arrival is recorded
+  as continuing the conversation, steers it when the agent is busy, or
+  restores the conversation when the agent is gone. Reusing a live agent's
+  execution is the session relay's job (1.5.5): every arrival still dispatches
+  its own executions, so no execution id is shared across runs.
 - Added `GET /v1/activity` — cursor-paged history combining receipts, runs,
   steps and executions, filtered by project, provider, trigger, status and
   kind. Every branch is organization-scoped, and filters combine over the
   union so no project's rows can leak into another's page.
 - Added `GET /v1/activity/runs/{run}` — the run plus an `arrival` record:
   `created`, `continued` or `restored`, the conversation key, whether it
-  steered a busy agent, the reused execution, the receipt, and the output
-  limits that belong to that arrival alone.
+  steered a busy agent, the receipt, and the output limits that belong to that
+  arrival alone.
 - Runs now record `provider`, `receipt_public_id`, `conversation_key`,
-  `continuation`, `steered`, `reused_execution_id` and `output_limits_json`.
+  `continuation`, `steered` and `output_limits_json`.
   Each arrival keeps its own limits and completion status; a later revision
   cannot rewrite an earlier arrival's snapshot.
 - `services::dispatch` now writes a receipt before matching, returns the

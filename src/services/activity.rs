@@ -349,7 +349,7 @@ pub async fn activity_run_detail(
         .ok_or(ActivityError::NotFound)?;
     let row = sqlx::query_as::<_, RunActivityRow>(
         "SELECT provider, receipt_public_id, conversation_key, CAST(continuation AS CHAR) \
-                AS continuation, steered, reused_execution_id, output_limits_json \
+                AS continuation, steered, output_limits_json \
          FROM runs WHERE id = ? AND organization_id = ?",
     )
     .bind(run.id)
@@ -382,7 +382,6 @@ pub async fn activity_run_detail(
             provider: row.provider,
             conversation_key: row.conversation_key,
             steered: row.steered,
-            reused_execution: row.reused_execution_id,
             receipt: row.receipt_public_id,
             output_limits: step_output_limits(&limits),
         },
@@ -448,7 +447,6 @@ struct RunActivityRow {
     conversation_key: Option<String>,
     continuation: String,
     steered: bool,
-    reused_execution_id: Option<String>,
     output_limits_json: Option<String>,
 }
 

@@ -283,15 +283,13 @@ async fn set_execution_status(pool: &MySqlPool, execution_id: &str, status: &str
         .expect("set execution status");
 }
 
-/// The continuation fields recorded on a run: (mode, steered, reused execution).
-async fn continuation(pool: &MySqlPool, run_public_id: &str) -> (String, bool, Option<String>) {
-    sqlx::query_as(
-        "SELECT continuation, steered, reused_execution_id FROM runs WHERE public_id = ?",
-    )
-    .bind(run_public_id)
-    .fetch_one(pool)
-    .await
-    .expect("run continuation")
+/// The continuation fields recorded on a run: (mode, steered).
+async fn continuation(pool: &MySqlPool, run_public_id: &str) -> (String, bool) {
+    sqlx::query_as("SELECT continuation, steered FROM runs WHERE public_id = ?")
+        .bind(run_public_id)
+        .fetch_one(pool)
+        .await
+        .expect("run continuation")
 }
 
 async fn conversation_execution(pool: &MySqlPool, organization_id: u64) -> Option<String> {
@@ -329,7 +327,7 @@ async fn each_arrival_advances_the_conversation_to_its_own_execution() {
     assert_ne!(agent_two, agent_one);
     assert_eq!(
         continuation(&pool, &run_two).await,
-        ("continued".into(), true, Some(agent_one.clone()))
+        ("continued".into(), true)
     );
     assert_eq!(
         conversation_execution(&pool, organization_id).await,
@@ -344,7 +342,7 @@ async fn each_arrival_advances_the_conversation_to_its_own_execution() {
     let agent_three = first_execution(&pool, &run_three).await;
     assert_eq!(
         continuation(&pool, &run_three).await,
-        ("continued".into(), true, Some(agent_two.clone()))
+        ("continued".into(), true)
     );
     assert_eq!(
         conversation_execution(&pool, organization_id).await,
@@ -376,7 +374,7 @@ async fn a_conversation_whose_agent_is_gone_is_restored_not_continued() {
     let agent_two = first_execution(&pool, &run_two).await;
     assert_eq!(
         continuation(&pool, &run_two).await,
-        ("restored".into(), false, None)
+        ("restored".into(), false)
     );
     assert_eq!(
         conversation_execution(&pool, organization_id).await,

@@ -98,7 +98,6 @@ ALTER TABLE runs
     ADD COLUMN continuation ENUM('created','continued','restored')
         NOT NULL DEFAULT 'created' AFTER conversation_key,
     ADD COLUMN steered TINYINT(1) NOT NULL DEFAULT 0 AFTER continuation,
-    ADD COLUMN reused_execution_id CHAR(36) NULL AFTER steered,
-    ADD COLUMN output_limits_json LONGTEXT NULL AFTER reused_execution_id,
+    ADD COLUMN output_limits_json LONGTEXT NULL AFTER steered,
     ADD KEY idx_runs_provider (provider),
     ADD KEY idx_runs_continuation (continuation);

@@ -1424,6 +1424,15 @@ status stay independent even when the conversation is shared. The host
 protocol has no separate steer frame yet, so steering is recorded as intent on
 the arrival; the create-intent replay remains the transport mechanism.
 
+**Execution ids are never shared across runs.** Conversation continuation
+records *intent* (`created`, `continued`, `restored`, `steered`), not a reused
+execution: `run_steps.execution_id` is unique per row and each arrival
+dispatches its own executions. Carrying a message into a live agent needs a
+message/steer frame the host protocol does not have yet, so actual agent reuse
+belongs to the session relay (1.5.5). Recording an unused
+`reused_execution_id` implied a reuse the lifecycle never performed, so the
+column and its API field were removed rather than left as dead state.
+
 **Output limits are snapshotted per arrival.** They are resolved from the
 run's workflow snapshot into `output_limits_json` at creation, alongside the
 existing workflow/environment/partial snapshots. A later revision cannot

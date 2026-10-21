@@ -288,7 +288,6 @@ mod tests {
             provider: Some("slack".into()),
             conversation_key: Some("slack:channel:C1:thread-1".into()),
             steered: true,
-            reused_execution: Some("agent-1".into()),
             receipt: Some("receipt-1".into()),
             output_limits: vec![StepOutputLimits {
                 step: "reply".into(),
@@ -302,7 +301,6 @@ mod tests {
         let json = serde_json::to_value(&detail).expect("serialize");
         assert_eq!(json["mode"], "continued");
         assert_eq!(json["steered"], true);
-        assert_eq!(json["reusedExecution"], "agent-1");
         assert_eq!(
             json["outputLimits"][0]["limits"][0]["capability"],
             "slack.reply"

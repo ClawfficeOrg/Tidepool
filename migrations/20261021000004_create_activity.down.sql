@@ -10,7 +10,6 @@ ALTER TABLE runs
     DROP KEY idx_runs_continuation,
     DROP KEY idx_runs_provider,
     DROP COLUMN output_limits_json,
-    DROP COLUMN reused_execution_id,
     DROP COLUMN steered,
     DROP COLUMN continuation,
     DROP COLUMN conversation_key,
