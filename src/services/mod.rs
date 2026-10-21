@@ -6,6 +6,7 @@
 pub mod api_keys;
 pub mod auth;
 pub mod cache;
+pub mod configuration;
 pub mod connections;
 pub mod enrollment;
 pub mod events;
@@ -19,5 +20,6 @@ pub mod leaderboards;
 pub mod outputs;
 pub mod players;
 pub mod pool_identity;
+pub mod projects;
 pub mod redis;
 pub mod saves;

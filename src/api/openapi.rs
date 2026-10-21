@@ -469,6 +469,106 @@ const ROUTES: &[RouteSpec] = &[
         success: "204",
     },
     RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/projects",
+        tag: "pool",
+        summary: "List projects in the organization",
+        secure: true,
+        required_scope: Some("projects:read"),
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/projects",
+        tag: "pool",
+        summary: "Create a project",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/projects/{id}",
+        tag: "pool",
+        summary: "Fetch a project by id",
+        secure: true,
+        required_scope: Some("projects:read"),
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Patch,
+        path: "/v1/projects/{id}",
+        tag: "pool",
+        summary: "Rename a project slug or name; the id is unchanged",
+        secure: true,
+        required_scope: None,
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/projects/{id}",
+        tag: "pool",
+        summary: "Delete a project and its revisions",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "204",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/projects/{id}/configuration/validate",
+        tag: "pool",
+        summary: "Validate a configuration bundle without writing pool state",
+        secure: true,
+        required_scope: Some("configuration:validate"),
+        has_body: true,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/projects/{id}/configuration/install",
+        tag: "pool",
+        summary: "Install a configuration bundle as a new immutable revision",
+        secure: true,
+        required_scope: Some("configuration:install"),
+        has_body: true,
+        success: "201",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/projects/{id}/configuration",
+        tag: "pool",
+        summary: "Fetch a project's active configuration revision",
+        secure: true,
+        required_scope: Some("projects:read"),
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/projects/{id}/revisions",
+        tag: "pool",
+        summary: "List a project's configuration revisions",
+        secure: true,
+        required_scope: Some("projects:read"),
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/projects/{id}/revisions/{revision_id}",
+        tag: "pool",
+        summary: "Fetch one configuration revision with its files",
+        secure: true,
+        required_scope: Some("projects:read"),
+        has_body: false,
+        success: "200",
+    },
+    RouteSpec {
         method: HttpMethod::Post,
         path: "/v1/hosts/{id}/execution",
         tag: "pool",
@@ -892,14 +992,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 57, "ROUTES must describe all 57 routes");
+        assert_eq!(ROUTES.len(), 67, "ROUTES must describe all 67 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            54,
-            "the 19 game route specs and 35 pool/host/connection routes must stay under /v1/"
+            64,
+            "the 19 game route specs and 45 pool/host/connection/project routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -1003,7 +1103,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.required_scope.is_some())
                 .count(),
-            2
+            9
         );
 
         // Extensions are flattened onto the operation in the served JSON, as
@@ -1080,6 +1180,7 @@ mod tests {
         registered.extend(parse_scope(include_str!("api_keys.rs")));
         registered.extend(parse_scope(include_str!("hosts.rs")));
         registered.extend(parse_scope(include_str!("connections.rs")));
+        registered.extend(parse_scope(include_str!("projects.rs")));
         registered.extend(parse_scope(include_str!("webhooks/github.rs")));
         registered.extend(parse_scope(include_str!("webhooks/slack.rs")));
 
@@ -1098,6 +1199,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 35, "expected 35 hub operations");
+        assert_eq!(registered.len(), 45, "expected 45 hub operations");
     }
 }

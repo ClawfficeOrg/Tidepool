@@ -259,6 +259,31 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Documented the handshake, the resume/dedup rule, the event table and the
   reply capability in `docs/CONNECTIONS.md`.
 
+### Project model and configuration revisions (task 1.4.1)
+- Added `projects`, `configuration_revisions` and `configuration_revision_files`
+  (migration `20261021000001_create_projects`). A project is `slug` + `name`,
+  scoped to the organization. A revision is an immutable authored file set
+  (path + raw content, stored verbatim), a per-project `version`, an `active`
+  flag and the validation result; rows are write-once and only `active` ever
+  changes.
+- Added `GET/POST /v1/projects` and `GET/PATCH/DELETE /v1/projects/{id}`.
+  Project reads accept a member or a `projects:read` key; mutations require a
+  non-viewer member (there is no project-write key scope).
+- Added `POST /v1/projects/{id}/configuration/validate`
+  (`configuration:validate`) — a dry run that resolves every reference and
+  writes nothing — and `POST /v1/projects/{id}/configuration/install`
+  (`configuration:install`), which always stores a new revision and either
+  activates it or, on failure, records the issue and leaves the previous
+  active revision in place.
+- Validation resolves every reference in the bundle: connection slugs (active
+  connection), host slugs (live host), environments (named, each referencing a
+  host), named agents (well-formed) and prompt partials (referencing a file in
+  the bundle). Every unresolvable reference is reported as a
+  `{ field, revision, message }` issue naming both the field and the revision.
+- `GET /v1/projects/{id}/configuration` returns the active revision and
+  `GET /v1/projects/{id}/revisions[/{revision_id}]` the history. The manifest
+  is `tidepool.json`; the authored files are stored exactly, never normalized.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the

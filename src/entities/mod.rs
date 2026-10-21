@@ -5,6 +5,7 @@
 
 pub mod analytics_event;
 pub mod api_key;
+pub mod configuration_revision;
 pub mod connection;
 pub mod enrollment_token;
 pub mod game_channel;
@@ -20,5 +21,6 @@ pub mod player_alias;
 pub mod player_auth;
 pub mod pool_invitation;
 pub mod pool_user;
+pub mod project;
 pub mod prop;
 pub mod save;

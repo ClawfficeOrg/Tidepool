@@ -1102,6 +1102,47 @@ originating thread" holds by construction rather than by a branch. Replies also
 pin `allowed_mentions: {"parse": []}`, so agent-authored text cannot ping a
 user, a role or `@everyone` whatever it contains.
 
+## 2026-10-21 — Projects and configuration revisions (task 1.4.1)
+
+**Configuration is an authored file bundle, not a normalized document.** A
+project's configuration arrives as an ordered set of `{ path, content }` files.
+One file is the manifest (`tidepool.json`, JSON); the rest are referenced by it
+(prompt partials point at a file path). The authored bytes are stored verbatim
+in `configuration_revision_files` — the manifest is parsed only to drive
+validation, and nothing is rewritten into a canonical form.
+
+**Revisions are append-only, and a failed install is still a revision.** Every
+install inserts one `configuration_revisions` row (version, `active` flag,
+`status` ENUM `valid`/`invalid`, and the JSON `validation_errors`). There is no
+`updated_at` and no update path; the only field that ever changes is `active`,
+flipped off on the previous active revision when a newer one activates. A
+failed install therefore leaves a durable, immutable record of what was
+attempted *and* the field errors that rejected it, while the previous active
+revision keeps serving — this is the "install-then-fail-then-still-active"
+contract and it is what the `configuration:install` response reports
+(`activated: false`, `status: invalid`, per-issue `{ field, revision, message }`).
+
+**Version numbers are per-project and derived under a lock.** The next version
+is `COUNT(*) + 1` for the project, computed inside a transaction that first
+`SELECT ... FOR UPDATE`s the project row. Revisions are only ever deleted by
+project cascade, so count and max version agree, and the row lock serializes
+concurrent installs for the same project so the unique `(project_id, version)`
+key cannot race.
+
+**Reference resolution is split pure/Db.** `resolve_references` is a pure
+function over the manifest, the bundle's file-path set, and two pre-computed
+resolved-slug sets (active connections, live hosts); the database half is two
+thin lookups (`find_effective_by_slug`, `resolve_for_activation`). Every
+unresolvable reference yields a named `FieldIssue` (field + revision + message),
+so connection, host, environment, named-agent and partial failures are each
+unit-testable without a database and each names the field and the revision.
+Full agent-capability checking (1.4.2) and the workflow/environment schemas
+(1.4.4/1.4.5) build on this resolver and the stored definitions.
+
+**Scoping:** projects and revisions carry `organization_id` (via the project's
+own), and every query filters on it; the API resolves it from the credential
+(member token or API key) rather than the path.
+
 ---
 
 ## Open Questions / Assumptions
