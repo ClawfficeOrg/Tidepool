@@ -28,6 +28,26 @@
     "cargo publish*"
   ],
   "required_changed": ["docs/CHANGES.md"],
+  "agent_commands": {
+    "deeprelay": {
+      "cmd": [
+        "opencode",
+        "run",
+        "--standalone",
+        "--auto",
+        "-m",
+        "deeprelay/deeprelay/{model}",
+        "--title",
+        "tkrun tidepool",
+        "{prompt}"
+      ],
+      "stdin": false,
+      "opencode_permissions": true
+    }
+  },
+  "review": {
+    "model": "deeprelay/glm-5.3-flash"
+  },
   "rules": [
     "Follow AGENTS.md: no unwrap/expect outside tests, thiserror for new error types, doc comments on all public items, parameterized sqlx queries only.",
     "Do not start any server, daemon, or docker compose stack; tests must not require live MySQL or Redis.",

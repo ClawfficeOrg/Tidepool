@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "tiers": {
+    "basic_dev_agent": {
+      "provider": "opencode-go",
+      "model": "muse-spark-1.3-contributor"
+    },
+    "mid_dev_agent": {
+      "provider": "opencode-go",
+      "model": "deepseek-v4.1-flash"
+    },
+    "pro_dev_agent": {
+      "provider": "opencode-go",
+      "model": "deepseek-v4.1-flash"
+    },
+    "flagship": {
+      "provider": "opencode-go",
+      "model": "deepseek-v4.1-flash"
+    }
+  }
+}
