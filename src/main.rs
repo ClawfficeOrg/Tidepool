@@ -141,6 +141,7 @@ async fn main() -> std::io::Result<()> {
             .configure(api::projects::config)
             .configure(api::triggers::config)
             .configure(api::manual_runs::config)
+            .configure(api::activity::config)
             .configure(api::webhooks::github::config)
             .configure(api::webhooks::slack::config)
             .configure(api::players::config)

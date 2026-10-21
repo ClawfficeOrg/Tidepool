@@ -1395,6 +1395,42 @@ and is pinned by unit tests.
 
 ---
 
+## 2026-10-21 — Activity log, receipts and continuation (task 1.4.7)
+
+**A receipt is written before matching, so "arrived but matched nothing" is a
+recorded outcome.** The unique key is `(organization, provider, connection,
+delivery key)`. `INSERT IGNORE` is the arbiter: a retry increments
+`duplicate_count` on the same row and returns the run ids stored on it instead
+of dispatching again. The receipt is then finished as `matched`, `unmatched` or
+`rejected`, so a delivery that errors during matching is still visible. Manual
+dispatches keep their own `(trigger, delivery_key)` dedup rule and do not write
+provider receipts, because they are not provider deliveries.
+
+**The activity read is a union, not a second log to keep in sync.** Receipts,
+runs, run steps and executions are already durable; the read API unions them,
+orders by observation time and id, and filters the union. Every branch carries
+its own `organization_id` predicate, and project/provider/trigger/status are
+applied after the union, so combining filters cannot widen the scope. The
+trade-off is that a new record type must be added to the union, not just
+written to a table.
+
+**Continuation is decided before the run exists and recorded on it.** A
+conversation key is the provider plus resource plus the channel/thread/issue
+id the event carries. An existing conversation with an agent is continued; a
+busy agent is also marked `steered`. A conversation whose agent is gone is
+restored with a new agent. The run stores the decision, the reused execution
+id and its own resolved output limits, so each arrival's limits and completion
+status stay independent even when the conversation is shared. The host
+protocol has no separate steer frame yet, so steering is recorded as intent on
+the arrival; the create-intent replay remains the transport mechanism.
+
+**Output limits are snapshotted per arrival.** They are resolved from the
+run's workflow snapshot into `output_limits_json` at creation, alongside the
+existing workflow/environment/partial snapshots. A later revision cannot
+retroactively loosen or tighten what an earlier arrival was allowed to emit.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

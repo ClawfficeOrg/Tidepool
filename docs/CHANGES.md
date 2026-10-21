@@ -2,6 +2,38 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-21 — Runs, activity log and event receipts
+
+### Added
+- Added `event_receipts` (migration `20261021000004_create_activity`): one
+  receipt per provider delivery, unique on
+  `(organization, provider, connection, delivery key)`. A retry increments
+  `duplicate_count` on the existing row, and matching finishes the receipt as
+  `matched`, `unmatched` or `rejected` with the run ids it produced.
+- Added `agent_conversations`: one row per trigger and thread/issue/pull
+  request, holding the agent execution serving it. A later arrival continues
+  the same agent, steers it when it is busy, or restores the conversation when
+  the agent is gone.
+- Added `GET /v1/activity` — cursor-paged history combining receipts, runs,
+  steps and executions, filtered by project, provider, trigger, status and
+  kind. Every branch is organization-scoped, and filters combine over the
+  union so no project's rows can leak into another's page.
+- Added `GET /v1/activity/runs/{run}` — the run plus an `arrival` record:
+  `created`, `continued` or `restored`, the conversation key, whether it
+  steered a busy agent, the reused execution, the receipt, and the output
+  limits that belong to that arrival alone.
+- Runs now record `provider`, `receipt_public_id`, `conversation_key`,
+  `continuation`, `steered`, `reused_execution_id` and `output_limits_json`.
+  Each arrival keeps its own limits and completion status; a later revision
+  cannot rewrite an earlier arrival's snapshot.
+- `services::dispatch` now writes a receipt before matching, returns the
+  original runs for a duplicate delivery without creating another run, and
+  plans continuation per trigger before creating the run.
+- Added unit tests for receipt normalization/dedup, conversation grouping,
+  continuation steering/restoration, per-arrival output limits and activity
+  filter/cursor validation; added ignored MySQL integration tests for filter
+  isolation, page shape, receipt dedup and run arrival detail.
+
 ## [Unreleased] — 2026-10-19 — Playzoid becomes Tidepool; TideTable is the plan
 
 Documentation and planning change plus the first implementation task. The plan

@@ -777,7 +777,7 @@
         {
           "id": "1.4.7",
           "title": "Runs, activity log and event receipts",
-          "status": "pending",
+          "status": "in_progress",
           "goal": "A durable record of everything that arrived, what it matched, and what ran: one receipt per provider delivery (with deduplication), one row per trigger run, per step and per execution, with statuses and the output each step produced. An activity read API returns that history filtered by project, provider, trigger and status, and the run detail says whether an arrival created, continued or restored an agent. A trigger continuing a conversation reuses the agent for the same thread, issue or pull request, and steers it if it is busy, with each arrival keeping its own output limits and completion status.",
           "touches": [
             "migrations/",
@@ -800,7 +800,10 @@
           "agent": "pro_dev_agent",
           "changelog": "Added the run record, activity log and event receipts",
           "created_at": "2026-10-19T00:00:00Z",
-          "updated_at": "2026-10-21T15:29:03Z"
+          "updated_at": "2026-10-21T15:29:10Z",
+          "claimed_by": "tkrun-2026-10-21",
+          "claimed_at": "2026-10-21T15:29:10Z",
+          "lease_expires_at": "2026-10-21T23:29:10Z"
         }
       ]
     },

@@ -22,12 +22,16 @@
 //! delivery: the response reports which run a key names, and a caller that
 //! loses the response can retry the same key safely.
 
+use crate::entities::activity::{
+    ContinuationPlan, ReceiptStatus, conversation_key_for, output_limits, plan_continuation,
+};
 use crate::entities::configuration_revision::ConfigFile;
 use crate::entities::connection::ProviderKind;
 use crate::entities::environment::Environment;
 use crate::entities::project::Project;
 use crate::entities::run::{InputError, ManualDispatchRequest, RunOrigin, RunStatus, RunView};
 use crate::entities::workflow::{Workflow, WorkflowInput};
+use crate::services::activity as activity_svc;
 use crate::services::configuration as configuration_svc;
 use crate::services::environments::{self, EnvironmentError};
 use crate::services::hosts::normalize_slug;
@@ -168,6 +172,10 @@ struct NewRun<'a> {
     origin: RunOrigin,
     actor: Option<&'a str>,
     delivery_key: &'a str,
+    provider: Option<&'a str>,
+    receipt_public_id: Option<&'a str>,
+    conversation_key: Option<&'a str>,
+    continuation: ContinuationPlan,
 }
 
 /// One step resolved before the run row exists.
@@ -247,6 +255,10 @@ pub async fn dispatch_manual(
             origin: RunOrigin::Manual,
             actor: Some(request.actor.trim()),
             delivery_key: &request.delivery_key,
+            provider: None,
+            receipt_public_id: None,
+            conversation_key: None,
+            continuation: ContinuationPlan::created(),
         },
     )
     .await
@@ -254,9 +266,10 @@ pub async fn dispatch_manual(
 
 /// Dispatch one provider event to every trigger in the project it matches.
 ///
-/// No match is an empty result, not an error: the delivery was recorded by the
-/// connection, it simply started nothing. A duplicate delivery key returns the
-/// existing run for each trigger it already matched.
+/// A receipt is written before matching, so a delivery that matches nothing
+/// still appears in the activity log. No match is an empty result, not an
+/// error. A duplicate delivery key returns the runs the first delivery
+/// produced and writes nothing else.
 pub async fn dispatch_event(
     pool: &MySqlPool,
     organization_id: u64,
@@ -265,6 +278,91 @@ pub async fn dispatch_event(
 ) -> Result<Vec<runs::DispatchOutcome>, DispatchError> {
     event.validate()?;
     let project = find_project(pool, organization_id, project_public_id).await?;
+    let delivery = activity_svc::DeliveryFacts {
+        provider: event.provider,
+        connection: &event.connection,
+        delivery_key: &event.delivery_key,
+        event_type: &event.event_type,
+        action: None,
+        resource_kind: &event.resource_kind,
+        resource_id: &event.resource_id,
+        actor: &event.actor,
+        channel: event.channel.as_deref(),
+    };
+    let receipt = activity_svc::begin_receipt(
+        pool,
+        organization_id,
+        Some(project.id),
+        Some(&project.public_id),
+        &delivery,
+    )
+    .await
+    .map_err(map_activity_error)?;
+
+    if receipt.duplicate {
+        let mut outcomes = Vec::new();
+        for public_id in
+            activity_svc::receipt_run_ids(&receipt.receipt).map_err(map_activity_error)?
+        {
+            if let Some(run) = runs::find_run(pool, organization_id, &public_id).await? {
+                outcomes.push(runs::DispatchOutcome {
+                    run: runs::run_view(pool, &run).await?,
+                    deduplicated: true,
+                });
+            }
+        }
+        return Ok(outcomes);
+    }
+
+    let receipt_public_id = receipt.receipt.public_id.clone();
+    match dispatch_event_matched(pool, organization_id, &project, event, &receipt_public_id).await {
+        Ok(outcomes) => {
+            let run_ids: Vec<String> = outcomes
+                .iter()
+                .map(|outcome| outcome.run.id.clone())
+                .collect();
+            let status = if run_ids.is_empty() {
+                ReceiptStatus::Unmatched
+            } else {
+                ReceiptStatus::Matched
+            };
+            activity_svc::finish_receipt(
+                pool,
+                organization_id,
+                &receipt_public_id,
+                status,
+                run_ids.len(),
+                &run_ids,
+            )
+            .await
+            .map_err(map_activity_error)?;
+            Ok(outcomes)
+        }
+        Err(error) => {
+            if let Err(mark) = activity_svc::finish_receipt(
+                pool,
+                organization_id,
+                &receipt_public_id,
+                ReceiptStatus::Rejected,
+                0,
+                &[],
+            )
+            .await
+            {
+                tracing::warn!(%mark, "failed to mark delivery receipt rejected");
+            }
+            Err(error)
+        }
+    }
+}
+
+async fn dispatch_event_matched(
+    pool: &MySqlPool,
+    organization_id: u64,
+    project: &Project,
+    event: &InboundEvent,
+    receipt_public_id: &str,
+) -> Result<Vec<runs::DispatchOutcome>, DispatchError> {
     let triggers = list_active_triggers(pool, project.id).await?;
     let matching: Vec<ActiveTrigger> = triggers
         .into_iter()
@@ -274,15 +372,22 @@ pub async fn dispatch_event(
         return Ok(Vec::new());
     }
 
-    let revision = configuration_svc::get_active_revision(pool, organization_id, project_public_id)
-        .await
-        .map_err(map_configuration_error)?
-        .ok_or_else(|| DispatchError::NoWorkflow(event.event_type.clone()))?;
+    let revision =
+        configuration_svc::get_active_revision(pool, organization_id, &project.public_id)
+            .await
+            .map_err(map_configuration_error)?
+            .ok_or_else(|| DispatchError::NoWorkflow(event.event_type.clone()))?;
     let files = config_files(&revision.files);
     let workflows = configuration_svc::parse_workflows(&files).map_err(map_configuration_error)?;
     let environments =
         configuration_svc::parse_environments(&files).map_err(map_configuration_error)?;
     let partials = partial_texts(&files)?;
+    let conversation_key = conversation_key_for(
+        event.provider,
+        &event.resource_kind,
+        &event.resource_id,
+        event.channel.as_deref(),
+    );
 
     let mut outcomes = Vec::with_capacity(matching.len());
     for trigger in matching {
@@ -291,12 +396,22 @@ pub async fn dispatch_event(
             .find(|workflow| workflow.trigger == trigger.name)
             .ok_or_else(|| DispatchError::NoWorkflow(trigger.name.clone()))?;
         let parsed = crate::entities::run::parse_input_string("", &workflow.inputs)?;
+        let continuation = match conversation_key.as_deref() {
+            Some(key) => {
+                let existing =
+                    activity_svc::find_conversation(pool, organization_id, trigger.id, key)
+                        .await
+                        .map_err(map_activity_error)?;
+                plan_continuation(existing.as_ref())
+            }
+            None => ContinuationPlan::created(),
+        };
         outcomes.push(
             create_run(
                 pool,
                 NewRun {
                     organization_id,
-                    project: &project,
+                    project,
                     trigger: &trigger,
                     revision_id: Some(&revision.id),
                     workflow,
@@ -307,12 +422,26 @@ pub async fn dispatch_event(
                     origin: RunOrigin::Event,
                     actor: Some(event.actor.trim()),
                     delivery_key: &event.delivery_key,
+                    provider: Some(event.provider.as_str()),
+                    receipt_public_id: Some(receipt_public_id),
+                    conversation_key: conversation_key.as_deref(),
+                    continuation,
                 },
             )
             .await?,
         );
     }
     Ok(outcomes)
+}
+
+fn map_activity_error(error: activity_svc::ActivityError) -> DispatchError {
+    match error {
+        activity_svc::ActivityError::Database(error) => DispatchError::Database(error),
+        activity_svc::ActivityError::Filter(error) => DispatchError::Invalid(error.to_string()),
+        activity_svc::ActivityError::NotFound => DispatchError::ProjectNotFound,
+        activity_svc::ActivityError::Invalid(message) => DispatchError::Snapshot(message),
+        activity_svc::ActivityError::Run(error) => DispatchError::Run(error),
+    }
 }
 
 async fn find_project(
@@ -491,6 +620,10 @@ async fn create_run(
         .map_err(|error| DispatchError::Snapshot(error.to_string()))?;
     let inputs_json = serde_json::to_string(new.inputs)
         .map_err(|error| DispatchError::Snapshot(error.to_string()))?;
+    let output_limits =
+        output_limits(new.workflow).map_err(|error| DispatchError::Invalid(error.to_string()))?;
+    let output_limits_json = serde_json::to_string(&output_limits)
+        .map_err(|error| DispatchError::Snapshot(error.to_string()))?;
     let now = Utc::now();
     let deadline = runs::deadline_at(now, new.workflow);
 
@@ -498,9 +631,12 @@ async fn create_run(
     let insert_result = sqlx::query(
         "INSERT INTO runs (public_id, organization_id, project_id, project_public_id, \
                            trigger_id, trigger_public_id, trigger_name, workflow_name, \
-                           revision_id, origin, actor, delivery_key, request_text, inputs_json, \
+                           revision_id, provider, receipt_public_id, conversation_key, \
+                           continuation, steered, reused_execution_id, output_limits_json, \
+                           origin, actor, delivery_key, request_text, inputs_json, \
                            workflow_json, environments_json, partials_json, status, deadline_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \
+                 'pending', ?)",
     )
     .bind(&run_public_id)
     .bind(new.organization_id)
@@ -511,6 +647,13 @@ async fn create_run(
     .bind(&new.trigger.name)
     .bind(&new.workflow.name)
     .bind(new.revision_id)
+    .bind(new.provider)
+    .bind(new.receipt_public_id)
+    .bind(new.conversation_key)
+    .bind(new.continuation.mode.as_str())
+    .bind(if new.continuation.steer { 1_i32 } else { 0_i32 })
+    .bind(new.continuation.reuse_execution_id.as_deref())
+    .bind(&output_limits_json)
     .bind(new.origin.as_str())
     .bind(new.actor)
     .bind(new.delivery_key)
@@ -564,6 +707,27 @@ async fn create_run(
         .map_err(DispatchError::Database)?;
     }
     tx.commit().await.map_err(DispatchError::Database)?;
+
+    if let Some(conversation_key) = new.conversation_key {
+        let agent_execution_id = new
+            .continuation
+            .reuse_execution_id
+            .as_deref()
+            .or_else(|| prepared.first().map(|step| step.execution_id.as_str()));
+        activity_svc::record_conversation(
+            pool,
+            new.organization_id,
+            new.project.id,
+            new.trigger.id,
+            conversation_key,
+            agent_execution_id,
+            &run_public_id,
+            true,
+            &output_limits_json,
+        )
+        .await
+        .map_err(map_activity_error)?;
+    }
 
     match runs::advance_run(pool, &run_public_id).await {
         Ok(_) => {}
