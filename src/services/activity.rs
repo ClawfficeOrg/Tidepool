@@ -221,8 +221,8 @@ pub async fn find_conversation(
     trigger_id: u64,
     conversation_key: &str,
 ) -> Result<Option<ConversationState>, ActivityError> {
-    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT c.agent_execution_id, e.status \
+    let row: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT c.agent_execution_id, e.public_id, e.status \
          FROM agent_conversations c \
          LEFT JOIN host_executions e ON e.public_id = c.agent_execution_id \
          WHERE c.organization_id = ? AND c.trigger_id = ? AND c.conversation_key = ?",
@@ -233,10 +233,16 @@ pub async fn find_conversation(
     .fetch_optional(pool)
     .await
     .map_err(ActivityError::Database)?;
-    Ok(row.map(|(agent_execution_id, status)| ConversationState {
-        agent_execution_id,
-        busy: matches!(status.as_deref(), Some("queued" | "running")),
-    }))
+    Ok(
+        row.map(|(agent_execution_id, execution_public_id, status)| {
+            // The LEFT JOIN keeps the row when the execution is deleted, so a missing
+            // execution id means the agent is gone and the conversation must restore.
+            ConversationState {
+                agent_execution_id: execution_public_id.and(agent_execution_id),
+                busy: matches!(status.as_deref(), Some("queued" | "running")),
+            }
+        }),
+    )
 }
 
 /// Record which agent serves a trigger's conversation after dispatch.

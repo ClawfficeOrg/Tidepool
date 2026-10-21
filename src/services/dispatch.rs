@@ -299,7 +299,10 @@ pub async fn dispatch_event(
     .await
     .map_err(map_activity_error)?;
 
-    if receipt.duplicate {
+    // A receipt still `received` means an earlier attempt crashed before matching
+    // finished. Re-match it: create_run dedupes on (trigger, delivery_key), so
+    // runs that already exist are returned instead of being created twice.
+    if receipt.duplicate && !matches!(receipt.receipt.status, ReceiptStatus::Received) {
         let mut outcomes = Vec::new();
         for public_id in
             activity_svc::receipt_run_ids(&receipt.receipt).map_err(map_activity_error)?
@@ -709,11 +712,9 @@ async fn create_run(
     tx.commit().await.map_err(DispatchError::Database)?;
 
     if let Some(conversation_key) = new.conversation_key {
-        let agent_execution_id = new
-            .continuation
-            .reuse_execution_id
-            .as_deref()
-            .or_else(|| prepared.first().map(|step| step.execution_id.as_str()));
+        // Track this arrival's own execution. Each run creates fresh executions,
+        // so pointing at the reused id would pin the conversation to arrival 1.
+        let agent_execution_id = prepared.first().map(|step| step.execution_id.as_str());
         activity_svc::record_conversation(
             pool,
             new.organization_id,
