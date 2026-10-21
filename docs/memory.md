@@ -1051,6 +1051,292 @@ is acknowledged but `accepted:false`, while configuration validation fails with
 a named `repository` field. `issue_comment` on a PR normalises to the PR comment
 event.
 
+**Slack has two transports and one ingest path:** everything after
+verification — normalization, workspace resolution, channel filters, the
+delivery record — is shared, so the webhook route and socket mode cannot drift.
+Webhook verification is the Slack `v0` HMAC over `v0:<timestamp>:<body>` with a
+five-minute replay window, checked before parsing; socket mode is verified by
+the `app_token` that dialled the socket. Both dedup on Slack's `event_id`
+(falling back to `channel:event_ts`), so a retry *and* the same event arriving
+on both transports collapse to one `webhook_deliveries` row. The socket-mode
+session is deliberately transport-agnostic: it takes frames as text and returns
+the frames to send, which keeps the protocol (hello / envelope / ack /
+disconnect) unit-testable and leaves dialling the WebSocket — and performing
+`chat.postMessage` — to dispatch (1.4.6), which owns the outbound client. The
+mention is stripped during normalization rather than at prompt-build time, so
+`text` is prompt-safe by construction and `raw_text` keeps the original.
+
+**Declared outputs are enforced per step, not per provider:**
+`services::outputs` holds the capability registry (`slack.reply` now,
+`discord.reply` next) and `OutputLedger` enforces all three rules in one place
+— undeclared capabilities cannot be emitted, `maximum` is a hard count, and
+`finish()` fails when a `required` capability was never emitted, so a step that
+must answer is recorded as failed rather than silently complete. A reply is
+constructed from the event it answers (`ReplyTarget` has no public
+constructor), which makes a misaddressed reply unrepresentable instead of
+merely checked.
+
+**Discord's dedup window belongs to the session, not the socket (1.3.4):** the
+gateway's resume replays everything after the sequence the pool acknowledged,
+and it may replay an event already handled, so dedup state must outlive the
+connection that produced the duplicate. `DiscordGatewaySession` therefore holds
+the `(session_id, seq)` pair *and* the last 1024 message snowflakes, and the
+caller reuses one session across redials — the alternative, state on the
+socket, would make every reconnect a source of double runs. The in-memory
+window is bounded, so the unique `(connection_public_id, delivery_id)` key on
+`webhook_deliveries` remains the backstop across a restart. `op 9` with
+`d: false` clears the session id and sequence so the next handshake identifies
+rather than resuming a session the server dropped.
+
+**The gateway session holds no token:** frames needing the bot token are built
+as a `GatewayCommand` naming the credential field, and the value is injected
+only by `frame_with_token` at send time — the same split as Slack's
+`SlackApiRequest`, so the pool decides *what* to send and dispatch (1.4.6)
+decides *with which secret*. A consequence worth keeping: the ingest context
+cannot leak a token through `Debug`, because it never has one.
+
+**Discord threads need no thread field:** a thread is a channel in Discord, so
+a message in one carries the thread's id as its `channel_id`. Reply addressing
+is therefore the same code for a channel and a thread, and "replies land in the
+originating thread" holds by construction rather than by a branch. Replies also
+pin `allowed_mentions: {"parse": []}`, so agent-authored text cannot ping a
+user, a role or `@everyone` whatever it contains.
+
+## 2026-10-21 — Projects and configuration revisions (task 1.4.1)
+
+**Configuration is an authored file bundle, not a normalized document.** A
+project's configuration arrives as an ordered set of `{ path, content }` files.
+One file is the manifest (`tidepool.json`, JSON); the rest are referenced by it
+(prompt partials point at a file path). The authored bytes are stored verbatim
+in `configuration_revision_files` — the manifest is parsed only to drive
+validation, and nothing is rewritten into a canonical form.
+
+**Revisions are append-only, and a failed install is still a revision.** Every
+install inserts one `configuration_revisions` row (version, `active` flag,
+`status` ENUM `valid`/`invalid`, and the JSON `validation_errors`). There is no
+`updated_at` and no update path; the only field that ever changes is `active`,
+flipped off on the previous active revision when a newer one activates. A
+failed install therefore leaves a durable, immutable record of what was
+attempted *and* the field errors that rejected it, while the previous active
+revision keeps serving — this is the "install-then-fail-then-still-active"
+contract and it is what the `configuration:install` response reports
+(`activated: false`, `status: invalid`, per-issue `{ field, revision, message }`).
+
+**Version numbers are per-project and derived under a lock.** The next version
+is `COUNT(*) + 1` for the project, computed inside a transaction that first
+`SELECT ... FOR UPDATE`s the project row. Revisions are only ever deleted by
+project cascade, so count and max version agree, and the row lock serializes
+concurrent installs for the same project so the unique `(project_id, version)`
+key cannot race.
+
+**Reference resolution is split pure/Db.** `resolve_references` is a pure
+function over the manifest, the bundle's file-path set, and two pre-computed
+resolved-slug sets (active connections, live hosts); the database half is two
+thin lookups (`find_effective_by_slug`, `resolve_for_activation`). Every
+unresolvable reference yields a named `FieldIssue` (field + revision + message),
+so connection, host, environment, named-agent and partial failures are each
+unit-testable without a database and each names the field and the revision.
+Full agent-capability checking (1.4.2) and the workflow/environment schemas
+(1.4.4/1.4.5) build on this resolver and the stored definitions.
+
+**Scoping:** projects and revisions carry `organization_id` (via the project's
+own), and every query filters on it; the API resolves it from the credential
+(member token or API key) rather than the path.
+
+---
+
+## 2026-10-21 — Trigger schema and validation (task 1.4.2)
+
+**The trigger is one document, and `from_users` is a hard-required allowlist.**
+A trigger declares the provider `event` it listens for (`{ provider, type }`),
+its `filters`, and the `run` it starts (`{ host, agent }` where `agent` is the
+same `provider`/`model`/`execution_mode`/`thinking_option` selection the
+host-capability check already accepts). `filters` is required and
+`from_users` must be present and non-empty; a missing or empty allowlist is a
+named `filters.from_users` rejection, never a silent default. This is the
+security boundary from `HUB_CAPABILITIES.md` — the allowlist is what keeps a
+stranger's comment on a public issue from starting an agent on someone's
+machine.
+
+**Filters are a conjunction, not a disjunction.** The filter dimensions are the
+provider resource (`resource.kind` + `resource.id`), the connection
+(`connection` slug), the invoking user (`from_users`), a `channel` or `label`,
+and a `contains` or `pattern` guard. Every present condition must pass; there
+is no "any" mode. In 1.4.2 the `channel`/`label`/`contains`/`pattern` guards are
+validated for shape only — matching an event against them is dispatch's job
+(1.4.6).
+
+**Validation is read-only and reports every failure at once.** `POST
+/v1/triggers/validate` (`configuration:validate`, or a non-viewer member)
+resolves three things by name — the connection (slug → active connection whose
+provider matches the event), the resource (an active connection of the event
+provider delivers for `kind` + `id`), and the host (slug → live host, then the
+host must hold `host.execute` and be able to run `run.agent` via
+`host_capability::validate_agent_for_host`). Each failure is a named
+`{ field, message }` issue; the response is `{ name, valid, errors }`. Nothing
+is written: no audit row, no revision, no presence change.
+
+**Resolution is split pure/Db, mirroring 1.4.1.** `structural_issues` (shape)
+and `resolve_issues` (a pure function over a `TriggerResolution` snapshot of the
+resolved facts) carry every rejection, so each filter predicate and each
+rejection is unit-testable without a database; the DB half is three thin
+lookups (`find_effective_by_slug`, `resolve_resource_owner`,
+`resolve_for_activation` + `validate_agent_for_host`).
+
+**An offline host still validates.** Validation resolves a host by slug and its
+capability report; presence (connected/offline) is a dispatch-time concern and
+`daemon_not_connected` remains dispatch-only (1.2.3/1.4.6). Trigger install
+(1.4.3) will build on this resolver and the document shape.
+
+---
+
+## 2026-10-21 — Environment model (task 1.4.5)
+
+**An environment is one complete named object, never a base plus overrides.**
+`Environment` is `{ host, directory, worktree? }`; the document sets
+`deny_unknown_fields`, so an `extends`, `override` or partial-worktree key is a
+parse error, and there is no code path that combines two environments. A step
+selects exactly one by name, or through a finite input whose every declared
+choice names a complete environment and must resolve at activation. Selection
+returns a borrow of the whole object, which is what makes "never merged or
+overridden by a workflow" structural rather than a convention.
+
+**The host slug is resolved at activation, the directory is declared there.**
+`configuration::validate`/`install` resolves `environments.<name>.host` against
+live hosts, so a host that was renamed or revoked fails activation with a named
+field instead of failing at dispatch. The directory is validated as a
+declaration: required, ≤4096 characters, absolute (POSIX or Windows drive) and
+canonical (no `.`/`..`, repeated separators, trailing separator or control
+characters). The pool has no filesystem access to a host and never clones,
+creates or rewrites the directory, so a remote `stat` is not part of activation;
+the host is the authority on existence when it prepares the execution. A
+missing declaration or a non-canonical path is caught at activation, which is
+the failure this task owns.
+
+**Worktree branch templates embed the execution id, and only that.** Only
+`${{ paseo.execution.id }}` (and the Tidepool spelling
+`${{ tidepool.execution.id }}`) is accepted in `newBranch`; any other expression
+is refused at the authored field. Activation renders the template with a sample
+UUID, so a template that only works for a short id still fails before dispatch.
+At dispatch the pool renders the real execution id and validates the resulting
+Git ref, which is what gives every execution its own branch and lets a retry or
+recovery reuse it. `checkout-branch` takes a literal branch and no expression.
+Execution ids are sanitised to `[A-Za-z0-9._-]` before they touch a ref, so a
+host or client supplied id cannot escape the branch namespace.
+
+**Dispatch is a pure decision plus one presence lookup.** `resolve_dispatch`
+takes the authored environments and host-availability facts and returns a
+`DispatchTarget` (environment, host public id, directory, rendered branch). An
+offline host yields `EnvironmentError::DaemonNotConnected`, whose `code()` is
+the documented `daemon_not_connected`; there is no queue, so the trigger must
+fire again. `require_for_dispatch` is the thin database wrapper
+(`resolve_for_activation` + `host_presence::require_connected`) around that pure
+function, which is what keeps the offline-rejection path unit-testable without
+MySQL.
+
+---
+
+## 2026-10-21 — Workflow schema (task 1.4.4)
+
+**A workflow is one trigger and an ordered step list, validated against the
+same revision.** `Workflow` is `{ name, trigger, maxRuntime, inputs, steps }`;
+each `Step` is `{ id, environment, agent, prompt, if?, output?, outputs,
+maxRuntime?, idleTimeout?, reads? }`. Steps run in authored order and the
+authored JSON is stored verbatim in the revision (no normalized workflow
+document is written). `configuration::parse_workflows` returns the authored
+list for dispatch (1.4.6).
+
+**Only earlier steps are readable, enforced at every read site.** A `reads`
+entry, any condition operand naming a step, and any `${{ steps.<id>... }}`
+prompt expression must name a step that appears before the reader. A later
+step, the reader itself or an unknown id is a named rejection, so dispatch
+never needs to reason about forward references. Step ids are unique and limited
+to `[A-Za-z0-9][A-Za-z0-9_-]*`; dots are excluded so the prompt expression
+parser can separate an id from its output property unambiguously.
+
+**An agent is a name or one complete static inline configuration, never a
+dynamic inline object.** `AgentRef` has `Named(String)`, `Inline(InlineAgent)`
+and a catch-all `Dynamic(map)`. The catch-all exists so an authored
+`{ "input": ... }` object parses and receives a named validation issue instead
+of turning the whole bundle into malformed JSON; it is never accepted.
+`InlineAgent` denies unknown keys and refuses `${{ ... }}` values, which is
+what keeps an inline agent complete and static.
+
+**A finite output schema can bound a later choice; an unbounded one cannot.**
+An output property is finite when it declares `const` or a non-empty `enum`.
+When a condition compares a declared input to an earlier step's output property
+with `in`/`eq`, every declared input choice must be inside the finite set. A
+property without `enum`/`const` yields no bound, so the later choice stays
+unconstrained. `finite_choice_bounds` exposes the intersection for dispatch;
+the validation error names the input and the offending choice.
+
+**Deadlines nest; the remaining workflow time is the outer bound.** A
+workflow's `maxRuntime` defaults to one hour and is capped at seven days. A
+step's `maxRuntime` defaults to the workflow's remaining time, and both that
+value and the step's `idleTimeout` are capped by the remaining workflow time
+(the idle timeout is also capped by the step's maximum runtime).
+`Workflow::effective_deadlines` is pure so 1.4.6 can apply it at each step
+start.
+
+**Bundle caps are structural, named, and reject extras.** The 100-file,
+512-character-path, 1,000,000-character-file and 5,000,000-byte-partial caps
+each report the offending path. Paths must be relative and canonical: no
+absolute or drive prefix, no backslash, no `.`/`..`, repeated or trailing
+separator, control character or padding. Duplicate paths are refused, and any
+bundle file other than `tidepool.json` that the manifest does not reference as
+a partial is an "extra file" and fails activation. The partial byte cap sums
+the referenced partial files, not every file in the bundle.
+
+---
+
+## 2026-10-21 — Trigger installation and revisions (task 1.4.3)
+
+**A trigger's identity is per project, and its name is the replace key.** The
+`triggers` row holds `(project_id, name)` as a unique key and a stable
+`public_id`; installing a document whose name already exists replaces that row's
+document rather than inserting a second trigger. Two projects in one
+organization may each own a trigger called `auto-fix-issues`, which is what lets
+a repository's configuration be deployed per project. `updated_at` moves on a
+replace; `public_id` never does, so dispatch (1.4.6) and the activity log
+(1.4.7) can refer to one trigger across every version of it.
+
+**Revisions are append-only, so history stays readable.** A successful install
+inserts one `trigger_revisions` row — per-trigger `version`, the exact installed
+document as JSON, `active` — and flips `active` off on the trigger's previously
+active row in the same transaction. Nothing is updated in place and nothing is
+deleted (only a project cascade removes them), so `version N` always means the
+same document. Version is `max(version) + 1`, not `count(*) + 1`, so a swept row
+cannot make the next install collide on the unique `(trigger_id, version)` key.
+
+**An invalid document changes nothing, because it never reaches the writer.**
+Install validates first and then decides: `decide_install` returns
+`TriggerError::Invalid` with the named issues and *no plan*, so there is
+nothing for the database half to execute — no trigger row, no revision, no
+deactivation, no audit entry. This is the "a later failure does not undo an
+earlier success" contract from the task, and it is a property of the plan type
+rather than a convention. The HTTP result is 422 `configuration_invalid`
+naming every failing field. Note the deliberate asymmetry with configuration
+1.4.1: a rejected *bundle* is still stored as an `invalid` revision for the
+record, while a rejected *trigger* install is not stored at all, because the
+task says it changes nothing.
+
+**The bookkeeping is pure; only the write is not.** `RevisionPlan`,
+`ExistingTrigger`, `plan_install` and `decide_install` take the trigger's
+current state and return what will be written, so create-then-replace, version
+numbering, identity retention and the invalid-document rule are all unit-tested
+without a database. `install_trigger` then `SELECT ... FOR UPDATE`s the trigger
+row (or the project row when creating one) and applies the plan, so two
+concurrent installs of the same name serialize and cannot pick the same
+version.
+
+**The stored document is the canonical JSON of the authored one.** Installation
+serializes the parsed `TriggerDocument`, so dispatch reads back exactly the
+filters and run that were installed, with `deny_unknown_fields` having already
+rejected anything unrecognized. The install body itself is the document plus a
+`project` key and is parsed explicitly rather than with `#[serde(flatten)]`,
+because flattening silently disables `deny_unknown_fields` — install must
+accept and refuse exactly the documents validate does.
+
 ---
 
 ## Open Questions / Assumptions

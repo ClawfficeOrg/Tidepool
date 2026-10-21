@@ -191,6 +191,205 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Documented the App credentials, webhook URL and event mapping in
   `docs/CONNECTIONS.md`.
 
+### Slack connections with socket mode and webhooks (task 1.3.3)
+- Added the Slack transport (`src/services/connections/slack.rs`). Both
+  transports share normalization, workspace resolution and channel filters:
+  `POST /v1/webhooks/slack/{slug}` verifies `X-Slack-Signature` over
+  `v0:<timestamp>:<body>` with a five-minute replay window before parsing, and
+  socket mode (`SlackSocketSession` + `run_socket_session`) handles Slack's
+  envelopes over a frame channel so a pool with no public address needs no
+  webhook URL. Slack's `url_verification` handshake is answered with its
+  challenge.
+- Events are typed `slack.mention` (`app_mention`), `slack.direct_message`,
+  `slack.message`, `slack.ignored` (the bot's own posts, subtypes) and
+  `slack.unsupported`. A workspace the connection does not own or a filtered
+  channel is acknowledged but `accepted: false` with a reason; socket-mode
+  envelopes are acknowledged either way so Slack stops retrying.
+- Both transports deduplicate on Slack's `event_id` in `webhook_deliveries`
+  (`provider = slack`, transport in `action`), so a retry — or the same event
+  arriving on both transports — is recorded once. Socket-mode sessions also
+  dedup in memory across a reconnect.
+- The bot mention is stripped before the text is exposed: a normalized message
+  carries prompt-safe `text` plus `raw_text` for the record.
+- Added the declared-output registry (`src/services/outputs.rs`) with
+  `slack.reply`. `OutputLedger` refuses an undeclared capability, enforces
+  `maximum` (default 1, hard maximum 20) and fails `finish()` when a `required`
+  capability was never emitted, so a step that must answer cannot complete
+  silently. A reply is constructed from its event, so it can only land in the
+  channel and thread the event came from.
+- `validate_workspace` / `resolve_workspace_connection` let configuration
+  validation refuse an unknown workspace with a named `workspace` field.
+- Documented credentials, both transports, the event table and the reply
+  capability in `docs/CONNECTIONS.md`.
+
+### Discord connections over the bot gateway (task 1.3.4)
+- Added the Discord transport (`src/services/connections/discord.rs`). Discord
+  has no inbound webhook for bot events, so there is no route: the pool dials
+  the gateway WebSocket and `DiscordGatewaySession` owns the protocol — hello,
+  identify or resume, heartbeat, dispatch, `op 7`/`op 9` — while
+  `run_gateway_session` pumps it over a frame channel, so a live socket and a
+  scripted test feed drive identical logic.
+- Events are typed `discord.mention` (a guild message mentioning the bot),
+  `discord.direct_message`, `discord.message`, `discord.ignored` (the bot's own
+  and other bots' posts, webhook posts, `MESSAGE_UPDATE`) and
+  `discord.unsupported`. A guild the connection does not own or a filtered
+  channel is handed on but `accepted: false` with a reason.
+- **A reconnect does not duplicate an event.** The session's dedup window (the
+  last 1024 message snowflakes) lives on the session rather than on the socket,
+  so it survives the redial that caused the replay and a resumed stream's
+  replayed events are handed on once. `webhook_deliveries` (`provider =
+  discord`, `gateway`/`gateway_resume` in `action`) backstops that window across
+  a restart.
+- The bot mention is stripped before the content is exposed: `<@id>` and the
+  nickname form `<@!id>` go, role mentions stay, and a normalized message
+  carries prompt-safe `content` plus `raw_content` for the record. `READY`
+  supplies the bot user id when credentials did not.
+- Added `discord.reply` to the output registry with the same semantics as
+  `slack.reply` (default `maximum` 1, hard maximum 20, optional `required`),
+  enforced by the same `OutputLedger`. A reply is built from its event, so it
+  lands in the originating channel — or the thread, which in Discord *is* the
+  channel — with `allowed_mentions: {"parse": []}` so no agent output can ping
+  anyone.
+- `validate_guild` / `validate_guilds_for_activation` fail activation with a
+  named `guild` field when the organization has no active connection for a
+  guild, so a trigger that could never fire is refused at save time.
+- The session never holds the bot token: frames that need it name the
+  credential field and the value is injected at send time, which stays with
+  dispatch (task 1.4.6) along with dialling the socket and the reply call.
+- Documented the handshake, the resume/dedup rule, the event table and the
+  reply capability in `docs/CONNECTIONS.md`.
+
+### Project model and configuration revisions (task 1.4.1)
+- Added `projects`, `configuration_revisions` and `configuration_revision_files`
+  (migration `20261021000001_create_projects`). A project is `slug` + `name`,
+  scoped to the organization. A revision is an immutable authored file set
+  (path + raw content, stored verbatim), a per-project `version`, an `active`
+  flag and the validation result; rows are write-once and only `active` ever
+  changes.
+- Added `GET/POST /v1/projects` and `GET/PATCH/DELETE /v1/projects/{id}`.
+  Project reads accept a member or a `projects:read` key; mutations require a
+  non-viewer member (there is no project-write key scope).
+- Added `POST /v1/projects/{id}/configuration/validate`
+  (`configuration:validate`) — a dry run that resolves every reference and
+  writes nothing — and `POST /v1/projects/{id}/configuration/install`
+  (`configuration:install`), which always stores a new revision and either
+  activates it or, on failure, records the issue and leaves the previous
+  active revision in place.
+- Validation resolves every reference in the bundle: connection slugs (active
+  connection), host slugs (live host), environments (named, each referencing a
+  host), named agents (well-formed) and prompt partials (referencing a file in
+  the bundle). Every unresolvable reference is reported as a
+  `{ field, revision, message }` issue naming both the field and the revision.
+- `GET /v1/projects/{id}/configuration` returns the active revision and
+  `GET /v1/projects/{id}/revisions[/{revision_id}]` the history. The manifest
+  is `tidepool.json`; the authored files are stored exactly, never normalized.
+
+### Trigger schema and validation endpoint (task 1.4.2)
+- Added the trigger document: the provider `event` it listens for
+  (`{ provider, type }`), its `filters`, and the `run` it starts
+  (`{ host, agent }`, where `agent` is a `provider`/`model`/`execution_mode`/
+  `thinking_option` selection).
+- `filters` is required and `from_users` must be present and non-empty. The
+  allowlist is the one layer that keeps a stranger's comment on a public issue
+  from starting an agent on someone's machine, so a missing or empty allowlist
+  is a hard rejection, never a default.
+- Filters cover the provider resource (`resource.kind` + `resource.id`), the
+  connection (`connection` slug), the invoking user (`from_users`), a
+  `channel` or `label`, and a `contains` or `pattern` guard. Every condition is
+  a conjunction — all must pass, and there is no "any" mode.
+- Added `POST /v1/triggers/validate` (`configuration:validate`, or a
+  non-viewer member). It compiles one document, resolves the connection,
+  resource and host, and asks the named host whether it can run the agent,
+  returning `{ name, valid, errors }` without writing pool state. Unknown
+  connection/resource/host and an agent the host cannot run are each reported
+  as a named `{ field, message }` issue.
+
+### Environment model (task 1.4.5)
+- Added `Environment` (`src/entities/environment.rs`): a complete named object
+  with an enrolled host slug, an absolute working directory on that machine and
+  an optional worktree. The pool never clones, creates or rewrites the
+  directory. `deny_unknown_fields` means an `extends`/overlay key is a parse
+  error, so two environments can never be merged or partially overridden.
+- Worktrees carry a mode (`branch-off` or `checkout-branch`), a new branch
+  template and an optional base ref. `branch-off` renders
+  `${{ paseo.execution.id }}` (or `${{ tidepool.execution.id }}`) into the
+  branch, so every execution gets its own branch; any other expression, a
+  missing execution id, an unsafe execution id or an invalid rendered Git ref
+  fails activation. `checkout-branch` takes a literal branch only.
+- Configuration activation (`tidepool.json` `environments`) now runs the full
+  environment resolver: an unknown host, a missing/relative/non-canonical
+  directory, a duplicate name and a bad worktree each name their authored field
+  (`environments.<name>.<field>`) and keep the previous revision active.
+  `configuration::parse_environments` returns the authored definitions for
+  dispatch (task 1.4.6) unchanged.
+- Added the finite selector: a step names one environment literally or through
+  a finite input whose every declared choice must resolve at activation. A
+  selector resolves to exactly one complete environment.
+- Added dispatch resolution (`src/services/environments.rs`): the pure
+  `resolve_dispatch` picks the environment, requires its host and renders the
+  per-execution branch; the database wrapper asks presence. An offline host
+  fails with `daemon_not_connected` and nothing is queued.
+
+### Workflow schema (task 1.4.4)
+- Added `Workflow` (`src/entities/workflow.rs`): one trigger name and an
+  ordered list of steps. A step carries a unique id, an environment selector, a
+  named or complete static inline agent, an ordered prompt of text and partial
+  includes, an optional condition over declared inputs and earlier step output,
+  an optional finite output schema, its declared output capabilities, and its
+  own maximum runtime and idle timeout.
+- Steps run in authored order. A `reads` entry, a condition operand and a
+  `${{ steps.<id>... }}` prompt expression may reference only an earlier step;
+  a later step or the step itself is rejected. Step ids are unique and stable
+  (`[A-Za-z0-9][A-Za-z0-9_-]*`).
+- An agent is either a named agent or one complete static inline
+  configuration. A dynamic inline object is parsed so validation can name it
+  and is then refused; an inline field carrying an expression is refused too.
+- Added `src/services/workflows.rs`, which validates workflows against the
+  revision's environments, named agents and prompt partials and reports a
+  named `{ field, message }` issue for every failure. Output capabilities are
+  checked through the existing `OutputLedger` registry.
+- A finite output property (`enum` or `const`) may bound a later input choice:
+  every declared choice must be in the finite set. An unbounded property does
+  not constrain the choice. `finite_choice_bounds` exposes the resulting bound
+  for dispatch.
+- Deadlines compose: the workflow maximum runtime is the outer bound, and the
+  remaining time caps both a step's maximum runtime and its idle timeout
+  (`Workflow::effective_deadlines`).
+- Configuration activation now validates the `workflows` array in
+  `tidepool.json` and adds `configuration::parse_workflows` for dispatch. The
+  bundle caps are enforced with the failing path named: at most 100 files, a
+  512-character path, 1,000,000 characters per file and 5,000,000 bytes of
+  referenced prompt partials. Paths must be relative and canonical; unsafe,
+  duplicate and extra (unreferenced) files are rejected.
+- Added unit tests per rule and per cap plus an ignored live-MySQL integration
+  test that installs a two-step, one-partial workflow.
+
+### Trigger installation and revisions (task 1.4.3)
+- Added `triggers` and `trigger_revisions` (migration
+  `20261021000002_create_triggers`). A trigger belongs to one project and its
+  name is unique per project (`(project_id, name)`), so two projects may each
+  own an `auto-fix-issues`. A revision is write-once: it carries a per-trigger
+  `version`, an `active` flag and the exact installed document as JSON.
+- Added `POST /v1/triggers/install` (`configuration:install`, or a non-viewer
+  member). It validates the document with the same resolver validate uses and
+  then creates or replaces the project's trigger of that name, returning
+  `{ id, name, revision, version, active, replaced }`.
+- A first install creates the trigger at version 1. A second install of the
+  same name keeps the trigger's `public_id` (its identity, so the history stays
+  one readable history), appends a new revision and deactivates the previous
+  one. Old revisions are never renumbered or deleted.
+- An invalid document writes nothing at all: no trigger row, no revision, no
+  deactivation, no audit entry. The failure is a 422 `configuration_invalid`
+  naming every failing field, so a later failure never undoes an earlier
+  success. A missing project is a 404.
+- The install body is the trigger document plus one `project` key, parsed so
+  `deny_unknown_fields` still applies; a missing or unusable `project` is a 400.
+- Added unit tests for create-then-replace, revision numbering (including a
+  version gap), identity retention, the invalid-document rule and
+  install-after-failure, plus ignored live-MySQL integration tests for the
+  create/replace cycle, partial failure across two installs, an unknown project
+  and per-project name uniqueness.
+
 ### Fixed
 - Docker builds copy the workspace's `crates/` directory and build only the
   `tidepool` package, so the reference host-agent member no longer breaks the
