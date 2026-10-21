@@ -66,3 +66,5 @@
 {"at": "2026-10-21T12:11:11Z", "event": "look_clear", "task": "1.4.3", "owner": "opencode", "from": "needs_human_look", "to": "done"}
 {"at": "2026-10-21T12:13:05Z", "event": "start", "task": "1.4.6", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T20:13:05Z"}
 {"at": "2026-10-21T15:27:25Z", "event": "look_defer", "task": "1.4.6", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "needs_human_look", "note": "Runner stopped mid-task; WIP checkpointed, gate never run. Dispatch/run lifecycle incomplete."}
+{"at": "2026-10-21T15:28:21Z", "event": "start", "task": "1.4.7", "owner": "tkrun-2026-10-21", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-21T23:28:21Z"}
+{"at": "2026-10-21T15:29:03Z", "event": "reset", "task": "1.4.7", "owner": "tkrun-2026-10-21", "from": "in_progress", "to": "pending", "released_claim": "tkrun-2026-10-21"}
