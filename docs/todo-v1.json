@@ -746,7 +746,7 @@
         {
           "id": "1.4.6",
           "title": "Dispatch and run lifecycle",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "The pool turns a matched event or a manual request into a workflow run and evaluates its steps one at a time, honouring conditions and deadlines. A manual dispatch names the project, the trigger, the actor (which must be allowed by the trigger), an optional expected revision (rejected if no longer active), a stable client-supplied delivery key for deduplication, and an input string whose leading key=value tokens fill declared inputs while the rest becomes the request text. Hub owns creation, reconnect recovery, output observation and completion for the runs it starts, and leaves runs a person started alone. A lost create response or a pool restart resends the same create intent with the same execution id, and a host answers with the existing execution rather than running the prompt twice; an execution that closed or errored is recorded as interrupted and is never silently started again.",
           "touches": [
             "src/services/dispatch.rs",
@@ -770,7 +770,9 @@
           "complexity": "Very High",
           "agent": "flagship",
           "changelog": "Added dispatch and the run lifecycle",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-21T15:27:25Z",
+          "human_look": "Runner stopped mid-task; WIP checkpointed, gate never run. Dispatch/run lifecycle incomplete."
         },
         {
           "id": "1.4.7",
