@@ -1,20 +1,37 @@
 #!/usr/bin/env bash
-# Deploy or roll back Tidepool on the VPS (task 1.6.4).
+# Deploy, redeploy or roll back Tidepool (task 1.6.4).
 #
 #   ./deploy/deploy.sh deploy          # pull, back up, build, restart, verify
 #   ./deploy/deploy.sh rollback <tag>  # check out a previous release tag and restart
+#   ./deploy/deploy.sh backup          # database dump only
 #   ./deploy/deploy.sh verify          # health check only
 #
-# Run it on the VPS from the pool checkout. Secrets come from the VPS-owned
-# .env beside the compose files; this script never reads or prints them.
+# The proxy is chosen with COMPOSE_PROXY (traefik, caddy, nginx or none) and
+# defaults to traefik; `make deploy PROXY=caddy` sets it for you. Secrets come
+# from the .env beside the compose files; this script never reads or prints
+# them.
 set -euo pipefail
 
 APP_DIR="${TIDEPOOL_DIR:-/opt/clawffice/tidepool}"
-COMPOSE=(docker compose -f docker-compose.yml -f deploy/docker-compose.vps.yml)
 BACKUP_DIR="${TIDEPOOL_BACKUP_DIR:-/var/backups/tidepool}"
 HEALTH_URL="${TIDEPOOL_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+COMPOSE_PROXY="${COMPOSE_PROXY:-traefik}"
 
-log() { printf '[deploy] %s\n' "$*"; }
+case "$COMPOSE_PROXY" in
+  traefik) COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.vps.yml) ;;
+  none)    COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.vps.yml) ;;
+  caddy)   COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.vps.yml -f deploy/docker-compose.caddy.yml) ;;
+  nginx)   COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.vps.yml -f deploy/docker-compose.nginx.yml) ;;
+  *)
+    echo "error: COMPOSE_PROXY must be one of: traefik, caddy, nginx, none" >&2
+    exit 2
+    ;;
+esac
+
+COMPOSE=(docker compose "${COMPOSE_FILES[@]}")
+
+log() { printf '[deploy] %s\n' "$*" >&2; }
+log "proxy: $COMPOSE_PROXY" 
 
 backup() {
   mkdir -p "$BACKUP_DIR"
@@ -78,6 +95,7 @@ rollback() {
 case "${1:-}" in
   deploy) deploy ;;
   rollback) shift; rollback "${1:-}" ;;
+  backup) backup ;;
   verify) verify ;;
-  *) echo "usage: $0 {deploy|rollback <tag>|verify}" >&2; exit 2 ;;
+  *) echo "usage: $0 {deploy|rollback <tag>|backup|verify}" >&2; exit 2 ;;
 esac

@@ -2,6 +2,21 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Makefile and per-proxy deploy layers
+
+### Added
+- Added a `Makefile` with `env`, `config`, `up`, `down`, `logs`, `health`,
+  `deploy`, `redeploy`, `rollback TAG=…`, `backup` and `verify`. `PROXY`
+  selects the compose layers: `traefik` (default), `caddy`, `nginx` or `none`;
+  `HOSTNAME` becomes both the proxy host rule and `TIDEPOOL_PUBLIC_ORIGIN`.
+- Added Caddy and nginx sidecar overlays (`deploy/docker-compose.caddy.yml`,
+  `deploy/docker-compose.nginx.yml`) with their site configs, so the same
+  commands work whichever proxy fronts the pool. nginx deliberately has no
+  ACME client; it expects host-managed certificates.
+- `deploy/deploy.sh` honours `COMPOSE_PROXY` and gained a `backup` command.
+- Documented the Traefik provider/entrypoint/resolver pitfalls and the Makefile
+  commands in `docs/SELF_HOSTING.md`.
+
 ## [Unreleased] — 2026-10-22 — Secret generation for self-hosting
 
 ### Added

@@ -1,0 +1,31 @@
+# nginx sidecar for Tidepool (make PROXY=nginx).
+#
+# Runs nginx in the compose network, so the pool needs no public port: nginx
+# reaches it as `pool:8080`. The site is rendered by the nginx image's
+# envsubst support into /etc/nginx/conf.d/default.conf.
+#
+# Certificates: mount your own into /etc/nginx/certs and uncomment the TLS
+# block in the template, or terminate TLS in front of this container. There is
+# no automatic ACME client here, by design — use certbot on the host or a
+# proxy that owns renewal.
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      TIDEPOOL_HOSTNAME: ${TIDEPOOL_HOSTNAME:?set TIDEPOOL_HOSTNAME}
+    volumes:
+      - ./deploy/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      - pool
+    networks:
+      - default
+
+  pool:
+    ports: !reset []
+
+networks:
+  default:

@@ -1,0 +1,30 @@
+# Caddy sidecar for Tidepool (make PROXY=caddy).
+#
+# Runs Caddy in the compose network, so the pool needs no public port: Caddy
+# reaches it as `pool:8080`. Certificates are issued and renewed by Caddy's
+# ACME client; nothing has to be mounted from the host.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TIDEPOOL_HOSTNAME: ${TIDEPOOL_HOSTNAME:?set TIDEPOOL_HOSTNAME}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - pool
+    networks:
+      - default
+
+  pool:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:

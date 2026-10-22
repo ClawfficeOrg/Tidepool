@@ -6,11 +6,28 @@ its embedded migrations at startup, so a clean machine needs no manual SQL.
 ## Quickstart
 
 ```sh
-./scripts/gen-env.sh          # writes .env with fresh secrets, mode 600
+make env                      # writes .env with fresh secrets, mode 600
 # edit .env: set TIDEPOOL_PUBLIC_ORIGIN (and TIDEBOOT_* for an unattended install)
-docker compose up -d
-docker compose logs -f pool
+make up                       # PROXY=none by default for local use
+make logs
 ```
+
+The `Makefile` wraps the same operations the rest of this document describes:
+
+| command | what it does |
+|---|---|
+| `make env` | `scripts/gen-env.sh` (never overwrites `.env`) |
+| `make config` | validates the compose layers for the chosen proxy |
+| `make up` / `make down` / `make logs` / `make health` | day-to-day stack control |
+| `make deploy` | build, start and verify (first deploy) |
+| `make redeploy` | pull, back up, rebuild, verify, roll back on failure |
+| `make rollback TAG=v0.5.0` | return to a previous release tag |
+| `make backup` | database dump only |
+| `make verify` | health check only |
+
+`PROXY` selects the compose layers: `traefik` (default), `caddy`, `nginx` or
+`none`, e.g. `make deploy PROXY=caddy HOSTNAME=pool.example.com`. `HOSTNAME`
+must match `TIDEPOOL_PUBLIC_ORIGIN`.
 
 `gen-env.sh` copies `.env.example` and fills in `JWT_SECRET` (128 hex chars),
 `TIDEPOOL_DB_PASSWORD`, `TIDEPOOL_DB_ROOT_PASSWORD` and a matching
@@ -199,10 +216,31 @@ docker network create proxy 2>/dev/null || true
 ./deploy/deploy.sh deploy
 ```
 
+**Traefik note.** The routing below is declared as docker-provider labels, so
+Traefik must be configured with `--providers.docker` (and usually
+`exposedByDefault=false`, which the `traefik.enable=true` label reverses). Three
+things are easy to get wrong:
+
+- the pool must be attached to the *same* network Traefik watches; the
+  `traefik.docker.network` label picks the right one when a container is on
+  several. `TIDEPOOL_PROXY_NETWORK` names it.
+- `TRAEFIK_ENTRYPOINT` and `TRAEFIK_CERTRESOLVER` must match the names in
+  Traefik's static configuration; `websecure` and `le` are only the common
+  defaults.
+- if the VPS Traefik uses the **file** provider instead of docker, the labels
+  are ignored: install `deploy/traefik.yml` into its dynamic directory instead
+  (that file is the same router, middlewares and service in YAML).
+
 Traefik must already be running on the VPS with an HTTPS entrypoint
 (`TRAEFIK_ENTRYPOINT`, usually `websecure`), an HTTP entrypoint for the
 redirect, and an ACME certificate resolver (`TRAEFIK_CERTRESOLVER`). The pool
 joins the network Traefik watches (`TIDEPOOL_PROXY_NETWORK`, usually `proxy`).
+
+Deploy with the proxy that is actually installed:
+
+```sh
+make deploy PROXY=traefik HOSTNAME=pool.example.com
+```
 
 Then, over HTTPS only:
 

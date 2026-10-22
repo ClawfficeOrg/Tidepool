@@ -1,0 +1,31 @@
+# Caddy site for Tidepool. Rendered by the caddy:2 image with
+# TIDEPOOL_HOSTNAME from the compose environment.
+
+{$TIDEPOOL_HOSTNAME} {
+	encode zstd gzip
+	request_body {
+		max_size 2MB
+	}
+
+	# WebSockets: chatroom streams and the /ws family.
+	@ws path /v1/chatrooms/* /ws*
+	handle @ws {
+		reverse_proxy pool:8080 {
+			transport http {
+				read_timeout 1h
+				write_timeout 1h
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy pool:8080
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
