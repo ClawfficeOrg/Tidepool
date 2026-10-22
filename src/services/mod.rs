@@ -7,6 +7,7 @@ pub mod activity;
 pub mod api_keys;
 pub mod auth;
 pub mod cache;
+pub mod chatrooms;
 pub mod configuration;
 pub mod connections;
 pub mod dispatch;

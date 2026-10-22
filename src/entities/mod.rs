@@ -6,6 +6,7 @@
 pub mod activity;
 pub mod analytics_event;
 pub mod api_key;
+pub mod chatroom;
 pub mod configuration_revision;
 pub mod connection;
 pub mod enrollment_token;

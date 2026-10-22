@@ -816,7 +816,7 @@
         {
           "id": "1.5.1",
           "title": "Chatroom schema",
-          "status": "pending",
+          "status": "done",
           "goal": "Migration for rooms, members and messages. A room belongs to a project, has a name, a visibility, an optional pool of origin (unset until federation lands) and timestamps. A member is a pool user or an agent session, with a join time and a role. A message has a stable id, an author reference (person or session), a body as markdown text, a creation time and an optional reply-to. Indexes support reading history by room and time and resolving a member's rooms; message ordering is server-defined and stable.",
           "touches": [
             "migrations/",
@@ -836,7 +836,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added the chatroom schema",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-22T05:49:13Z"
         },
         {
           "id": "1.5.2",

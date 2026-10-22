@@ -2,6 +2,33 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Chatrooms: rooms, members and messages
+
+### Added (task 1.5.1)
+- Added `chat_rooms`, `chat_room_members` and `chat_messages` (migration
+  `20261022000001_create_chatrooms`). A room belongs to one project, carries a
+  name unique within that project, a `private`/`unlisted`/`public` visibility
+  and `origin_pool`, which stays `NULL` for every v1 room because federation is
+  deferred to v3.
+- A member is a pool user or an agent session with an `owner`/`member`/`viewer`
+  role and a join time. MySQL refuses a CHECK over a column that also carries a
+  foreign-key action, so the one-principal rule is enforced by
+  `entities::chatroom::Principal` and by matching unique keys rather than by a
+  CHECK constraint.
+- Messages carry a stable `public_id`, an author principal, a markdown body and
+  an optional reply-to. Ordering is the internal `id`, which MySQL never
+  reuses; history reads on `(room_id, id)` and paging uses that id as its
+  cursor, so two messages sharing a timestamp cannot be skipped or repeated.
+  A deleted author nulls `author_user_id` and the message reads back with no
+  author instead of losing its place in history.
+- Added `services::chatrooms` with room creation and listing, membership,
+  posting and cursor-paged history, all organization-scoped.
+- Added a schema test that applies every migration to a throwaway database,
+  checks the chatroom tables, indexes and the nullable `origin_pool`, then runs
+  the down file and verifies only the chatroom tables disappear; plus a live
+  MySQL test for naming conflicts, membership uniqueness, reply addressing and
+  stable ordering.
+
 ## [Unreleased] — 2026-10-21 — Runs, activity log and event receipts
 
 ### Added
