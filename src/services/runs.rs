@@ -940,6 +940,7 @@ async fn finish_run(
     .execute(pool)
     .await
     .map_err(RunError::Database)?;
+    crate::middleware::metrics::metrics().run_finished(status.as_str());
     if let Some(reason) = reason {
         let running_status = if status == RunStatus::Interrupted {
             StepStatus::Interrupted

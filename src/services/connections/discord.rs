@@ -1232,7 +1232,16 @@ pub async fn record_delivery(
     .execute(pool)
     .await
     .map_err(DiscordError::Database)?;
-    Ok(result.rows_affected() == 0)
+    let duplicate = result.rows_affected() == 0;
+    crate::middleware::metrics::metrics().webhook_delivery(
+        "discord",
+        if duplicate {
+            "deduplicated"
+        } else {
+            "accepted"
+        },
+    );
+    Ok(duplicate)
 }
 
 /// Find the active Discord connection that owns a guild, among `connections`.

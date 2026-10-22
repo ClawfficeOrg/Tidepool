@@ -147,6 +147,7 @@ pub async fn mint_enrollment_token(
     )
     .await;
 
+    crate::middleware::metrics::metrics().enrollment_token("issued");
     Ok((token, format!("{public_id}.{secret}")))
 }
 
@@ -316,6 +317,7 @@ pub async fn authenticate_host(
         .await
         .map_err(EnrollmentError::Database)?;
 
+    crate::middleware::metrics::metrics().enrollment_token("consumed");
     Ok(host)
 }
 

@@ -2,6 +2,21 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Hub observability
+
+### Added (task 1.6.3)
+- Extended `/metrics` with the hub signals an operator needs:
+  `tidepool_runs_started_total{origin}`,
+  `tidepool_runs_finished_total{status}`,
+  `tidepool_dispatch_failures_total{code}` (one series per named dispatch
+  failure code), `tidepool_enrollment_tokens_total{event}`,
+  `tidepool_webhook_deliveries_total{provider,outcome}` (accepted,
+  deduplicated and rejected are distinct) and the
+  `tidepool_chatroom_viewers` gauge. The existing connected-host gauge is
+  unchanged.
+- Server-error responses now log the request id they put in the problem
+  document, so a client-reported failure can be found in the log verbatim.
+
 ## [Unreleased] — 2026-10-22 — Migrations, backup and restore
 
 ### Added (task 1.6.2)

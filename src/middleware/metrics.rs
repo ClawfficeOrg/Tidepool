@@ -36,7 +36,13 @@ pub struct Metrics {
     http_requests: IntCounterVec,
     http_duration: HistogramVec,
     ws_connections: IntGauge,
-    hosts_connected: IntGauge,
+    host_connections: IntGauge,
+    chatroom_viewers: IntGauge,
+    runs_started: IntCounterVec,
+    runs_finished: IntCounterVec,
+    dispatch_failures: IntCounterVec,
+    enrollment_tokens: IntCounterVec,
+    webhook_deliveries: IntCounterVec,
 }
 
 impl Metrics {
@@ -59,20 +65,68 @@ impl Metrics {
             "tidepool_ws_connections",
             "Current number of active WebSocket connections",
         )?;
-        let hosts_connected = IntGauge::new(
+        let host_connections = IntGauge::new(
             "tidepool_hosts_connected",
             "Current number of connected pool hosts",
+        )?;
+        let chatroom_viewers = IntGauge::new(
+            "tidepool_chatroom_viewers",
+            "Current number of chatroom live-stream viewers",
+        )?;
+        let runs_started = IntCounterVec::new(
+            Opts::new("tidepool_runs_started_total", "Workflow runs started"),
+            &["origin"],
+        )?;
+        let runs_finished = IntCounterVec::new(
+            Opts::new(
+                "tidepool_runs_finished_total",
+                "Workflow runs that reached a terminal status",
+            ),
+            &["status"],
+        )?;
+        let dispatch_failures = IntCounterVec::new(
+            Opts::new(
+                "tidepool_dispatch_failures_total",
+                "Dispatch attempts refused, by error contract code",
+            ),
+            &["code"],
+        )?;
+        let enrollment_tokens = IntCounterVec::new(
+            Opts::new(
+                "tidepool_enrollment_tokens_total",
+                "Host enrollment tokens issued and consumed",
+            ),
+            &["event"],
+        )?;
+        let webhook_deliveries = IntCounterVec::new(
+            Opts::new(
+                "tidepool_webhook_deliveries_total",
+                "Provider webhook deliveries by outcome",
+            ),
+            &["provider", "outcome"],
         )?;
         registry.register(Box::new(http_requests.clone()))?;
         registry.register(Box::new(http_duration.clone()))?;
         registry.register(Box::new(ws_connections.clone()))?;
-        registry.register(Box::new(hosts_connected.clone()))?;
+        registry.register(Box::new(host_connections.clone()))?;
+        registry.register(Box::new(chatroom_viewers.clone()))?;
+        registry.register(Box::new(runs_started.clone()))?;
+        registry.register(Box::new(runs_finished.clone()))?;
+        registry.register(Box::new(dispatch_failures.clone()))?;
+        registry.register(Box::new(enrollment_tokens.clone()))?;
+        registry.register(Box::new(webhook_deliveries.clone()))?;
         Ok(Self {
             registry,
             http_requests,
             http_duration,
             ws_connections,
-            hosts_connected,
+            host_connections,
+            chatroom_viewers,
+            runs_started,
+            runs_finished,
+            dispatch_failures,
+            enrollment_tokens,
+            webhook_deliveries,
         })
     }
 
@@ -98,17 +152,55 @@ impl Metrics {
 
     /// Mark one host online.
     pub fn host_connected(&self) {
-        self.hosts_connected.inc();
+        self.host_connections.inc();
     }
 
     /// Mark one host offline.
     pub fn host_disconnected(&self) {
-        self.hosts_connected.dec();
+        self.host_connections.dec();
     }
 
     /// Set the connected-host gauge to an authoritative count.
     pub fn hosts_connected_set(&self, count: i64) {
-        self.hosts_connected.set(count);
+        self.host_connections.set(count);
+    }
+
+    /// Count one workflow run that started.
+    pub fn run_started(&self, origin: &str) {
+        self.runs_started.with_label_values(&[origin]).inc();
+    }
+
+    /// Count one workflow run that reached a terminal status.
+    pub fn run_finished(&self, status: &str) {
+        self.runs_finished.with_label_values(&[status]).inc();
+    }
+
+    /// Count one refused dispatch by its error-contract code.
+    pub fn dispatch_failure(&self, code: &str) {
+        self.dispatch_failures.with_label_values(&[code]).inc();
+    }
+
+    /// Count an enrollment token event (`issued` or `consumed`).
+    pub fn enrollment_token(&self, event: &str) {
+        self.enrollment_tokens.with_label_values(&[event]).inc();
+    }
+
+    /// Count one webhook delivery by provider and outcome
+    /// (`accepted`, `deduplicated` or `rejected`).
+    pub fn webhook_delivery(&self, provider: &str, outcome: &str) {
+        self.webhook_deliveries
+            .with_label_values(&[provider, outcome])
+            .inc();
+    }
+
+    /// Mark one chatroom viewer arriving.
+    pub fn chatroom_viewer_connected(&self) {
+        self.chatroom_viewers.inc();
+    }
+
+    /// Mark one chatroom viewer leaving.
+    pub fn chatroom_viewer_disconnected(&self) {
+        self.chatroom_viewers.dec();
     }
 
     /// Render every registered collector in Prometheus text format.
@@ -270,5 +362,40 @@ mod tests {
             scrape1, scrape2,
             "the /metrics route must not record itself"
         );
+    }
+    #[test]
+    fn hub_signals_are_exported_with_distinguishable_labels() {
+        let metrics = Metrics::new().expect("registry");
+        metrics.run_started("event");
+        metrics.run_started("manual");
+        metrics.run_finished("succeeded");
+        metrics.run_finished("failed");
+        metrics.dispatch_failure("configuration_invalid");
+        metrics.dispatch_failure("forbidden");
+        metrics.enrollment_token("issued");
+        metrics.enrollment_token("consumed");
+        metrics.webhook_delivery("github", "accepted");
+        metrics.webhook_delivery("github", "deduplicated");
+        metrics.webhook_delivery("github", "rejected");
+        metrics.chatroom_viewer_connected();
+        metrics.chatroom_viewer_connected();
+        metrics.chatroom_viewer_disconnected();
+
+        let rendered = metrics.render();
+        for series in [
+            "tidepool_runs_started_total{origin=\"event\"}",
+            "tidepool_runs_started_total{origin=\"manual\"}",
+            "tidepool_runs_finished_total{status=\"succeeded\"}",
+            "tidepool_dispatch_failures_total{code=\"configuration_invalid\"}",
+            "tidepool_enrollment_tokens_total{event=\"consumed\"}",
+            "tidepool_webhook_deliveries_total{outcome=\"deduplicated\",provider=\"github\"}",
+            "tidepool_webhook_deliveries_total{outcome=\"rejected\",provider=\"github\"}",
+            "tidepool_chatroom_viewers 1",
+        ] {
+            assert!(
+                rendered.contains(series),
+                "missing {series} in:\n{rendered}"
+            );
+        }
     }
 }

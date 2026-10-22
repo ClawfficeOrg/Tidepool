@@ -101,6 +101,15 @@ where
             }
 
             let status = response.status();
+            if status.is_server_error() {
+                // The request id in the problem body is the one in this log
+                // line, so a client-reported failure can be found verbatim.
+                tracing::error!(
+                    request_id = %request_id,
+                    status = status.as_u16(),
+                    "request failed; see problem document for the same request id"
+                );
+            }
             let problem = Problem::new(
                 status,
                 ProblemCode::from_status(status),

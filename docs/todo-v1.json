@@ -1011,7 +1011,7 @@
         {
           "id": "1.6.3",
           "title": "Hub observability",
-          "status": "pending",
+          "status": "done",
           "goal": "Extend the existing Prometheus surface with the signals an operator needs for the hub: runs started and finished by outcome, dispatch failures by named code, connected hosts, connected chatroom viewers, enrollment tokens issued and consumed, and webhook deliveries accepted, deduplicated and rejected. Logs gain the request id from the error contract so a failure a client reports can be found in the log.",
           "touches": [
             "src/middleware/metrics.rs",
@@ -1032,7 +1032,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added hub observability metrics and request-id logging",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-22T06:10:27Z"
         },
         {
           "id": "1.6.4",

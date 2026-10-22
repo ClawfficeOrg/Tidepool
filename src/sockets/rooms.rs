@@ -127,10 +127,15 @@ impl Handler<JoinRoom> for RoomHub {
         if full {
             self.prune_dead(&msg.room);
         }
-        self.rooms
+        if self
+            .rooms
             .entry(msg.room.clone())
             .or_default()
-            .insert(msg.conn_key, (msg.watcher, msg.recipient));
+            .insert(msg.conn_key, (msg.watcher, msg.recipient))
+            .is_none()
+        {
+            crate::middleware::metrics::metrics().chatroom_viewer_connected();
+        }
         self.broadcast_presence(&msg.room);
     }
 }
@@ -139,8 +144,10 @@ impl Handler<LeaveRoom> for RoomHub {
     type Result = ();
 
     fn handle(&mut self, msg: LeaveRoom, _ctx: &mut Self::Context) {
-        if let Some(conns) = self.rooms.get_mut(&msg.room) {
-            conns.remove(&msg.conn_key);
+        if let Some(conns) = self.rooms.get_mut(&msg.room)
+            && conns.remove(&msg.conn_key).is_some()
+        {
+            crate::middleware::metrics::metrics().chatroom_viewer_disconnected();
             if conns.is_empty() {
                 self.rooms.remove(&msg.room);
             }

@@ -875,6 +875,7 @@ pub fn ingest_webhook(
         return Err(SlackError::StaleTimestamp);
     }
     if !verify_signature(&context.signing_secret, timestamp, signature, body) {
+        crate::middleware::metrics::metrics().webhook_delivery("slack", "rejected");
         return Err(SlackError::BadSignature);
     }
 
@@ -971,7 +972,16 @@ pub async fn record_delivery(
     .execute(pool)
     .await
     .map_err(SlackError::Database)?;
-    Ok(result.rows_affected() == 0)
+    let duplicate = result.rows_affected() == 0;
+    crate::middleware::metrics::metrics().webhook_delivery(
+        "slack",
+        if duplicate {
+            "deduplicated"
+        } else {
+            "accepted"
+        },
+    );
+    Ok(duplicate)
 }
 
 /// Find the active Slack connection that owns a workspace (case-insensitive).

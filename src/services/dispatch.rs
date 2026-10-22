@@ -683,6 +683,7 @@ async fn create_run(
         }
         return Err(DispatchError::Database(error));
     }
+    crate::middleware::metrics::metrics().run_started(new.origin.as_str());
     let run_id: u64 = sqlx::query_scalar("SELECT id FROM runs WHERE public_id = ?")
         .bind(&run_public_id)
         .fetch_one(&mut *tx)

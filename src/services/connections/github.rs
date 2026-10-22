@@ -296,6 +296,7 @@ pub async fn handle_webhook(
     let signature =
         header(headers, "x-hub-signature-256").ok_or(GithubWebhookError::BadSignature)?;
     if !verify_signature(secret, signature, body) {
+        crate::middleware::metrics::metrics().webhook_delivery("github", "rejected");
         return Err(GithubWebhookError::BadSignature);
     }
 
@@ -333,6 +334,14 @@ pub async fn handle_webhook(
     .await
     .map_err(GithubWebhookError::Database)?;
 
+    let outcome = if result.rows_affected() == 0 {
+        "deduplicated"
+    } else if accepted {
+        "accepted"
+    } else {
+        "rejected"
+    };
+    crate::middleware::metrics::metrics().webhook_delivery("github", outcome);
     Ok(WebhookOutcome {
         delivery_id: delivery_id.to_string(),
         event: event.kind().to_string(),

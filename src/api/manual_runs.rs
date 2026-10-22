@@ -128,6 +128,7 @@ fn db_unavailable(req: &HttpRequest) -> HttpResponse {
 }
 
 fn map_error(error: DispatchError, req: &HttpRequest) -> HttpResponse {
+    crate::middleware::metrics::metrics().dispatch_failure(error.code());
     let (status, code, detail) = match &error {
         DispatchError::ProjectNotFound => (
             StatusCode::NOT_FOUND,
