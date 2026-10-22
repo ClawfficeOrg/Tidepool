@@ -389,7 +389,7 @@ is `docs/todo-v1.json`; its rename tasks 1.0.1–1.0.6 carry the rest.
 - Added `crates/tidepool-host-agent`, a minimal blocking reference agent that
   enrolls, reports capabilities, heartbeats, runs one create intent and replays
   completions by execution id. It is excluded from production deployment and
-  exists to test the pool before Limpet.
+  exists to test the pool without a full host (Swaygent is the suite's host).
 
 ### Connection model and provider registry (task 1.3.1)
 - Added `connections` and `connection_resources` (migration

@@ -52,7 +52,7 @@ Differences worth keeping in view while reading the mapping:
 |---|---|---|
 | Deployment | self-hosted or hosted, with paid seats | self-hosted first; hosted is deferred to v3 |
 | Storage | embedded database or PostgreSQL | MySQL, per the repo's standing decision (recorded in `docs/memory.md`) |
-| Machine daemon | the Paseo daemon, already built and shipped | the pool host protocol (task 1.2.5) with a reference host agent now; Limpet implements the same protocol later |
+| Machine daemon | the Paseo daemon, already built and shipped | the pool host protocol (task 1.2.5), implemented by Swaygent, the suite's host |
 | Clients | desktop, mobile, web, CLI, TypeScript SDK, MCP | Svelte control plane, ratatui console, Zoid reference client, TypeScript/Rust/Python SDKs and a CLI (`todo-v2.json`) |
 | Rooms | not a Hub feature | chatrooms and an opt-in session relay are Tidepool's own surface (phase 1.5) |
 | Federation | not offered | Rhumb, pool-to-pool, deferred to v3 |

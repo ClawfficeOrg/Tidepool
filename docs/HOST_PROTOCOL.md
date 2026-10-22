@@ -2,7 +2,7 @@
 
 The pool talks to an enrolled machine over one WebSocket. HTTP is used only to
 enroll and to report capabilities; everything else is versioned JSON frames.
-The protocol is framed by the pool, so Limpet and the reference host agent
+The protocol is framed by the pool, so Swaygent and the reference host agent
 implement the same document unchanged.
 
 ## 1. Enroll
@@ -157,5 +157,6 @@ attempted with no live socket. Protocol errors never include credentials.
 `crates/tidepool-host-agent` implements this document with a blocking HTTP +
 WebSocket client. It can enroll, report a capability list, heartbeat, accept one
 `create_agent`, emit output and complete; it deduplicates by `executionId` and
-answers a replay with the stored completion. It is for testing the pool before
-Limpet exists, not a production daemon.
+answers a replay with the stored completion. It exists to test the pool without
+a full host, not as a production daemon: Swaygent is the suite's pool host and
+implements this document in `crates/swaygent-core`.

@@ -1031,7 +1031,8 @@ and resends the same intent on reconnect/lost response; the host must answer a
 replay with the existing result. Terminal replays are served from the ledger
 even when the host is offline. Output is appended only while queued/running, so
 a late `execution_output` after completion cannot duplicate the final text. The
-reference agent keeps completions in memory; Limpet must persist them.
+reference agent keeps completions in memory; a real host (Swaygent) must
+persist them.
 
 **Connections and credentials:** a connection stores `credential_ref`, never a
 secret. Resolution happens at validation time from the environment/secret
