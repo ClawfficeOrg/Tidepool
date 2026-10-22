@@ -309,10 +309,14 @@ pub struct Message {
 pub struct MessageView {
     /// Immutable public UUID.
     pub id: String,
-    /// The author principal, or `None` when the author was deleted.
+    /// The author principal, or `None` when the author was deleted. The serde
+    /// tag (`user` or `session`) is how a reader tells a person from an agent.
     pub author: Option<Principal>,
     /// Markdown body.
     pub body: String,
+    /// Public UUID of the project the room belongs to, so a session message
+    /// carries the project it was posted in.
+    pub project: String,
     /// Public UUID of the message this replies to, when there is one.
     pub reply_to: Option<String>,
     /// When the message was created.

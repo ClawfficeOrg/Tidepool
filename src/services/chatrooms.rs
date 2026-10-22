@@ -145,6 +145,22 @@ async fn principal_columns(
             Ok((PrincipalKind::User, Some(id), None))
         }
         Principal::Session(session_id) => {
+            // A session must be an execution this organization's hosts own;
+            // an unknown id cannot join a room or post.
+            let found: Option<(u64,)> = sqlx::query_as(
+                "SELECT e.id FROM host_executions e JOIN hosts h ON h.id = e.host_id \
+                 WHERE e.public_id = ? AND h.organization_id = ?",
+            )
+            .bind(session_id)
+            .bind(organization_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(ChatroomServiceError::Database)?;
+            if found.is_none() {
+                return Err(ChatroomServiceError::Invalid(format!(
+                    "no session {session_id:?} in this organization"
+                )));
+            }
             Ok((PrincipalKind::Session, None, Some(session_id.clone())))
         }
     }
@@ -384,6 +400,14 @@ async fn message_view(
                 .ok_or_else(|| internal_id("session", "author"))?,
         )),
     };
+    let project: String = sqlx::query_scalar(
+        "SELECT p.public_id FROM chat_rooms r JOIN projects p ON p.id = r.project_id \
+         WHERE r.id = ?",
+    )
+    .bind(message.room_id)
+    .fetch_one(pool)
+    .await
+    .map_err(ChatroomServiceError::Database)?;
     let reply_to = match message.reply_to_message_id {
         Some(id) => Some(
             sqlx::query_scalar::<_, String>(
@@ -401,6 +425,7 @@ async fn message_view(
         id: message.public_id.clone(),
         author,
         body: message.body.clone(),
+        project,
         reply_to,
         created_at: message.created_at,
         sequence: message.id,

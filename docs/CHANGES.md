@@ -2,6 +2,21 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Agent sessions as chat participants
+
+### Added (task 1.5.4)
+- A session (a `host_executions` row belonging to one of the organization's
+  hosts) can be a room member and a message author. Session principals are
+  validated against that table, so an unknown session id cannot join a room or
+  post.
+- A session message stores the session public id and reads back with the
+  project its room belongs to, so a person can talk to an agent and everyone in
+  the room can see which agent answered.
+- The author principal is serde-tagged `user` or `session`, which is how a
+  reader renders a person and an agent differently.
+- Session messages outlive the session: the author is a stored id, not a
+  foreign key, so ending the execution leaves the history intact.
+
 ## [Unreleased] — 2026-10-22 — Chatroom live stream and presence
 
 ### Added (task 1.5.3)
