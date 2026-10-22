@@ -3,6 +3,7 @@
 pub mod activity;
 pub mod api_keys;
 pub mod auth;
+pub mod chatrooms;
 pub mod connections;
 pub mod enrollment;
 pub mod events;

@@ -30,6 +30,9 @@ pub enum ChatroomServiceError {
     /// No room, project or parent message with that id in this organization.
     #[error("chatroom resource not found")]
     NotFound,
+    /// The caller is a member but may not perform this action.
+    #[error("forbidden: {0}")]
+    Forbidden(String),
     /// The write collides with an existing row (duplicate room name or member).
     #[error("chatroom conflict: {0}")]
     Conflict(String),
@@ -404,6 +407,20 @@ async fn message_view(
     })
 }
 
+/// History for a caller who must be a member of the room.
+pub async fn history_as(
+    pool: &MySqlPool,
+    organization_id: u64,
+    room_public_id: &str,
+    caller: &Principal,
+    after: Option<u64>,
+    limit: Option<u32>,
+) -> Result<MessagePage, ChatroomServiceError> {
+    // Any role may read; the gate is membership itself.
+    member_role(pool, organization_id, room_public_id, caller).await?;
+    history(pool, organization_id, room_public_id, after, limit).await
+}
+
 /// Post a message to a room.
 ///
 /// `reply_to` is the public id of a message in the same room; a reply to a
@@ -417,6 +434,8 @@ pub async fn post_message(
     reply_to: Option<&str>,
 ) -> Result<MessageView, ChatroomServiceError> {
     let room = room_row(pool, organization_id, room_public_id).await?;
+    // Validate the body before the membership lookup so an oversized body is
+    // refused without touching the membership check or writing anything.
     let body = validate_message_body(body)?;
     let (kind, user_id, session_id) = principal_columns(pool, organization_id, author).await?;
 
@@ -468,6 +487,57 @@ pub async fn post_message(
     message_view(pool, organization_id, &message).await
 }
 
+/// Page size for a history read, clamped to the documented bounds.
+pub fn page_limit(requested: Option<u32>) -> u32 {
+    requested
+        .unwrap_or(DEFAULT_HISTORY_LIMIT)
+        .clamp(1, MAX_HISTORY_LIMIT)
+}
+
+/// A caller's role in a room.
+///
+/// A room the caller is not a member of is [`ChatroomServiceError::NotFound`],
+/// exactly like a room that does not exist: a non-member cannot tell a private
+/// room from a missing one.
+pub async fn member_role(
+    pool: &MySqlPool,
+    organization_id: u64,
+    room_public_id: &str,
+    principal: &Principal,
+) -> Result<MemberRole, ChatroomServiceError> {
+    let room = room_row(pool, organization_id, room_public_id).await?;
+    let (kind, user_id, session_id) = principal_columns(pool, organization_id, principal).await?;
+    let role: Option<(String,)> = sqlx::query_as(
+        "SELECT role FROM chat_room_members WHERE room_id = ? AND member_kind = ? \
+           AND ((? IS NOT NULL AND user_id = ?) OR (? IS NOT NULL AND session_id = ?))",
+    )
+    .bind(room.id)
+    .bind(kind.as_str())
+    .bind(user_id)
+    .bind(user_id)
+    .bind(session_id.as_deref())
+    .bind(session_id.as_deref())
+    .fetch_optional(pool)
+    .await
+    .map_err(ChatroomServiceError::Database)?;
+
+    match role {
+        Some((role,)) => Ok(MemberRole::parse(&role)?),
+        None => Err(ChatroomServiceError::NotFound),
+    }
+}
+
+/// Members of a room, for a member of that room.
+pub async fn list_members_as(
+    pool: &MySqlPool,
+    organization_id: u64,
+    room_public_id: &str,
+    caller: &Principal,
+) -> Result<Vec<MemberView>, ChatroomServiceError> {
+    member_role(pool, organization_id, room_public_id, caller).await?;
+    list_members(pool, organization_id, room_public_id).await
+}
+
 /// Read one page of a room's history, oldest first.
 ///
 /// `after` is the last `sequence` the caller saw; `None` starts at the
@@ -515,4 +585,48 @@ pub async fn history(
         None
     };
     Ok(MessagePage { messages, next })
+}
+
+/// Post a message as a caller who must be a writing member of the room.
+///
+/// The body is validated before the membership check, and both happen before
+/// any insert, so a rejected send writes nothing.
+pub async fn post_message_as(
+    pool: &MySqlPool,
+    organization_id: u64,
+    room_public_id: &str,
+    author: &Principal,
+    body: &str,
+    reply_to: Option<&str>,
+) -> Result<MessageView, ChatroomServiceError> {
+    validate_message_body(body)?;
+    let role = member_role(pool, organization_id, room_public_id, author).await?;
+    if !role.can_write() {
+        return Err(ChatroomServiceError::Forbidden(
+            "a viewer may not send messages".to_string(),
+        ));
+    }
+    post_message(
+        pool,
+        organization_id,
+        room_public_id,
+        author,
+        body,
+        reply_to,
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_size_is_clamped_to_the_documented_bounds() {
+        assert_eq!(page_limit(None), DEFAULT_HISTORY_LIMIT);
+        assert_eq!(page_limit(Some(0)), 1);
+        assert_eq!(page_limit(Some(1)), 1);
+        assert_eq!(page_limit(Some(MAX_HISTORY_LIMIT)), MAX_HISTORY_LIMIT);
+        assert_eq!(page_limit(Some(MAX_HISTORY_LIMIT + 1)), MAX_HISTORY_LIMIT);
+    }
 }

@@ -842,7 +842,7 @@
         {
           "id": "1.5.2",
           "title": "Chatroom HTTP API",
-          "status": "pending",
+          "status": "done",
           "goal": "List a member's rooms, list members, read room history with a cursor and a page size, and send a message. History paging is cursor-based and stable under concurrent writes; a client that has fallen behind can ask for everything after a cursor and only consider itself current when a read returns nothing newer. Sending validates body length and membership before any write.",
           "touches": [
             "src/api/chatrooms.rs",
@@ -862,7 +862,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added the chatroom HTTP API with cursor paging",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-22T05:52:36Z"
         },
         {
           "id": "1.5.3",

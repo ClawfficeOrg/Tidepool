@@ -2,6 +2,25 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Chatroom HTTP API
+
+### Added (task 1.5.2)
+- Added `/v1/chatrooms` (rooms the signed-in member belongs to),
+  `GET /v1/chatrooms/{room}/members`, `GET /v1/chatrooms/{room}/messages` and
+  `POST /v1/chatrooms/{room}/messages`.
+- History is cursor-based on the message sequence with `after` and `limit`
+  (`1..=200`, default 50). A cursor is exclusive and ordering never depends on
+  `created_at`, so paging stays stable while new messages arrive and an empty
+  page is the client's currentness signal.
+- Membership gates every route. A non-member receives the same 404 as a room
+  that does not exist, so private rooms cannot be probed; a viewer may read but
+  sending as one is 403.
+- Sending validates the body (non-empty, at most 1 MB) before the membership
+  check, and both before any insert, so rejected sends write nothing.
+- Added unit tests for limit clamping and body/field validation, plus live
+  MySQL tests for the 404/403 equivalence, refused writes and paging across
+  concurrent inserts.
+
 ## [Unreleased] — 2026-10-22 — Chatrooms: rooms, members and messages
 
 ### Added (task 1.5.1)
