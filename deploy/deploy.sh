@@ -15,7 +15,8 @@ set -euo pipefail
 # Default to the checkout this script lives in, so the same script works on
 # any host; TIDEPOOL_DIR still overrides it for unusual layouts.
 APP_DIR="${TIDEPOOL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-BACKUP_DIR="${TIDEPOOL_BACKUP_DIR:-/var/backups/tidepool}"
+DEFAULT_BACKUP_DIR="/var/backups/tidepool"
+BACKUP_DIR="${TIDEPOOL_BACKUP_DIR:-$DEFAULT_BACKUP_DIR}"
 HEALTH_URL="${TIDEPOOL_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
 COMPOSE_PROXY="${COMPOSE_PROXY:-traefik}"
 
@@ -33,6 +34,14 @@ esac
 COMPOSE=(docker compose "${COMPOSE_FILES[@]}")
 
 log() { printf '[deploy] %s\n' "$*" >&2; }
+
+# Unprivileged deploy users cannot create /var/backups/tidepool. Unless the
+# operator named a directory explicitly, fall back to one beside the checkout.
+if [ -z "${TIDEPOOL_BACKUP_DIR:-}" ] && ! mkdir -p "$BACKUP_DIR" 2>/dev/null; then
+  BACKUP_DIR="$APP_DIR/../backups/tidepool"
+  log "cannot write $DEFAULT_BACKUP_DIR; using $BACKUP_DIR"
+fi
+
 log "proxy: $COMPOSE_PROXY" 
 
 backup() {

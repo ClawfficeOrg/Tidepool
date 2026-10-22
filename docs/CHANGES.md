@@ -23,7 +23,8 @@
 - `make` no longer overrides `TIDEPOOL_HOSTNAME` from `.env` with the
   `pool.example.com` default, and exports `TIDEPOOL_DIR` for the deploy script.
 - `deploy/deploy.sh` defaults `APP_DIR` to its own checkout instead of the
-  hardcoded `/opt/clawffice/tidepool`.
+  hardcoded `/opt/clawffice/tidepool`, and falls back to `../backups/tidepool`
+  when an unprivileged user cannot create `/var/backups/tidepool`.
 
 ## [Unreleased] — 2026-10-22 — Secret generation for self-hosting
 
