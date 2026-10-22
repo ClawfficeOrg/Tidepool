@@ -26,6 +26,7 @@ pub mod players;
 pub mod pool_identity;
 pub mod projects;
 pub mod redis;
+pub mod relay;
 pub mod runs;
 pub mod saves;
 pub mod triggers;

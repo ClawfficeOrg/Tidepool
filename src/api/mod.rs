@@ -19,6 +19,7 @@ pub mod players;
 pub mod pool_identity;
 pub mod problem;
 pub mod projects;
+pub mod relay;
 pub mod saves;
 pub mod socket_ticket;
 pub mod triggers;

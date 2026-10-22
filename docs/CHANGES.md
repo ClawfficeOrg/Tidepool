@@ -2,6 +2,25 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Session relay
+
+### Added (task 1.5.5)
+- Added `relay_sessions` and `relay_events` (migration
+  `20261022000002_create_relay`). Publication is opt-in per session and off by
+  default; a session with no relay row publishes nothing.
+- Added `/v1/sessions/{session}/relay` (state, opt in, stop) and
+  `/v1/sessions/{session}/relay/events` (publish, backfill). A publish while
+  the relay is off, or after it was stopped, is refused; stopping takes effect
+  on the next publish because the row is read every time.
+- Events carry a per-session monotonic `sequence` and are read with an
+  exclusive `after` cursor, so a subscriber that fell behind backfills exactly
+  once. Backfill keeps serving what was published after a stop.
+- Payloads are a small JSON object (8 KB, depth 3) from a fixed kind list.
+  Keys naming credentials or file contents (`token`, `secret`, `env`,
+  `password`, `file`, `content`, …) are refused at any depth.
+- Documented the contract in `docs/RELAY.md`, including what a relayed event
+  may and may not contain.
+
 ## [Unreleased] — 2026-10-22 — Agent sessions as chat participants
 
 ### Added (task 1.5.4)

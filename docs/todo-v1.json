@@ -921,7 +921,7 @@
         {
           "id": "1.5.5",
           "title": "Session relay",
-          "status": "pending",
+          "status": "done",
           "goal": "Publishing a session's events to the pool is opt-in per session and off by default, so nothing leaves a machine unless it is asked to. A subscribed client receives a published session's events and can fetch the events it missed, so a session started on one host can be followed from another machine or by a suite app. Publishing stops when the session ends or when the user stops it, and the relay carries no file contents, no secrets and no credential material.",
           "touches": [
             "src/services/relay.rs",
@@ -942,7 +942,8 @@
           "agent": "pro_dev_agent",
           "security_notes": "The relay is the one path that moves session data off a machine: default off, per-session opt-in, and an explicit allowlist of fields that may cross.",
           "changelog": "Added the opt-in session relay",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-22T06:01:18Z"
         }
       ]
     },
