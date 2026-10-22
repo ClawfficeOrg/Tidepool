@@ -6,11 +6,17 @@ its embedded migrations at startup, so a clean machine needs no manual SQL.
 ## Quickstart
 
 ```sh
-cp .env.example .env
-# edit .env: set JWT_SECRET (openssl rand -hex 32), passwords, TIDEPOOL_PUBLIC_ORIGIN
+./scripts/gen-env.sh          # writes .env with fresh secrets, mode 600
+# edit .env: set TIDEPOOL_PUBLIC_ORIGIN (and TIDEBOOT_* for an unattended install)
 docker compose up -d
 docker compose logs -f pool
 ```
+
+`gen-env.sh` copies `.env.example` and fills in `JWT_SECRET` (128 hex chars),
+`TIDEPOOL_DB_PASSWORD`, `TIDEPOOL_DB_ROOT_PASSWORD` and a matching
+`DATABASE_URL`. It refuses to run when `.env` already exists, so an existing
+deployment is never clobbered; move the old file aside first. It never prints a
+secret.
 
 Then either open `https://<your origin>/` and use the browser setup, or set the
 `TIDEBOOT_*` variables (below) and let the first boot create the operator.

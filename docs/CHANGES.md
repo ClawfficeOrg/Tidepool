@@ -2,6 +2,16 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Secret generation for self-hosting
+
+### Added
+- Added `scripts/gen-env.sh`: copies `.env.example` to `.env` and generates a
+  128-character hex `JWT_SECRET`, a URL-safe database password and root
+  password, and a matching `DATABASE_URL`. The file is written mode 0600, no
+  secret is printed, and an existing `.env` is never overwritten — the script
+  refuses and suggests moving it aside. `TIDEPOOL_PUBLIC_ORIGIN` and the
+  `TIDEBOOT_*` bootstrap stay manual because they are deployment-specific.
+
 ## [Unreleased] — 2026-10-22 — VPS deployment assets (task 1.6.4, not deployed)
 
 ### Added (task 1.6.4, awaiting deployment)
