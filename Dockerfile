@@ -16,6 +16,8 @@ RUN cargo build --release -p tidepool && rm -rf src
 
 # Build actual application
 COPY src ./src
+# `sqlx::migrate!` embeds this directory at compile time.
+COPY migrations ./migrations
 RUN touch src/main.rs && cargo build --release -p tidepool
 
 # Runtime stage

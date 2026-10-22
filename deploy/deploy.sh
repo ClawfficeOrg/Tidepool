@@ -12,7 +12,9 @@
 # them.
 set -euo pipefail
 
-APP_DIR="${TIDEPOOL_DIR:-/opt/clawffice/tidepool}"
+# Default to the checkout this script lives in, so the same script works on
+# any host; TIDEPOOL_DIR still overrides it for unusual layouts.
+APP_DIR="${TIDEPOOL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 BACKUP_DIR="${TIDEPOOL_BACKUP_DIR:-/var/backups/tidepool}"
 HEALTH_URL="${TIDEPOOL_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
 COMPOSE_PROXY="${COMPOSE_PROXY:-traefik}"

@@ -17,6 +17,14 @@
 - Documented the Traefik provider/entrypoint/resolver pitfalls and the Makefile
   commands in `docs/SELF_HOSTING.md`.
 
+### Fixed
+- `Dockerfile` now copies `migrations/` before compiling, so
+  `sqlx::migrate!("./migrations")` can embed it.
+- `make` no longer overrides `TIDEPOOL_HOSTNAME` from `.env` with the
+  `pool.example.com` default, and exports `TIDEPOOL_DIR` for the deploy script.
+- `deploy/deploy.sh` defaults `APP_DIR` to its own checkout instead of the
+  hardcoded `/opt/clawffice/tidepool`.
+
 ## [Unreleased] — 2026-10-22 — Secret generation for self-hosting
 
 ### Added

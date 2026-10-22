@@ -12,20 +12,24 @@
 #
 # The proxy is a variable, so the same targets work for each documented setup:
 #
-#   make deploy PROXY=traefik HOSTNAME=pool.example.com   # default
+#   make deploy PROXY=traefik HOSTNAME=pool.example.com   # or set it in .env
 #   make deploy PROXY=caddy   HOSTNAME=pool.example.com
 #   make deploy PROXY=nginx   HOSTNAME=pool.example.com
 #   make up     PROXY=none                                # no bundled proxy
 #
 # HOSTNAME goes to Traefik/Caddy/nginx and must match TIDEPOOL_PUBLIC_ORIGIN.
+# When HOSTNAME is omitted, the value in .env (TIDEPOOL_HOSTNAME) is used.
 
 PROXY    ?= traefik
-HOSTNAME ?= pool.example.com
 PORT     ?= 8080
 
 export COMPOSE_PROXY := $(PROXY)
+# Only override the .env value when HOSTNAME is given explicitly.
+ifneq ($(strip $(HOSTNAME)),)
 export TIDEPOOL_HOSTNAME := $(HOSTNAME)
+endif
 export TIDEPOOL_PORT := $(PORT)
+export TIDEPOOL_DIR ?= $(CURDIR)
 
 FILES := -f docker-compose.yml
 
@@ -53,7 +57,7 @@ env:
 
 config:
 	$(COMPOSE) config >/dev/null
-	@echo "compose OK for proxy=$(PROXY) hostname=$(HOSTNAME) port=$(PORT)"
+	@echo "compose OK for proxy=$(PROXY) hostname=$(if $(strip $(HOSTNAME)),$(HOSTNAME),from .env) port=$(PORT)"
 
 up:
 	$(COMPOSE) up -d --build
