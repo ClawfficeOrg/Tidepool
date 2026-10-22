@@ -173,8 +173,9 @@ to loopback and never publishes a public port.
 |---|---|
 | checkout | `/opt/clawffice/tidepool` (`TIDEPOOL_DIR`) |
 | compose files | `docker-compose.yml` + `deploy/docker-compose.vps.yml` |
-| reverse proxy | Caddy, `deploy/Caddyfile`, certs renewed automatically |
-| hostname | recorded in `/etc/caddy/sites/pool.conf`; the same value goes in `TIDEPOOL_PUBLIC_ORIGIN` |
+| reverse proxy | Traefik, routing declared in `deploy/docker-compose.vps.yml` (docker provider) or `deploy/traefik.yml` (file provider) |
+| hostname | `TIDEPOOL_HOSTNAME` in the VPS `.env`; the same value goes in `TIDEPOOL_PUBLIC_ORIGIN` |
+| certificate | Traefik ACME (`TRAEFIK_CERTRESOLVER`, usually `le`), renewed automatically |
 | backups | `/var/backups/tidepool` (`TIDEPOOL_BACKUP_DIR`) |
 
 The VPS-owned `.env` sits beside the compose files, is never committed, and
@@ -192,6 +193,11 @@ docker network create proxy 2>/dev/null || true
 ./deploy/deploy.sh deploy
 ```
 
+Traefik must already be running on the VPS with an HTTPS entrypoint
+(`TRAEFIK_ENTRYPOINT`, usually `websecure`), an HTTP entrypoint for the
+redirect, and an ACME certificate resolver (`TRAEFIK_CERTRESOLVER`). The pool
+joins the network Traefik watches (`TIDEPOOL_PROXY_NETWORK`, usually `proxy`).
+
 Then, over HTTPS only:
 
 1. Sign in with the `TIDEBOOT_OWNER_EMAIL` / `TIDEBOOT_OWNER_PASSWORD`.
@@ -203,17 +209,17 @@ Then, over HTTPS only:
 
 ### Certificate renewal
 
-Caddy renews automatically (ACME, ~30 days before expiry) and reloads itself.
-Check with:
+Traefik renews through its ACME resolver (typically ~30 days before expiry)
+and hot-reloads the certificate; there is no separate renewal job. Check with:
 
 ```sh
-sudo systemctl status caddy
 curl -sSI https://<hostname> | head -1        # expect 200/302, never a cert error
+docker logs <traefik-container> 2>&1 | grep -i "certificate" | tail
 ```
 
-If renewal fails, the usual causes are an expired DNS record or port 80
-blocked; the proxy keeps serving the previous certificate until it expires, so
-renewal failures must be alerted on, not discovered.
+If renewal fails the usual causes are a stale DNS record or port 80 closed for
+the HTTP-01 challenge (or blocked egress for DNS-01). Traefik keeps serving the
+previous certificate until it expires, so alert on expiry, do not discover it.
 
 ### Upgrade
 

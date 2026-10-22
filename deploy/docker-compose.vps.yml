@@ -1,23 +1,62 @@
-# Tidepool on a VPS (task 1.6.4)
+# Tidepool on a VPS behind Traefik (task 1.6.4)
 #
 # Layered on top of the root docker-compose.yml:
 #
 #   docker compose -f docker-compose.yml -f deploy/docker-compose.vps.yml up -d --build
 #
 # Differences from the default stack:
-# - the pool port is bound to loopback only, so the reverse proxy is the only
-#   way in;
-# - the pool joins the proxy's docker network so Caddy can reach it by name;
+# - the pool publishes no host port at all; Traefik reaches it over the shared
+#   proxy network;
+# - routing, TLS and certificate renewal are Traefik's job, declared as labels
+#   below (docker provider);
 # - no secrets live here: they come from the VPS-owned .env, which is not in
 #   the repository.
+#
+# Adjust these to match the existing Traefik instance on the VPS:
+#   TIDEPOOL_HOSTNAME     the documented hostname, also TIDEPOOL_PUBLIC_ORIGIN
+#   TRAEFIK_ENTRYPOINT    the HTTPS entrypoint (usually "websecure")
+#   TRAEFIK_CERTRESOLVER  the ACME resolver name (commonly "le" or "letsencrypt")
+#   TIDEPOOL_PROXY_NETWORK the network Traefik watches (usually "proxy")
 
 services:
   pool:
+    # Loopback only: Traefik reaches the pool over the proxy network, and the
+    # deploy script health-checks it locally. Nothing is publicly published.
     ports: !override
       - "127.0.0.1:${TIDEPOOL_PORT:-8080}:8080"
     networks:
       - default
       - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "${TIDEPOOL_PROXY_NETWORK:-proxy}"
+
+      # HTTPS router.
+      traefik.http.routers.tidepool.rule: "Host(`${TIDEPOOL_HOSTNAME:?set TIDEPOOL_HOSTNAME}`)"
+      traefik.http.routers.tidepool.entrypoints: "${TRAEFIK_ENTRYPOINT:-websecure}"
+      traefik.http.routers.tidepool.tls: "true"
+      traefik.http.routers.tidepool.tls.certresolver: "${TRAEFIK_CERTRESOLVER:-le}"
+      traefik.http.routers.tidepool.middlewares: "tidepool-headers@docker"
+
+      # Redirect plain HTTP to HTTPS.
+      traefik.http.routers.tidepool-http.rule: "Host(`${TIDEPOOL_HOSTNAME:?set TIDEPOOL_HOSTNAME}`)"
+      traefik.http.routers.tidepool-http.entrypoints: "${TRAEFIK_HTTP_ENTRYPOINT:-web}"
+      traefik.http.routers.tidepool-http.middlewares: "tidepool-redirect@docker"
+
+      # The container port and its load balancer.
+      traefik.http.services.tidepool.loadbalancer.server.port: "8080"
+
+      # Long-lived WebSockets: chatroom streams and the /ws family.
+      traefik.http.services.tidepool.loadbalancer.server.scheme: "http"
+
+      traefik.http.middlewares.tidepool-redirect.redirectscheme.scheme: "https"
+      traefik.http.middlewares.tidepool-redirect.redirectscheme.permanent: "true"
+
+      traefik.http.middlewares.tidepool-headers.headers.stsseconds: "31536000"
+      traefik.http.middlewares.tidepool-headers.headers.stsincludesubdomains: "true"
+      traefik.http.middlewares.tidepool-headers.headers.contenttypenosniff: "true"
+      traefik.http.middlewares.tidepool-headers.headers.referrerpolicy: "no-referrer"
+      traefik.http.middlewares.tidepool-headers.headers.customrequestheaders.X-Forwarded-Proto: "https"
 
   db:
     networks:

@@ -1,0 +1,50 @@
+# Traefik dynamic configuration for Tidepool (file provider).
+#
+# Use this instead of the compose labels when the VPS Traefik uses the file
+# provider rather than watching docker. Drop it in the dynamic directory
+# (for example /etc/traefik/dynamic/pool.yml) and replace the hostname.
+#
+# Certificate issuance and renewal stay with Traefik's ACME resolver, so the
+# `certResolver` name must match the entrypoint's configured resolver.
+
+http:
+  routers:
+    tidepool-http:
+      rule: Host(`pool.example.com`)
+      entryPoints:
+        - web
+      middlewares:
+        - tidepool-redirect
+      service: tidepool
+
+    tidepool:
+      rule: Host(`pool.example.com`)
+      entryPoints:
+        - websecure
+      middlewares:
+        - tidepool-headers
+      tls:
+        certResolver: le
+      service: tidepool
+
+  middlewares:
+    tidepool-redirect:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+    tidepool-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        contentTypeNosniff: true
+        referrerPolicy: no-referrer
+
+  services:
+    tidepool:
+      loadBalancer:
+        servers:
+          # Loopback binding from deploy/docker-compose.vps.yml, or the
+          # container name on the shared proxy network.
+          - url: http://127.0.0.1:8080
+        passHostHeader: true

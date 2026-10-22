@@ -6,8 +6,10 @@
 
 ### Added (task 1.6.4, awaiting deployment)
 - Added `deploy/docker-compose.vps.yml`, which binds the pool to loopback and
-  joins the proxy network, and `deploy/Caddyfile` with automatic certificates,
-  HSTS and WebSocket routing.
+  joins the proxy network, with Traefik docker-provider labels for the HTTPS
+  router, the HTTP→HTTPS redirect, HSTS/security headers and WebSocket
+  pass-through; `deploy/traefik.yml` is the equivalent for a file-provider
+  Traefik.
 - Added `deploy/deploy.sh` with `deploy`, `rollback <tag>` and `verify`: it
   takes a `mysqldump` backup, refuses an empty one, applies migrations at
   start, health-checks, and rolls back automatically when the pool does not
