@@ -29,7 +29,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(list_rooms))
             .route("/{room}/members", web::get().to(list_members))
             .route("/{room}/messages", web::get().to(history))
-            .route("/{room}/messages", web::post().to(post_message)),
+            .route("/{room}/messages", web::post().to(post_message))
+            .route(
+                "/{room}/stream",
+                web::get().to(crate::sockets::chatroom_ws::stream),
+            ),
     );
 }
 
@@ -203,17 +207,26 @@ async fn post_message(
     let Some(pool) = pool else {
         return db_unavailable(&req);
     };
+    let room = room.into_inner();
     match chatroom_svc::post_message_as(
         pool.get_ref(),
         auth.organization_id(),
-        &room.into_inner(),
+        &room,
         &caller(&auth),
         &body.body,
         body.reply_to.as_deref(),
     )
     .await
     {
-        Ok(message) => HttpResponse::Created().json(message),
+        Ok(message) => {
+            // Live watchers get the same envelope the HTTP API returns; the
+            // database remains the source of truth for anyone catching up.
+            crate::sockets::rooms::broadcast_message(
+                &room,
+                crate::sockets::rooms::message_envelope(&message),
+            );
+            HttpResponse::Created().json(message)
+        }
         Err(error) => map_error(error, &req),
     }
 }

@@ -2,6 +2,27 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Chatroom live stream and presence
+
+### Added (task 1.5.3)
+- Added `GET /v1/chatrooms/{room}/stream?token=<jwt>&after=<sequence>`, a
+  WebSocket carrying the same message ids and `sequence` values the HTTP API
+  returns. The token travels in the query string because a browser WebSocket
+  cannot set an `Authorization` header.
+- On connect the socket joins the room hub first, replays history after the
+  cursor as `chat.history` frames marked `catchUp: true`, then sends
+  `chat.current` once nothing newer exists. A live frame at or below the last
+  delivered sequence is dropped, so a reconnecting client sees each message
+  exactly once.
+- Added `sockets::rooms`: a room-scoped fan-out hub for messages and watcher
+  presence. Presence is explicitly not delivery — messages always come from
+  the database by cursor, so a stale or missing presence entry can only lose a
+  notification, never a message.
+- The stream refuses a non-member with the same 404 as a missing room; the
+  room list, member list and history are unchanged for HTTP clients.
+- Added hub load coverage at the milestone spec: 100 watchers, 1000 messages,
+  no drops or double deliveries.
+
 ## [Unreleased] — 2026-10-22 — Chatroom HTTP API
 
 ### Added (task 1.5.2)

@@ -431,3 +431,101 @@ async fn cursor_paging_stays_stable_while_new_messages_arrive() {
         .await
         .expect("cleanup");
 }
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn the_live_stream_refuses_non_members_and_bad_tokens() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+
+    let (organization, owner) = pool_identity::setup_pool(
+        &pool,
+        NewOrganization {
+            organization_name: "Chatroom Stream".into(),
+            email: "owner-stream@example.com".into(),
+            display_name: "Owner".into(),
+            password: "integration-password-1".into(),
+        },
+    )
+    .await
+    .expect("setup pool");
+
+    let project = projects::create_project(
+        &pool,
+        organization.id,
+        projects::NewProject {
+            slug: None,
+            name: "Chatroom Stream".into(),
+        },
+        tidepool::services::api_keys::AuditActor::System,
+    )
+    .await
+    .expect("project");
+
+    let room = chatroom_svc::create_room(
+        &pool,
+        organization.id,
+        &project.public_id,
+        NewRoom {
+            name: "stream".into(),
+            visibility: RoomVisibility::Private,
+            origin_pool: None,
+        },
+    )
+    .await
+    .expect("room");
+    join(
+        &pool,
+        organization.id,
+        &room.id,
+        &owner.public_id,
+        MemberRole::Owner,
+    )
+    .await;
+
+    let outsider = seed_user(&pool, organization.id, "member", "outsider").await;
+    let outsider_token = auth_svc::issue_jwt(JWT_SECRET, &outsider, 3600).expect("jwt");
+    let owner_token = auth_svc::issue_jwt(JWT_SECRET, &owner.public_id, 3600).expect("jwt");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config()))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::chatrooms::config),
+    )
+    .await;
+
+    // No token: unauthorized.
+    let req = test::TestRequest::get()
+        .uri(&format!("/v1/chatrooms/{}/stream", room.id))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert!(
+        resp.status() == StatusCode::BAD_REQUEST || resp.status() == StatusCode::UNAUTHORIZED,
+        "a missing token is refused, got {}",
+        resp.status()
+    );
+
+    // A non-member cannot open the stream, and is told the room is missing.
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/chatrooms/{}/stream?token={outsider_token}",
+            room.id
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // The owner passes the gate; without the WebSocket upgrade headers the
+    // handler then fails the upgrade, which proves authorisation happened.
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/v1/chatrooms/{}/stream?token={owner_token}",
+            room.id
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_ne!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_ne!(resp.status(), StatusCode::NOT_FOUND);
+}
