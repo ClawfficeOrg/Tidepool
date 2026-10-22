@@ -985,7 +985,7 @@
         {
           "id": "1.6.2",
           "title": "Migrations, backup and restore",
-          "status": "pending",
+          "status": "done",
           "goal": "Migrations stay forward-only and run at startup, and the pool does not start listening when a migration fails. Document what the database holds (accounts, connection credentials, configuration revisions, execution history), how to back up and restore it, and what is lost by restoring an older copy. Embedded-database mode is not offered; MySQL is the single supported store per the standing decision.",
           "touches": [
             "src/main.rs",
@@ -1005,7 +1005,8 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Documented and enforced the migration, backup and restore contract",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-22T06:06:34Z"
         },
         {
           "id": "1.6.3",

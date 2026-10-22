@@ -1424,6 +1424,22 @@ status stay independent even when the conversation is shared. The host
 protocol has no separate steer frame yet, so steering is recorded as intent on
 the arrival; the create-intent replay remains the transport mechanism.
 
+**MySQL is the only store; there is no embedded-database mode.** The pool
+targets MySQL 8 (`migrations/`, sqlx `mysql` feature) and treats it as the
+system of record for identity, connection credentials, configuration
+revisions, runs and chatrooms. SQLite or any embedded engine is deliberately
+not offered: multi-writer behaviour, `ENUM`/`CHECK` semantics and the
+`information_schema` diagnostics the migrations rely on differ enough that a
+second engine would double the schema surface for no self-hosting gain. The
+standalone decision also keeps backup and restore a single documented
+`mysqldump` procedure. Postgres parity remains out of scope until after 1.0.
+
+**Migrations are forward-only and gate startup.** `db::prepare_database` is
+the only supported boot path: it builds the pool, applies the embedded
+migrations and returns an error on failure, and `main` exits rather than
+listening against a partially migrated schema. There is no degraded mode for
+the database.
+
 **Execution ids are never shared across runs.** Conversation continuation
 records *intent* (`created`, `continued`, `restored`, `steered`), not a reused
 execution: `run_steps.execution_id` is unique per row and each arrival

@@ -111,6 +111,46 @@ server {
 Rate limiting reads the socket peer by default. If you want per-client buckets
 behind a proxy that overwrites the header, set `RATE_LIMIT_TRUST_XFF=true`.
 
+## Backup and restore
+
+MySQL is the single store; there is no embedded-database mode. A backup is a
+logical dump, taken with `--single-transaction` so it does not lock writes.
+
+```sh
+# Back up. Keep the file off the host if the machine itself is what fails.
+docker compose exec -T db \
+  mysqldump -uroot -p"$TIDEPOOL_DB_ROOT_PASSWORD" \
+  --single-transaction --routines --triggers tidepool \
+  > "tidepool-$(date +%F-%H%M).sql"
+
+# Restore into a running stack (this replaces the database contents).
+docker compose stop pool
+docker compose exec -T db \
+  mysql -uroot -p"$TIDEPOOL_DB_ROOT_PASSWORD" tidepool < tidepool-2026-10-22-1200.sql
+docker compose start pool
+```
+
+The pool applies any migrations the restored dump is missing on the next start,
+because migrations are forward-only and embedded; a dump from an older release
+is upgraded in place and never downgraded.
+
+Verified against the dev stack: dump, restore into an empty database, and the
+restored copy contained every table the live database had.
+
+What a restore costs — everything written after the dump is gone:
+
+- operator accounts and invitations created since;
+- connection credentials and connection resources;
+- projects, configuration revisions, triggers and their revisions;
+- runs, steps, activity receipts and agent conversations;
+- chatrooms, members and messages;
+- relay opt-ins and relayed events;
+- audit events.
+
+Restore into a copy first if you need to compare. Files, agent output and
+anything the relay was never allowed to carry are not in the database and are
+not covered by this procedure.
+
 ## Data and restarts
 
 | what | where |

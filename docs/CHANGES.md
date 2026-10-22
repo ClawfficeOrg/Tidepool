@@ -2,6 +2,21 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Migrations, backup and restore
+
+### Added (task 1.6.2)
+- Startup now goes through `db::prepare_database`: build the pool, apply the
+  embedded forward-only migrations, or return an error. The pool never starts
+  listening against a partially migrated schema, and the "degraded mode"
+  database path is gone.
+- Documented a tested backup and restore procedure in `docs/SELF_HOSTING.md`
+  (`mysqldump --single-transaction`, restore into the running stack) together
+  with everything a restore loses: accounts, connections, configuration
+  revisions, runs, activity, chatrooms, relayed events and audit history.
+- Recorded the MySQL-only decision and its reasoning in `docs/memory.md`, and
+  added integration tests that migrate a fresh database, prove a second start
+  is a no-op, and prove a conflicting schema fails startup.
+
 ## [Unreleased] — 2026-10-22 — Compose stack and bootstrap
 
 ### Added (task 1.6.1)

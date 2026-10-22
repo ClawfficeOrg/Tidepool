@@ -25,6 +25,31 @@ pub async fn build_pool(url: &str) -> sqlx::Result<MySqlPool> {
         .await
 }
 
+/// Startup failures that must stop the pool before it listens.
+#[derive(Debug, thiserror::Error)]
+pub enum StartupError {
+    /// The database could not be reached or a pool could not be built.
+    #[error("database unavailable")]
+    Database(#[source] sqlx::Error),
+    /// A migration failed; the schema may be partially applied.
+    #[error("migrations failed")]
+    Migration(#[source] sqlx::migrate::MigrateError),
+}
+
+/// Build the pool and apply the embedded migrations.
+///
+/// This is the only supported startup path: a failure here means the pool must
+/// not start listening, because serving a partially migrated schema is worse
+/// than not serving at all. `main` exits with a clear error when this returns
+/// `Err`.
+pub async fn prepare_database(url: &str) -> Result<MySqlPool, StartupError> {
+    let pool = build_pool(url).await.map_err(StartupError::Database)?;
+    run_migrations(&pool)
+        .await
+        .map_err(StartupError::Migration)?;
+    Ok(pool)
+}
+
 /// Apply the embedded migrations.
 ///
 /// The migrations live in `migrations/` and are compiled into the binary, so a

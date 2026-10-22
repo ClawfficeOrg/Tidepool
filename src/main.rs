@@ -29,25 +29,23 @@ async fn main() -> std::io::Result<()> {
     let bind = cfg.bind_addr();
     let cfg_data = web::Data::new(cfg.clone());
 
-    // Build the DB pool — degraded mode if unavailable.
+    // Build the pool and migrate. This is the only startup path: a database
+    // that cannot be reached, or a migration that fails, stops the process
+    // before it listens. Never serve a partially migrated schema.
     if let Some(origin) = cfg.public_origin.as_deref() {
         info!(public_origin = %origin, "Public origin configured");
     }
-    let pool = match db::build_pool(&cfg.database_url).await {
+    let pool = match db::prepare_database(&cfg.database_url).await {
         Ok(p) => {
-            match db::run_migrations(&p).await {
-                Ok(()) => info!("Database migrations applied"),
-                Err(error) => {
-                    tracing::error!(%error, "Database migrations failed; refusing to start");
-                    std::process::exit(1);
-                }
-            }
-            info!("Database pool initialised");
+            info!("Database pool initialised; migrations applied");
             Some(p)
         }
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to initialise DB pool; continuing in degraded mode");
-            None
+            tracing::error!(
+                error = %e,
+                "cannot start: database is unreachable or a migration failed"
+            );
+            std::process::exit(1);
         }
     };
 
