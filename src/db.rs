@@ -25,6 +25,15 @@ pub async fn build_pool(url: &str) -> sqlx::Result<MySqlPool> {
         .await
 }
 
+/// Apply the embedded migrations.
+///
+/// The migrations live in `migrations/` and are compiled into the binary, so a
+/// fresh install needs no manual SQL and no separate migration container. The
+/// call is idempotent: `sqlx` records applied versions in `_sqlx_migrations`.
+pub async fn run_migrations(pool: &MySqlPool) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!("./migrations").run(pool).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

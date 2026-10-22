@@ -188,6 +188,7 @@ mod tests {
             jwt_expiry_secs: 3600,
             rate_limit: RateLimitConfig::default(),
             pool_bootstrap: None,
+            public_origin: None,
         };
         let app =
             test::init_service(App::new().app_data(web::Data::new(cfg)).configure(config)).await;
@@ -227,6 +228,7 @@ mod tests {
             jwt_expiry_secs: 3600,
             rate_limit: RateLimitConfig::default(),
             pool_bootstrap: None,
+            public_origin: None,
         };
         let app =
             test::init_service(App::new().app_data(web::Data::new(cfg)).configure(config)).await;

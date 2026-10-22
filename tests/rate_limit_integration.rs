@@ -94,6 +94,7 @@ macro_rules! limited_app {
                     jwt_expiry_secs: 3600,
                     rate_limit: RateLimitConfig::default(),
                     pool_bootstrap: None,
+                    public_origin: None,
                 }))
                 .route("/ws", web::get().to(|| async { "ws-ok" }))
                 .route("/v1/auth/ping", web::get().to(|| async { "auth-ok" }))

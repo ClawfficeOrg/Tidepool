@@ -284,6 +284,13 @@ pub struct Config {
     pub rate_limit: RateLimitConfig,
     /// Unattended first-run bootstrap; `None` means browser setup.
     pub pool_bootstrap: Option<PoolBootstrapConfig>,
+    /// Public origin operators reach the pool on, e.g. `https://pool.example.com`.
+    ///
+    /// This is the one setting a deployment changes when its address changes:
+    /// webhook URLs handed to providers, links put in notifications and the
+    /// reverse proxy's `Host` all derive from it. It is validated as an
+    /// absolute `http`/`https` origin with no path, query or fragment.
+    pub public_origin: Option<String>,
 }
 
 impl Config {
@@ -319,6 +326,7 @@ impl Config {
 
         let rate_limit = RateLimitConfig::from_env()?;
         let pool_bootstrap = PoolBootstrapConfig::from_env()?;
+        let public_origin = public_origin_from_env()?;
 
         Ok(Self {
             host,
@@ -329,6 +337,7 @@ impl Config {
             jwt_expiry_secs,
             rate_limit,
             pool_bootstrap,
+            public_origin,
         })
     }
 
@@ -336,6 +345,35 @@ impl Config {
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
+}
+
+/// Read and validate `TIDEPOOL_PUBLIC_ORIGIN`.
+fn public_origin_from_env() -> Result<Option<String>> {
+    match std::env::var("TIDEPOOL_PUBLIC_ORIGIN") {
+        Ok(raw) => parse_public_origin(&raw),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Validate a configured public origin: scheme, host and optional port only.
+fn parse_public_origin(raw: &str) -> Result<Option<String>> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let rest = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .ok_or_else(|| anyhow!("TIDEPOOL_PUBLIC_ORIGIN must start with http:// or https://"))?;
+    if rest.is_empty() {
+        return Err(anyhow!("TIDEPOOL_PUBLIC_ORIGIN must name a host"));
+    }
+    if rest.contains('/') || rest.contains('?') || rest.contains('#') {
+        return Err(anyhow!(
+            "TIDEPOOL_PUBLIC_ORIGIN must be an origin only, without a path, query or fragment"
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 #[cfg(test)]
@@ -619,5 +657,21 @@ mod tests {
         let rendered = format!("{boot:?}");
         assert!(!rendered.contains("super-secret-bootstrap"));
         assert!(rendered.contains("<redacted>"));
+    }
+    #[test]
+    fn public_origin_accepts_only_an_origin() {
+        assert_eq!(
+            parse_public_origin("https://pool.example.com/").expect("origin"),
+            Some("https://pool.example.com".to_string())
+        );
+        assert_eq!(
+            parse_public_origin("http://127.0.0.1:8080").expect("origin"),
+            Some("http://127.0.0.1:8080".to_string())
+        );
+        assert_eq!(parse_public_origin("   ").expect("empty"), None);
+        assert!(parse_public_origin("pool.example.com").is_err());
+        assert!(parse_public_origin("https://pool.example.com/path").is_err());
+        assert!(parse_public_origin("https://pool.example.com?x=1").is_err());
+        assert!(parse_public_origin("https://").is_err());
     }
 }

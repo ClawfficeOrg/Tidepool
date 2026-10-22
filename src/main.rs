@@ -30,8 +30,18 @@ async fn main() -> std::io::Result<()> {
     let cfg_data = web::Data::new(cfg.clone());
 
     // Build the DB pool — degraded mode if unavailable.
+    if let Some(origin) = cfg.public_origin.as_deref() {
+        info!(public_origin = %origin, "Public origin configured");
+    }
     let pool = match db::build_pool(&cfg.database_url).await {
         Ok(p) => {
+            match db::run_migrations(&p).await {
+                Ok(()) => info!("Database migrations applied"),
+                Err(error) => {
+                    tracing::error!(%error, "Database migrations failed; refusing to start");
+                    std::process::exit(1);
+                }
+            }
             info!("Database pool initialised");
             Some(p)
         }

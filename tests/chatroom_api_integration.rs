@@ -63,6 +63,7 @@ fn config() -> Config {
         jwt_expiry_secs: 3600,
         rate_limit: RateLimitConfig::default(),
         pool_bootstrap: None,
+        public_origin: None,
     }
 }
 

@@ -2,6 +2,21 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — Compose stack and bootstrap
+
+### Added (task 1.6.1)
+- Added a root `docker-compose.yml`: MySQL, Redis and the pool, exactly one
+  published port, named volumes for both data stores, and health-gated startup.
+- The pool now applies its embedded migrations at startup, so a clean machine
+  needs no manual SQL; a migration failure refuses to start instead of serving a
+  half-migrated schema.
+- Added `TIDEPOOL_PUBLIC_ORIGIN`: one setting naming the address operators use.
+  It is validated as an origin only (scheme, host, optional port) and logged at
+  startup.
+- Documented the stack, the unattended `TIDEBOOT_*` path, reverse proxy examples
+  and every consequence of changing the public origin in
+  `docs/SELF_HOSTING.md`.
+
 ## [Unreleased] — 2026-10-22 — Session relay
 
 ### Added (task 1.5.5)

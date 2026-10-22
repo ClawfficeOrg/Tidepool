@@ -1,0 +1,64 @@
+# Tidepool — self-hosted pool stack (task 1.6.1)
+#
+# Brings up the pool with its MySQL and Redis, applies the embedded migrations
+# on startup, and publishes exactly one port. Data lives in named volumes, so
+# `docker compose down` keeps the pool and `down -v` is the only way to wipe it.
+#
+#   cp .env.example .env      # then edit JWT_SECRET, TIDEPOOL_PUBLIC_ORIGIN, …
+#   docker compose up -d
+#
+# See docs/SELF_HOSTING.md for the public-origin rules and the reverse proxy.
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${TIDEPOOL_DB_ROOT_PASSWORD:-change-me-root}
+      MYSQL_DATABASE: tidepool
+      MYSQL_USER: tidepool
+      MYSQL_PASSWORD: ${TIDEPOOL_DB_PASSWORD:-change-me-db}
+    volumes:
+      - pool_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${TIDEPOOL_DB_ROOT_PASSWORD:-change-me-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - pool_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  pool:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Inside the stack the pool always listens on every interface; the only
+      # published port is the one below.
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: mysql://tidepool:${TIDEPOOL_DB_PASSWORD:-change-me-db}@db:3306/tidepool
+      REDIS_URL: redis://redis:6379
+    ports:
+      # The single published port. Put your reverse proxy in front of it.
+      - "${TIDEPOOL_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pool_db_data:
+  pool_redis_data:
