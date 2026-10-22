@@ -164,6 +164,80 @@ Migrations run on every boot and are idempotent, so an upgrade is
 covered by the migrations/backup task; until then, back up the MySQL volume by
 dumping the database rather than copying the volume files.
 
+## VPS deployment with TLS
+
+The VPS runs the pool behind a TLS-terminating proxy. The pool itself is bound
+to loopback and never publishes a public port.
+
+| what | value |
+|---|---|
+| checkout | `/opt/clawffice/tidepool` (`TIDEPOOL_DIR`) |
+| compose files | `docker-compose.yml` + `deploy/docker-compose.vps.yml` |
+| reverse proxy | Caddy, `deploy/Caddyfile`, certs renewed automatically |
+| hostname | recorded in `/etc/caddy/sites/pool.conf`; the same value goes in `TIDEPOOL_PUBLIC_ORIGIN` |
+| backups | `/var/backups/tidepool` (`TIDEPOOL_BACKUP_DIR`) |
+
+The VPS-owned `.env` sits beside the compose files, is never committed, and
+holds `JWT_SECRET`, database passwords, `TIDEPOOL_PUBLIC_ORIGIN` and (only for
+the first boot) `TIDEBOOT_*`.
+
+### First deploy
+
+```sh
+# on the VPS, once the DNS record for the hostname points at it
+sudo mkdir -p /opt/clawffice/tidepool /var/backups/tidepool
+cd /opt/clawffice/tidepool
+# place the VPS .env here (0600, owned by the deploy user)
+docker network create proxy 2>/dev/null || true
+./deploy/deploy.sh deploy
+```
+
+Then, over HTTPS only:
+
+1. Sign in with the `TIDEBOOT_OWNER_EMAIL` / `TIDEBOOT_OWNER_PASSWORD`.
+2. Change the password when prompted.
+3. **Remove the `TIDEBOOT_*` block from the VPS `.env`** and restart:
+   `${COMPOSE} up -d`. The bootstrap is insert-only so it will not re-run, and
+   removing it means the temporary credential no longer exists anywhere.
+4. Enrol one host and dispatch one run as the smoke test.
+
+### Certificate renewal
+
+Caddy renews automatically (ACME, ~30 days before expiry) and reloads itself.
+Check with:
+
+```sh
+sudo systemctl status caddy
+curl -sSI https://<hostname> | head -1        # expect 200/302, never a cert error
+```
+
+If renewal fails, the usual causes are an expired DNS record or port 80
+blocked; the proxy keeps serving the previous certificate until it expires, so
+renewal failures must be alerted on, not discovered.
+
+### Upgrade
+
+```sh
+cd /opt/clawffice/tidepool
+./deploy/deploy.sh deploy     # pull, backup, build, restart, verify
+```
+
+The script refuses to continue if the backup is empty, applies migrations on
+start (a failed migration refuses to start), and rolls back to the previous
+revision automatically when the health check does not come back.
+
+### Rollback
+
+```sh
+./deploy/deploy.sh rollback v0.5.0
+```
+
+That checks out the tag, rebuilds, restarts and verifies. Data is **not**
+rolled back: migrations are forward-only, so an older binary may not read a
+schema written by a newer one. Prefer rolling forward with a fix; treat a
+rollback across a migration boundary as restore-from-backup, using the dump the
+deploy step took.
+
 ## Checks
 
 ```sh

@@ -2,6 +2,23 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-22 — VPS deployment assets (task 1.6.4, not deployed)
+
+### Added (task 1.6.4, awaiting deployment)
+- Added `deploy/docker-compose.vps.yml`, which binds the pool to loopback and
+  joins the proxy network, and `deploy/Caddyfile` with automatic certificates,
+  HSTS and WebSocket routing.
+- Added `deploy/deploy.sh` with `deploy`, `rollback <tag>` and `verify`: it
+  takes a `mysqldump` backup, refuses an empty one, applies migrations at
+  start, health-checks, and rolls back automatically when the pool does not
+  come back.
+- Documented the VPS layout, first-deploy steps (including removing the
+  `TIDEBOOT_*` block after the first sign-in), certificate renewal, upgrade and
+  rollback in `docs/SELF_HOSTING.md`.
+- The deployment itself — DNS, hostname, first deploy, host enrolment, a
+  dispatched run and one performed rollback — has **not** been run; the task
+  stays open until it has.
+
 ## [Unreleased] — 2026-10-22 — Hub observability
 
 ### Added (task 1.6.3)

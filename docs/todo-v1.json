@@ -1038,7 +1038,7 @@
         {
           "id": "1.6.4",
           "title": "VPS deployment with TLS",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Deploy a pool to the VPS behind a TLS-terminating reverse proxy, with the public origin set, the bootstrap credential consumed and removed, and a documented upgrade procedure (pull, backup, deploy, verify). Record the hostname, the certificate renewal path and the rollback step.",
           "touches": [
             "docs/SELF_HOSTING.md",
@@ -1058,7 +1058,9 @@
           "agent": "pro_dev_agent",
           "security_notes": "Production deployment: TLS only, no bootstrap credential left in the environment, and secrets sourced outside the repository.",
           "changelog": "Deployed a pool to the VPS with TLS",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-22T06:11:17Z",
+          "human_look": "Deploy assets and docs are committed. Not deployed: needs a hostname with DNS pointed at the VPS, approval to touch production, then first deploy, bootstrap-password removal, one host enrolment, one dispatched run and one performed rollback."
         }
       ]
     }

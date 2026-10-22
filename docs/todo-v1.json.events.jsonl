@@ -81,3 +81,5 @@
 {"at": "2026-10-22T06:04:25Z", "event": "done", "task": "1.6.1", "owner": "opencode", "from": "pending", "to": "done"}
 {"at": "2026-10-22T06:06:34Z", "event": "done", "task": "1.6.2", "owner": "opencode", "from": "pending", "to": "done"}
 {"at": "2026-10-22T06:10:27Z", "event": "done", "task": "1.6.3", "owner": "opencode", "from": "pending", "to": "done"}
+{"at": "2026-10-22T06:11:17Z", "event": "start", "task": "1.6.4", "owner": "opencode", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-22T07:11:17Z"}
+{"at": "2026-10-22T06:11:17Z", "event": "look_defer", "task": "1.6.4", "owner": "opencode", "from": "in_progress", "to": "needs_human_look", "note": "Deploy assets and docs are committed. Not deployed: needs a hostname with DNS pointed at the VPS, approval to touch production, then first deploy, bootstrap-password removal, one host enrolment, one dispatched run and one performed rollback."}

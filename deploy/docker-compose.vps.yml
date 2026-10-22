@@ -1,0 +1,34 @@
+# Tidepool on a VPS (task 1.6.4)
+#
+# Layered on top of the root docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.vps.yml up -d --build
+#
+# Differences from the default stack:
+# - the pool port is bound to loopback only, so the reverse proxy is the only
+#   way in;
+# - the pool joins the proxy's docker network so Caddy can reach it by name;
+# - no secrets live here: they come from the VPS-owned .env, which is not in
+#   the repository.
+
+services:
+  pool:
+    ports: !override
+      - "127.0.0.1:${TIDEPOOL_PORT:-8080}:8080"
+    networks:
+      - default
+      - proxy
+
+  db:
+    networks:
+      - default
+
+  redis:
+    networks:
+      - default
+
+networks:
+  default:
+  proxy:
+    external: true
+    name: ${TIDEPOOL_PROXY_NETWORK:-proxy}
