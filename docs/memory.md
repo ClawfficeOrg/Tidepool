@@ -2741,3 +2741,59 @@ environment can confirm.
 `tidepool-client/src/main.rs` gained `mod runs;` and `mod runs_view;` so the
 module is part of the binary and its tests run; `docs/CHANGES.md` and this file
 are updated per AGENTS.md.
+
+### 2026-10-29 — Task 2.3.6, the menu bar and tray surfaces
+
+**Decision: one status icon, a fixed precedence, and every dropped fact in the
+tooltip.** A menu-bar item can draw one mark, so `StatusIcon` resolves
+`TrayState` in this order: pool unreachable, then agents running, then an unread
+room, then idle. An unreachable pool wins because nothing else the client shows
+is confirmed while it is away; running agents beat unread because the work in
+flight is what will ask the person next. The state that loses is not hidden: the
+tooltip says the pool is unreachable, the running count and the unread total and
+room count, and each `StatusIcon` variant has its own word and tint so the state
+reads with colour stripped out. The colour comes from the same variant, so the
+icon and its tint cannot drift.
+
+**Decision: unread is a count per room, and only an explicit clear clears it.**
+`tray::unread::Unread` keeps a `BTreeMap<room, count>`. `record_arrival` counts a
+message unless it landed in the room that is open; `clear(room)` and
+`clear_all()` are the only removals, and opening, scrolling or redrawing a room
+is deliberately not one of them. That is what keeps one room's messages from
+marking another read, and what makes "mark read" an act the person took rather
+than a side effect of a frame arriving.
+
+**Decision: menu actions and keyboard twins are generated from one table.** Each
+`menu::MenuAction` carries its menu id, stable action name, label and keystroke;
+`MenuState::entries` builds the native `(id, label)` pairs and `key_bindings`
+builds one GPUI `KeyBinding` per action from the same `MenuAction::ALL`. A new
+menu row therefore cannot ship without a shortcut, and a test checks the two
+cover exactly the same actions. Rooms are direct entries above `ROOM_ID_BASE`
+(100) while fixed actions stay at 0–4, so neither range can collide as either
+grows; Pause Dispatch keeps its id and changes its label to Resume Dispatch
+rather than becoming a second entry. New Session and Go to Room open the main
+window, which owns those panes; the binary does not yet host the chat and
+session controllers in the tray menu, and the model says so rather than
+pretending the surface exists.
+
+**Decision: notifications are opt-in per kind, and the policy is the only way to
+a rendered notification.** `NotificationPolicy::default()` is `none()`, and
+`deliver` returns `None` for a kind the person has not switched on. There is no
+"notify by default" list to opt out of, and an event cannot be rendered by
+bypassing the policy because the title and body are only reachable through it.
+Persisted keys are stable and an unknown key from a newer build is ignored
+rather than failing the settings load.
+
+**What is still a person's check:** look at the status item in the menu bar and
+confirm the unreachable, running, unread and idle appearances read as intended,
+and press one or two shortcuts by hand. The state mapping is tested headlessly
+and a GPUI test window simulates every action's keystroke and observes the
+dispatched `MenuCommand`, so the keyboard parity is mechanical; a real menu bar
+is not something this environment can click.
+
+**Consequence: module wiring and the template's integration test are outside the
+owned paths.** `tidepool-client/src/main.rs` gained `mod menu; mod notify; mod
+tray;`, replaced its local three-item menu with `MenuState`, and registers the
+keyboard twins; `tidepool-client/tests/tray.rs` mounts `menu` and `notify` so the
+template's own integration test covers the menu actions and the opt-in rule.
+`docs/CHANGES.md` and this file are updated per AGENTS.md.

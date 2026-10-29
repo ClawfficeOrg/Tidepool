@@ -2,6 +2,71 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Menu bar and tray surfaces (task 2.3.6)
+
+### Added
+- `tidepool-client/src/tray/mod.rs` — the always-present surface's model,
+  re-exported for the binary: the icon state, per-room unread, the popover
+  content, and `apply_state` which tints the platform status item from the
+  state so the icon and its colour can never disagree.
+- `tidepool-client/src/tray/icon.rs` — `TrayState` (pool reachability, running
+  agent count, unread rooms) and `StatusIcon` with a fixed, documented
+  precedence: unreachable pool, then agents running, then an unread room, then
+  idle. Every state has its own word and tint, and the tooltip carries the
+  facts the single icon had to drop.
+- `tidepool-client/src/tray/unread.rs` — unread counts per room id. An arrival
+  counts unless it is in the room that is open; clearing is explicit
+  (`clear` / `clear_all`) and never happens as a side effect of reading or
+  redrawing.
+- `tidepool-client/src/tray/popover.rs` — the popover's content: the current
+  host with whether its pool answers, one row per session that has not stopped
+  (terminal sessions are history and are dropped), and the last notice.
+- `tidepool-client/src/menu.rs` — `MenuAction` for Open Window, New Session, Go
+  to Room, Pause Dispatch and Quit, each with a menu id, a stable action name
+  and a keyboard twin. `MenuState` builds the native `(id, label)` entries,
+  lists direct room entries in a reserved id range (`ROOM_ID_BASE`), resolves a
+  chosen id back to an action or a room, and words Pause/Resume under the same
+  id. `MenuCommand` is the GPUI action the keyboard dispatches, and
+  `key_bindings` / `install` register one binding per action so a new menu row
+  cannot exist without a shortcut.
+- `tidepool-client/src/notify.rs` — `NotificationKind` (session finished,
+  session waiting, room message, run failed, pool unreachable) and
+  `NotificationPolicy`, which is empty by default and is the only path from an
+  event to a rendered notification: a switched-off kind returns `None`. Keys
+  are stable for settings persistence and an unknown key is ignored.
+- Tests for the icon precedence and colour/word distinctness, per-room unread
+  and explicit clearing, the popover's host/session filtering, menu ids,
+  labels, room resolution, Pause/Resume, key-binding coverage, action
+  round-tripping, and the opt-in notification rules. `tidepool-client/tests/tray.rs`
+  mounts `menu` and `notify` so the template's own integration test proves the
+  menu actions, their keyboard twins and the opt-in rule too.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `menu`, `notify` and `tray`
+  modules (outside the task's owned paths, required to compile and ship the new
+  code). The tray manager's local three-item menu is replaced by
+  `menu::MenuState`, so the native menu carries the task's five actions plus
+  Settings (kept from the template's menu) and direct room entries;
+  `menu::install` registers the keyboard twins and one handler dispatches both
+  paths. Pause Dispatch toggles the menu's state and rewrites the row as Resume
+  Dispatch.
+
+### Notes
+- New Session and Go to Room open the main window, which owns those panes; the
+  chat and session controllers are not yet hosted by the tray menu in this
+  binary, so the menu action is the way in rather than a second copy of the
+  surface.
+- The binary does not yet hold live pool, session or chat state (the controllers
+  from 2.3.4 and 2.3.5 are modules, not hosted surfaces), so `tray::apply_state`
+  and the popover model are the seams those controllers feed. The state mapping
+  and the notification rules are what is proved now; nothing in this task
+  fabricates a state it does not have.
+- The keyboard-twin criterion is proved in a GPUI test window: every action's
+  keystroke is simulated in turn and the dispatched `MenuCommand` is read back
+  in order, in addition to the binding-table test that the two lists cover the
+  same actions. What remains for the owner is appearance — the status item in a
+  real menu bar, and pressing the shortcuts by hand.
+
 ## [Unreleased] — 2026-10-29 — Runs and activity in the client (task 2.3.5)
 
 ### Added

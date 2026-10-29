@@ -36,6 +36,15 @@ mod window_options;
 #[path = "../src/settings_window.rs"]
 mod settings_window;
 
+// The menu and the notification policy are mounted here as well, so the
+// template's own tray integration test proves the menu actions, their
+// keyboard twins and the opt-in rule rather than only the unit tests doing so.
+#[path = "../src/menu.rs"]
+mod menu;
+
+#[path = "../src/notify.rs"]
+mod notify;
+
 // The generated layout references the row type as `crate::host_entry::HostEntry`,
 // so the integration binary mounts the same module the binary does.
 #[path = "../src/host_entry.rs"]
@@ -227,6 +236,73 @@ fn windows_icon_contains_the_sizes_the_tray_asks_for() {
             "the design icon must provide a {expected}x{expected} image; sizes: {sizes:?}"
         );
     }
+}
+
+// ── Menu and notification tests ────────────────────────────────────────────────
+
+#[test]
+fn the_tray_menu_offers_the_actions_a_person_wants() {
+    let entries = menu::MenuState::default().entries();
+    let labels: Vec<&str> = entries.iter().map(|(_, label)| label.as_str()).collect();
+    for expected in [
+        "Open Window",
+        "New Session\u{2026}",
+        "Go to Room\u{2026}",
+        "Pause Dispatch",
+        "Settings\u{2026}",
+        "Quit",
+    ] {
+        assert!(
+            labels.contains(&expected),
+            "the tray menu is missing `{expected}`: {labels:?}"
+        );
+    }
+    assert_eq!(entries.len(), menu::MenuAction::ALL.len());
+    assert_eq!(entries[0].1, "Open Window");
+}
+
+#[test]
+fn every_menu_action_has_a_keyboard_twin_in_the_window() {
+    use gpui::Action as _;
+
+    let bindings = menu::key_bindings();
+    assert_eq!(bindings.len(), menu::MenuAction::ALL.len());
+
+    let mut bound = Vec::new();
+    for binding in &bindings {
+        let command = binding
+            .action()
+            .as_any()
+            .downcast_ref::<menu::MenuCommand>()
+            .expect("a tray-menu binding must carry a MenuCommand");
+        bound.push(command.action());
+    }
+    for action in menu::MenuAction::ALL {
+        assert!(bound.contains(&action), "{action:?} has no keyboard twin");
+        assert!(
+            !action.shortcut_label().is_empty(),
+            "{action:?} has no readable shortcut"
+        );
+    }
+}
+
+#[test]
+fn only_an_opted_in_notification_kind_fires() {
+    let event = notify::NotificationEvent::new(
+        notify::NotificationKind::RoomMessage,
+        "New message",
+        "in #ops",
+    );
+
+    let mut policy = notify::NotificationPolicy::none();
+    assert!(
+        policy.deliver(&event).is_none(),
+        "a switched-off kind must never produce a notification"
+    );
+
+    policy.opt_in(notify::NotificationKind::RoomMessage);
+    let delivered = policy.deliver(&event).expect("the opted-in kind fires");
+    assert_eq!(delivered.title, "New message");
 }
 
 // ── Generated-project tests ────────────────────────────────────────────────────

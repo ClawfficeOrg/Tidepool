@@ -837,7 +837,7 @@
         {
           "id": "2.3.6",
           "title": "Menu bar and tray surfaces",
-          "status": "pending",
+          "status": "done",
           "goal": "The always-present surface: a status item whose icon reflects whether the pool is reachable, whether agents are running and whether a room has an unread message, a menu with the actions a person wants without opening the window (open the window, new session, go to a room, pause dispatch, quit), and a popover for the current host and the running sessions. Notifications are opt-in per kind and never fire for something the user has switched off.",
           "touches": [
             "tidepool-client/src/tray/",
@@ -856,8 +856,9 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the client's menu bar and tray surfaces",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Menu bar and tray surfaces",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T16:57:05Z"
         },
         {
           "id": "2.3.7",
@@ -907,7 +908,8 @@
           "Rooms and relay follow",
           "Session handling, parity with the CLI and scripting mode",
           "Console identity: banner and palette",
-          "Chatrooms and talking to a session"
+          "Chatrooms and talking to a session",
+          "Menu bar and tray surfaces"
         ]
       }
     }

@@ -65,6 +65,14 @@ mod window_options;
 mod settings_window;
 mod tray_icon;
 
+// The always-present menu-bar surface: the status icon's state, the per-room
+// unread model and the popover's content (`tray`), the menu and the keyboard
+// twins that reach the same actions (`menu`), and the opt-in notification
+// policy (`notify`).
+mod menu;
+mod notify;
+mod tray;
+
 use std::time::{Duration, Instant};
 
 use gpui::App;
@@ -72,43 +80,6 @@ use gpui::App;
 use popover_view::{ensure_popover_window, toggle_popover_window};
 
 use tray_icon::TrayIcon;
-
-/// Items in the native tray context menu.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MenuItem {
-    OpenApp,
-    OpenSettings,
-    Quit,
-}
-
-impl MenuItem {
-    fn label(&self) -> String {
-        match self {
-            Self::OpenApp => "Open App".to_string(),
-            Self::OpenSettings => "Settings\u{2026}".to_string(),
-            Self::Quit => "Quit".to_string(),
-        }
-    }
-}
-
-/// The ordered context-menu definition.
-const MENU_ITEMS: [MenuItem; 3] = [MenuItem::OpenApp, MenuItem::OpenSettings, MenuItem::Quit];
-
-/// Converts the menu items into `(item_id, label)` pairs for the native tray
-/// menu. `item_id` is the index into [`MENU_ITEMS`], matching
-/// [`resolve_menu_item`].
-fn menu_entries() -> Vec<(u32, String)> {
-    MENU_ITEMS
-        .iter()
-        .enumerate()
-        .map(|(index, item)| (index as u32, item.label()))
-        .collect()
-}
-
-/// Resolves a native menu item id back to its [`MenuItem`].
-fn resolve_menu_item(native_id: u32) -> Option<MenuItem> {
-    MENU_ITEMS.get(native_id as usize).copied()
-}
 
 /// Minimum gap between handled tray left-clicks.
 ///
@@ -214,19 +185,23 @@ fn open_main_surface(cx: &mut App, icon_rect: Option<tray_icon::IconAnchor>) {
 struct TrayManager {
     tray: TrayIcon,
     last_left_click_at: Option<Instant>,
+    /// The menu's content: the rooms it lists directly and whether dispatch is
+    /// paused. The same model feeds the native menu and the keyboard twin.
+    menu: menu::MenuState,
 }
 
 impl TrayManager {
     /// Creates a tray manager with the native context menu installed.
     fn new() -> Self {
         let mut tray = TrayIcon::new("Tidepool");
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let menu = menu::MenuState::default();
         if APP_SHAPE.menu {
-            tray.set_menu(&menu_entries());
+            tray.set_menu(&menu.entries());
         }
         Self {
             tray,
             last_left_click_at: None,
+            menu,
         }
     }
 
@@ -281,19 +256,47 @@ impl TrayManager {
 
     /// Dispatches a context-menu selection by its item id.
     fn handle_menu_event(&mut self, item_id: u32, cx: &mut App) {
-        let Some(item) = resolve_menu_item(item_id) else {
+        let Some(choice) = self.menu.resolve(item_id) else {
             return;
         };
-        match item {
-            MenuItem::OpenApp => {
+        match choice {
+            menu::MenuChoice::Action(action) => self.handle_action(action, cx),
+            menu::MenuChoice::Room(_room) => {
+                // The window owns the room surface. A direct room entry opens
+                // the window there (2.3.4's chat pane); the tray menu does not
+                // duplicate the room's content.
                 let rect = self.tray.anchor();
                 open_main_surface(cx, rect);
             }
-            MenuItem::OpenSettings => {
+        }
+    }
+
+    /// Runs one menu action, whether it came from the native menu or from its
+    /// keyboard twin in a window.
+    fn handle_action(&mut self, action: menu::MenuAction, cx: &mut App) {
+        match action {
+            menu::MenuAction::OpenWindow => {
+                let rect = self.tray.anchor();
+                open_main_surface(cx, rect);
+            }
+            // Starting a session and choosing a room are the main window's
+            // surfaces; both actions are the same way in as Open Window until
+            // those panes are reachable without the window.
+            menu::MenuAction::NewSession | menu::MenuAction::GoToRoom => {
+                let rect = self.tray.anchor();
+                open_main_surface(cx, rect);
+            }
+            menu::MenuAction::PauseDispatch => {
+                // The label changes under the same id, so the next selection
+                // resumes without the caller tracking which state it was in.
+                self.menu.toggle_dispatch_pause();
+                self.tray.set_menu(&self.menu.entries());
+            }
+            menu::MenuAction::OpenSettings => {
                 let display = self.tray.anchor().and_then(|anchor| anchor.display_id(cx));
                 settings_window::open_settings_window(cx, "Tidepool", display);
             }
-            MenuItem::Quit => {
+            menu::MenuAction::Quit => {
                 let _ = std::fs::remove_file(lifecycle::default_lock_path().unwrap_or_default());
                 cx.quit();
             }
@@ -374,6 +377,20 @@ fn main() {
             }
 
             cx.set_global(TrayManager::new());
+
+            // Every menu action also has a keyboard twin: `install` binds them
+            // in every window, and this handler dispatches them through the
+            // same manager the native menu uses, so one code path runs either
+            // way.
+            menu::install(cx);
+            cx.on_action(|command: &menu::MenuCommand, cx: &mut App| {
+                if !cx.has_global::<TrayManager>() {
+                    return;
+                }
+                let mut tray = cx.remove_global::<TrayManager>();
+                tray.handle_action(command.action(), cx);
+                cx.set_global(tray);
+            });
 
             cx.on_action(|_: &QuitAction, cx: &mut App| {
                 // Explicitly remove the lock file before quitting. GPUI
@@ -483,30 +500,40 @@ mod tests {
     use super::*;
 
     #[test]
-    fn menu_entries_match_items() {
-        let entries = menu_entries();
-        assert_eq!(entries.len(), MENU_ITEMS.len());
-        for (index, (id, label)) in entries.iter().enumerate() {
-            assert_eq!(*id, index as u32);
-            assert_eq!(label, &MENU_ITEMS[index].label());
+    fn the_tray_menu_carries_every_menu_action() {
+        let entries = menu::MenuState::default().entries();
+        assert_eq!(entries.len(), menu::MenuAction::ALL.len());
+        for action in menu::MenuAction::ALL {
+            assert!(
+                entries
+                    .iter()
+                    .any(|(id, label)| *id == action.id() && label == &action.label_for(false)),
+                "{action:?} is missing from the tray menu"
+            );
         }
     }
 
     #[test]
-    fn resolve_menu_item_round_trips() {
-        for (index, item) in MENU_ITEMS.iter().enumerate() {
-            assert_eq!(resolve_menu_item(index as u32), Some(*item));
-        }
-        assert_eq!(resolve_menu_item(MENU_ITEMS.len() as u32), None);
-    }
-
-    #[test]
-    fn open_app_is_the_first_menu_item() {
+    fn open_window_is_the_first_menu_item() {
         // The whole point of a taskbar app is that the main surface is
         // reachable from the menu, so pin its position rather than trusting
         // the array literal to stay put.
-        assert_eq!(MENU_ITEMS[0], MenuItem::OpenApp);
-        assert_eq!(MENU_ITEMS[0].label(), "Open App");
+        let entries = menu::MenuState::default().entries();
+        assert_eq!(entries[0].0, menu::MenuAction::OpenWindow.id());
+        assert_eq!(entries[0].1, "Open Window");
+    }
+
+    #[test]
+    fn every_menu_action_is_dispatched_by_the_tray() {
+        // Resolving the id back to the action is what `handle_menu_event`
+        // does; a menu whose ids do not resolve would be a dead row.
+        let state = menu::MenuState::default();
+        for action in menu::MenuAction::ALL {
+            assert_eq!(
+                state.resolve(action.id()),
+                Some(menu::MenuChoice::Action(action))
+            );
+        }
     }
 
     #[test]
