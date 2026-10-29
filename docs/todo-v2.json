@@ -194,7 +194,7 @@
         {
           "id": "2.0.6",
           "title": "tidepool CLI",
-          "status": "pending",
+          "status": "done",
           "goal": "cli/: a thin command line over the Rust SDK: `login`, `pool status`, `host list`, `host enroll`, `host grant`, `trigger list`, `trigger validate`, `trigger install`, `run dispatch`, `run watch`, `room list`, `room send`, `relay follow`. It is a client and holds no logic of its own: every command maps to one SDK call and prints the result, with `--json` for scripting. Credentials come from a store the CLI owns; nothing is written to a repository.",
           "touches": [
             "cli/",
@@ -213,8 +213,9 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the tidepool CLI",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "tidepool CLI",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T08:13:19Z"
         }
       ]
     },
@@ -863,7 +864,8 @@
           "Machine-readable hub API contract",
           "TypeScript SDK",
           "Rust SDK",
-          "Python SDK"
+          "Python SDK",
+          "tidepool CLI"
         ]
       }
     }

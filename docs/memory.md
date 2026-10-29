@@ -1705,6 +1705,53 @@ a refusal, the cursor a page returns, how a socket frame is classified.
 
 ---
 
+## 2026-10-29 — The CLI is a client with a store of its own (task 2.0.6)
+
+**Context.** The hub surface is now a typed contract with three SDKs. The
+operator still needs a shell client for the things a script does at 3am: sign
+in, enrol a machine, install a trigger, dispatch and follow a run, read a room,
+follow a session's relay. The console (2.2.x) will need the same credential
+store, and both must be usable over SSH with no browser.
+
+**Decision:**
+- **One command, one SDK call, printed as the SDK's type.** `--json` is
+  `serde_json` of the value the SDK decoded, not a CLI-shaped view, so the
+  output is the contract shape and a script cannot drift from the SDK. The
+  human mode is a table over the same value.
+- **No argument-parsing dependency.** The grammar is a flag table in
+  `cli/src/args.rs`: unknown flags, inapplicable flags and duplicate flags are
+  refused. It keeps the CLI's dependency set to the SDK, `serde` and
+  `serde_json`, which is the same discipline the SDK applies to its own
+  dependencies.
+- **The store is the CLI's, outside any repository.** The file is
+  `$TIDEPOOL_HOME/credentials.json` or the XDG config directory, written
+  atomically with `0600`, and `save` refuses a path whose ancestors contain
+  `.git`. The refusal is a test, not a convention: "a credential is never
+  written into a repository" is enforced mechanically.
+- **Redaction is a function, not a habit.** `credentials::redact` keeps four
+  leading characters and the length; `Debug` for the store and the file applies
+  it too. `login --json` still deserialises into `PoolLoginResponse`, with the
+  `token` field redacted, so the shape stays the SDK's type while the value
+  cannot be replayed from a log.
+- **The two loops are named as loops.** v1 has no run stream and no
+  trigger-list route, so `run watch` polls `GET /v1/activity/runs/{run}` and
+  `trigger list` reads the project's active configuration revision. Relay
+  following uses the SDK's cursor iterator; the CLI never walks a cursor.
+- **The password comes from stdin only.** No `--password` flag exists, so it
+  cannot land in `argv`, shell history or a process listing.
+
+**Consequences:**
+- The console (2.2.5) reads the same file and the same shape; a sign-in from
+  either is visible to the other.
+- A host enrolled by the CLI keeps its relationship credential in the store,
+  ready for the host agent that task 2.3.2 adds.
+- The CLI cannot list triggers as resources because the pool does not: it shows
+  the authored revision, which is where the pool keeps them. If a trigger-list
+  route lands, `trigger list` becomes one different SDK call and nothing else
+  changes.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

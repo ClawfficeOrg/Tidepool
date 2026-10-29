@@ -2,6 +2,43 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — tidepool CLI (task 2.0.6)
+
+### Added
+- `cli/` — the `tidepool` binary and its library, a thin command line over
+  `tidepool-client`: `login`, `pool status`, `host list`, `host enroll`,
+  `host grant`, `trigger list`, `trigger validate`, `trigger install`,
+  `run dispatch`, `run watch`, `room list`, `room send` and `relay follow`.
+  Each command maps to the SDK call the contract declares and prints the type
+  the SDK decoded; `--json` prints that type as JSON for scripting.
+- `cli/src/args.rs` — the whole grammar in one flag table, so an unknown or
+  inapplicable flag is refused rather than ignored. No argument-parsing
+  dependency is added.
+- `cli/src/credentials.rs` — the store the CLI owns: `$TIDEPOOL_HOME`, then
+  `$XDG_CONFIG_HOME/tidepool`, then `$HOME/.config/tidepool`, written
+  atomically with mode `0600` and refused if the path's ancestors contain
+  `.git`. Redaction keeps four leading characters and the length, never the
+  secret.
+- `cli/src/commands.rs` — one function per command. `relay follow` iterates the
+  SDK's `paging::relay_events`; `run watch` polls the contract's run detail
+  (v1 has no run stream); `trigger list` reads the project's active
+  configuration revision (v1 has no trigger-list route). Two-step enrollment
+  (mint, then exchange) runs end to end without a browser.
+- `cli/tests/` — a recorded server per command, plus an end-to-end test that
+  signs in, enrols a host, installs a trigger, dispatches a run and follows it
+  to completion, asserting the exact call sequence and that no token or
+  credential reached the terminal.
+- `cli/README.md` — the command table, the store location and shape (shared
+  with the console), the `--json` contract and the redaction rules.
+- `Cargo.toml` — `cli` added to the workspace and to `default-members`, so the
+  default `cargo build`/`test`/`clippy` gate covers the CLI rather than only an
+  explicit `-p tidepool-cli`.
+
+### Changed
+- Nothing outside `cli/` and the workspace member list; the SDK, the server and
+  the contract are untouched. The CLI adds no `clap`-style dependency: it links
+  the SDK and `serde_json` only.
+
 ## [Unreleased] — 2026-10-29 — SDK conformance suite (task 2.0.5)
 
 ### Added

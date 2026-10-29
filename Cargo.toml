@@ -35,5 +35,9 @@ hex = "0.4"
 validator = { version = "0.20", features = ["derive"] }
 
 [workspace]
-members = [".", "crates/tidepool-host-agent", "sdk/rust"]
+members = [".", "crates/tidepool-host-agent", "sdk/rust", "cli"]
+# The client line ships its own crates; the default `cargo build`/`test` covers
+# the pool and the CLI so a new client crate is built and tested by the same
+# gate as the server rather than only by an explicit `-p`.
+default-members = [".", "cli"]
 resolver = "2"
