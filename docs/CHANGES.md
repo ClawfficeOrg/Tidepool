@@ -2,6 +2,63 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane members and API keys (task 2.1.8)
+
+### Added
+- `tidepool-control-plane/src/lib/keys.ts` — the settings page's model, kept
+  out of Svelte so every rule is testable without a DOM or a pool:
+  - the API key scope catalog (`projects:read`, `configuration:validate`,
+    `configuration:install`, `runs:dispatch`, `daemons:enroll`) with labels and
+    sentences, cross-checked against the SDK's contract table;
+  - `removalRule` / `roleChangeRule` / `LAST_OWNER_REASON`: the last owner
+    cannot be removed or demoted even before a request, and the reason is a
+    full sentence; a stale local count still surfaces the pool's own 409 in the
+    same place;
+  - `invitationRow` and `expiryView`: an invitation keeps both a relative
+    sentence ("Expires in 7 days") and the absolute instant, and a lapsed one
+    says how long ago;
+  - `apiKeyRow` and `sortApiKeyRows`: prefix, labelled scopes (unknown scopes
+    kept, never hidden), creation time, last-used, and active-before-revoked
+    order — a revoked key stays in the list, marked revoked;
+  - `createdApiKey` / `API_KEY_SECRET_WARNING` / `copySecret`: the
+    `<prefix>.<secret>` value is held once, the warning says it will not be
+    shown again, and copying is tested with an injected clipboard;
+  - `MembersKeysController`: loads members plus, for owners only, invitations
+    and keys; invites, changes roles, removes members, revokes invitations,
+    creates keys and revokes them; every rule failure is presented as problem
+    details rather than thrown; a reload drops any one-time value.
+- `tidepool-control-plane/src/routes/settings/` — the page:
+  - `SettingsPage.svelte` renders both panels from a `MembersKeysState` and
+    loads itself on mount when it has a pool and a session;
+  - `MembersPanel.svelte` + `InviteMemberForm.svelte` + `MemberRow.svelte`
+    invite by email with a chosen role, show pending invitations with their
+    expiry, and disable the last owner's controls with the reason beside them;
+  - `CreatedInvitationPanel.svelte` shows the one-time acceptance token with
+    its warning and expiry, because v1 has no mail transport;
+  - `ApiKeysPanel.svelte` + `CreateKeyForm.svelte` + `ApiKeyCard.svelte` create
+    keys with an explicit scope set, show prefix, scopes, creation and last
+    used, and offer a two-step revoke that leaves the row marked revoked;
+  - `ApiKeySecretPanel.svelte` shows the secret once in a copyable block with
+    **Copy secret** as the primary action and the dismiss control secondary;
+  - component tests for the last-owner and one-time-secret rules, the
+    invitation expiry, revoked-key persistence and role gating; an SDK-driven
+    end-to-end that invites a member, creates a key, dismisses the secret,
+    revokes the key and confirms it stays marked revoked, plus the pool's 409
+    when the local owner count is stale.
+
+### Changed
+- `src/routes/Settings.svelte` is now the thin wrapper over
+  `./settings/SettingsPage.svelte`, and `src/App.svelte` passes the pool,
+  session token and role to it. Both are outside the task's owned paths; the
+  page cannot be reached or authenticated without them. The pool URL and
+  preference settings remain task 2.1.10's placeholder.
+
+### Notes
+- `GET /v1/pool/invitations` and `GET /v1/api-keys` are owner-only, so the
+  controller loads them only for an owner; a viewer sees the member list
+  read-only and one sentence saying why the rest is unavailable, never a 403
+  caused by opening the page.
+
 ## [Unreleased] — 2026-10-29 — Control plane runs and activity (task 2.1.7)
 
 ### Added

@@ -191,7 +191,11 @@
                 role={session?.user.role ?? null}
               />
             {:else if current.found && current.route.id === 'settings'}
-              <Settings />
+              <Settings
+                pool={pool}
+                token={session?.token ?? null}
+                role={session?.user.role ?? null}
+              />
             {:else}
               <NotFound path={current.path} />
             {/if}

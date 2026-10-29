@@ -2107,6 +2107,53 @@ dispatch control. Everything else is inside `src/lib/runs.ts` and
 
 ---
 
+## 2026-10-29 — Members and API keys: refuse first, explain in words, keep the record (task 2.1.8)
+
+**Decision: the last-owner rule is enforced in the page before the request,
+and the pool's own refusal is rendered in the same place.** The hub refuses to
+remove or demote the sole owner (`409`), but the success criterion is that a
+person reads the reason, not that a button fails. `removalRule` and
+`roleChangeRule` therefore block the call locally and attach
+`LAST_OWNER_REASON` to the row, which the component prints beside the disabled
+role select and remove button. The controller repeats the check, so a call
+cannot slip through from a non-component caller. When the page's owner count is
+stale — another session removed an owner — the pool's 409 arrives through
+`presentProblem` and shows the pool's detail in the same problem panel. The
+local rule shortens no request that should be made; it only stops one the
+contract already forbids.
+
+**Decision: a one-time value lives in controller state, not in the row.** The
+API key's secret and the invitation's acceptance token are returned exactly
+once. Both are held as `createdKey` / `createdInvitation` and are cleared by
+dismissing the panel or by any reload (`load` drops them), so a later render
+cannot imply they can be read again. The secret is not copied into the key row,
+the list markup or the URL. Copying uses `copySecret`, which takes the
+clipboard by injection: success is a boolean, a refused clipboard prints a
+"select it and copy by hand" note beside the text, and the test writes the
+exact secret string.
+
+**Decision: a revoked key stays in the list.** Revocation returns `204` with no
+body, so `revokeKey` marks the row locally with the status descriptor, the
+revocation instant and a note that it is kept for the audit trail;
+`sortApiKeyRows` moves it after the active keys without removing it. The e2e
+then reloads from the pool and sees the same revoked state, which proves the
+list is not just an optimistic echo.
+
+**Decision: owner-only reads are not requested by non-owners.** `GET
+/v1/pool/members` allows any member, but invitations and API keys are
+owner-only. `load({ includeOwnerData })` is false for every other role, so
+opening Settings as a viewer does not raise a 403 for data the page would not
+show. The viewer still sees the member list read-only with one sentence about
+the owner-only controls.
+
+**Consequence: routing and auth wiring are outside the owned paths.**
+`src/routes/Settings.svelte` became the thin wrapper over
+`./settings/SettingsPage.svelte`, and `src/App.svelte` now passes `pool`,
+`token` and `role`; without those the page could not load or gate the controls.
+Everything else is inside `src/lib/keys.ts` and `src/routes/settings/`.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

@@ -425,7 +425,7 @@
         {
           "id": "2.1.8",
           "title": "Members and API keys",
-          "status": "pending",
+          "status": "done",
           "goal": "Manage pool members: invite by email, change a role, remove a member, with the last-owner rule enforced and explained. Manage API keys: create with a chosen scope set, see the prefix, scopes, creation time, last-used time and status, and revoke. The secret is shown once in a copyable block with the warning that it will not be shown again.",
           "touches": [
             "tidepool-control-plane/src/routes/settings/",
@@ -443,11 +443,12 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the control plane members and API keys admin",
+          "changelog": "Members and API keys",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.1.3"
-          ]
+          ],
+          "updated_at": "2026-10-29T10:10:35Z"
         },
         {
           "id": "2.1.9",
@@ -879,7 +880,8 @@
           "tidepool CLI",
           "Projects and the configuration editor",
           "Trigger editor with host-checked agent selection",
-          "Runs and activity"
+          "Runs and activity",
+          "Members and API keys"
         ]
       }
     }
