@@ -15,7 +15,7 @@
 services:
   controlplane:
     build:
-      context: ..
+      context: .
       dockerfile: tidepool-control-plane/Dockerfile
     image: tidepool-control-plane:local
     restart: unless-stopped
