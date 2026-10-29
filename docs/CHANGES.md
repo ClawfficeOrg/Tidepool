@@ -2,6 +2,45 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Runs and activity in the client (task 2.3.5)
+
+### Added
+- `tidepool-client/src/runs/mod.rs` — `RunsController`, the headless runs and
+  activity loop over one `RunsClient`: the combined feed, the four filters, the
+  live run detail, the local-run mark and the manual dispatch. Filters combine
+  and every active filter must match; the page is filtered again on arrival and
+  the held rows are pruned when a filter changes, so a pool that ignored a
+  filter or a stale page cannot show another project's runs. A detail that is
+  pending or running is read again on an interval until the run and every step
+  are terminal, then polling stops cleanly. A run with a step on the host this
+  client enrolled is marked `This machine`; a run on another host keeps that
+  host's name. Manual dispatch validates the project, trigger, actor and
+  delivery key before it leaves, uses a delivery key that is stable for one
+  form, and opens the returned run.
+- `tidepool-client/src/runs/http.rs` — `HttpRuns` over the documented routes
+  (`GET /v1/activity`, `GET /v1/activity/runs/{run}`, `POST /v1/runs`), with run
+  ids path-checked and incomplete dispatches refused before a request.
+- `tidepool-client/src/runs_view.rs` — the runs pane: activity rows carrying
+  the kind, status words and project plus a `This machine` mark for the
+  machine's own work, the live run detail with each step's place and output
+  tail, the first failure as a sentence with its code beside it, and the
+  dispatch form's fields.
+- Tests for combined filtering (including a pool that ignores the query), the
+  live detail stopping when it ends, the local/remote distinction, the
+  `daemon_not_connected` failure reading as words with the code available, the
+  interval-driven tick, dispatch validation and deduplication, and rendering of
+  the run detail and the local-run highlight.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `runs` and `runs_view` modules
+  (outside the task's owned paths, required to compile the new code).
+
+### Notes
+- The two criteria that need a person looking at the running app remain for the
+  owner: that the combined filters show only the chosen project's runs on the
+  menu-bar surface, and that a named failure code reads as words with the code
+  visible. The logic behind both is covered by headless tests.
+
 ## [Unreleased] — 2026-10-29 — Chatrooms and talking to a session (task 2.3.4)
 
 ### Added

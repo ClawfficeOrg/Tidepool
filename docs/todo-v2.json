@@ -808,7 +808,7 @@
         {
           "id": "2.3.5",
           "title": "Runs and activity in the client",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "What the pool has been asked to do, visible from the menu bar: activity filtered by project, provider, trigger and status; a run detail that follows a live execution step by step; and a manual dispatch. A run on this machine is highlighted because it is the machine's own work, and a run that failed because a host was offline says so in those words.",
           "touches": [
             "tidepool-client/src/runs/",
@@ -830,7 +830,9 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.7"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:44:06Z",
+          "human_look": "Activity filters combine and never show another project's runs; A named failure code renders as words with the code available"
         },
         {
           "id": "2.3.6",

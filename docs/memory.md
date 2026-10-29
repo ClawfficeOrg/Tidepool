@@ -2691,3 +2691,53 @@ follow-up outside this task's owned paths.
 `tidepool-client/src/main.rs` gained `mod chat;` and `mod chat_view;` so the
 module is part of the binary and its tests run; `docs/CHANGES.md` and this file
 are updated per AGENTS.md.
+
+---
+
+## 2026-10-29 — Runs and activity in the client: filter twice, follow until terminal, name the machine and the code (task 2.3.5)
+
+**Decision: the client filters the activity page again after the pool returns
+it.** `GET /v1/activity` accepts `project`, `provider`, `trigger` and `status`,
+and the client sends only the active ones. But a pool that ignored a filter, a
+page that was in flight when the filter changed, or a future route regression
+would otherwise put another project's run on screen. `RunsController::refresh`
+applies `ActivityFilters::matches` to every returned entry before storing it,
+`visible_entries` applies it again at draw time, and every filter setter prunes
+the already-held rows immediately. The filter is therefore a property of what
+is held, not only of what was requested.
+
+**Decision: a detail is followed until every step and the run are terminal, on
+an injected clock.** `run_is_live` is true while the run or any step is
+`pending`/`running`; `follow` reads at most once per `LIVE_INTERVAL` and makes no
+request after the terminal read. Tests pass explicit `Instant`s, so the update
+and the clean stop are proved without sleeping. A failed detail read stops
+following and keeps the problem, rather than retrying forever.
+
+**Decision: "this machine" is the host this client enrolled, compared with each
+step's `host`.** The pool's activity entry has no host field; the run detail's
+steps do. `place_of` marks a run `ThisMachine` when any step names the id in
+settings' `active_host`, `AnotherMachine(host)` when every named step belongs to
+another host, and `Unrecorded` when none is named. Without a known local host
+nothing is claimed as local. The feed row is marked from the set of run ids this
+client has seen locally in a detail, so the highlight appears in the feed only
+after the detail has proved it.
+
+**Decision: a failure code is rendered as words with the code beside it, never
+replaced by it.** The pool stores `code: detail` in a step's `error`
+(`daemon_not_connected: host 'studio-mac' is offline`) and repeats the code in
+`reason`. `failure_explanation` keeps the leading code, maps it to a sentence
+(`daemon_not_connected` says the host was offline), and `FailureExplanation::line`
+renders the sentence followed by `(code …)`. Unknown codes keep their own text
+and their code; a plain-text error is shown unchanged.
+
+**What is still a person's check:** open the menu-bar runs surface against a
+live pool and confirm the four filters combine visually and never show another
+project's runs, and that a named failure reads as words with the code visible.
+The logic behind both is tested headlessly (including a scripted pool that
+ignores the filter), but the running-app appearance is not something this
+environment can confirm.
+
+**Consequence: module wiring and docs are outside the owned paths.**
+`tidepool-client/src/main.rs` gained `mod runs;` and `mod runs_view;` so the
+module is part of the binary and its tests run; `docs/CHANGES.md` and this file
+are updated per AGENTS.md.
