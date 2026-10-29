@@ -290,3 +290,34 @@ input. They must:
 A conformance suite (task 2.0.6) runs the same request/response fixtures
 against every SDK. The fixtures are generated from the same tables, so a route
 or field change reaches every SDK through one contract change.
+
+### 5.1 TypeScript SDK (task 2.0.2)
+
+`@clawffice/tidepool-sdk` consumes `docs/api/openapi-v1.json` and nothing else.
+
+- `sdk/ts/scripts/lib/contract.mjs` renders the committed artifacts:
+  `src/generated/types.d.ts` (one interface per schema), `routes.js` /
+  `routes.d.ts` (the route table the runtime dispatches on),
+  `resources.js` (one delegating method per operation), `resources.d.ts`
+  (the typed namespace surface) and a typecheck-only
+  `test/generated/conformance.ts` with one typed call per operation.
+- `operationId → namespace.method` is an explicit map in that module. A route
+  added to the document without a mapping fails generation, so a contract
+  addition cannot ship untyped.
+- `npm run check`, the drift test in `test/contract.test.mjs` and the typed
+  conformance file keep the package honest: a route or field change without a
+  regeneration fails the suite, and `npm run typecheck` fails if a generated
+  method's argument or response type stops matching the schema.
+- The 429 policy (`maxRetries`, exponential backoff, `Retry-After`, ceiling)
+  and refresh-once are client policy, not contract: the contract fixes the
+  status codes and header semantics, the SDK chooses the attempt budget.
+
+**Known gap, recorded rather than invented.** The document publishes no query
+parameters, although handlers read them (`chatrooms::HistoryQuery`,
+`relay::BackfillQuery`, `activity::ActivityQuery`,
+`leaderboards::PageParams`). The SDK types exactly those handler names —
+`after`, `limit`, `cursor`, `project`, `provider`, `trigger`, `status`, `kind`,
+`page`, `per_page` — in the generator's `QUERY` table. Until the route table
+gains a query-parameter field, a change to that table is a change outside the
+contract and must be reviewed as one.
+

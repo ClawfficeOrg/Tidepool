@@ -2,6 +2,47 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — TypeScript SDK (task 2.0.2)
+
+### Added
+- `sdk/ts/` — `@clawffice/tidepool-sdk`, a dependency-free typed client for
+  the whole committed contract (83 operations): pool identity and API keys,
+  hosts and enrolment, presence and capabilities, connections, projects and
+  configuration revisions, triggers and validation, dispatch and manual runs,
+  activity, chatrooms with cursor paging plus the live socket, the session
+  relay, webhooks, and the Talo game surface.
+- `sdk/ts/scripts/lib/contract.mjs` — the generator. It renders the schema
+  interfaces, the route table, one delegating method per route, the typed
+  namespace surface and a typecheck-only conformance file from
+  `docs/api/openapi-v1.json`, with an explicit `operationId → namespace.method`
+  map that fails on an unmapped route.
+- `sdk/ts/src/client.js` — fetch-only transport: ambient credentials
+  (`Bearer`, `x-api-key`, `X-Host-Credential`), refresh-once token handling,
+  bounded 429 retries with exponential backoff that honour `Retry-After`, and
+  `ProblemError` carrying `status`, `code`, `detail`, `requestId` (body or
+  `x-request-id`), `attempts` and `retryAfterMs`. Unknown codes stay opaque.
+- `sdk/ts/src/stream.js` — `ChatStream` over the room WebSocket, with frame
+  parsing, `frames()` iteration and a resume cursor.
+- `sdk/ts/src/paging.js` — `iterateChatMessages`, `iterateRelayEvents` and
+  `iterateActivity` follow the contract's `next`/`nextCursor` cursors.
+- `sdk/ts/src/browser.js` / `sdk/ts/src/node.js` — conditional exports: the
+  browser entry reaches no Node-only module, the Node entry adds token-file
+  loading; `publishConfig.access` publishes under the Clawffice scope.
+- `sdk/ts/test/` — 43 `node:test` cases over a recorded HTTP transport
+  (contract drift and coverage, credentials, problem mapping, refresh, 429
+  backoff and bounds, paging, stream, browser import graph).
+- `sdk/ts/scripts/smoke.mjs` — `npm pack`, a fresh install of the tarball, and
+  the installed package minting an enrolment token, enrolling a host and
+  dispatching a run; `--live` runs the same against a dev stack.
+- `docs/API_CONTRACT.md` §5.1 — what the SDK generates, how drift is checked,
+  and the query-parameter gap (handlers read `after`/`limit`/`cursor`/…, the
+  document does not publish them yet).
+
+### Notes
+- No runtime dependencies; `typescript` is a dev dependency used only by
+  `npm run typecheck`. `npm run smoke` performs an offline `npm install` of the
+  local tarball into a temporary directory.
+
 ## [Unreleased] — 2026-10-29 — Machine-readable hub API contract (task 2.0.1)
 
 ### Added

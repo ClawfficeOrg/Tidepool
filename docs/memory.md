@@ -1528,6 +1528,51 @@ contract.
 
 ---
 
+## 2026-10-29 — TypeScript SDK: generated from the committed contract, fetch-only, bounded retries (task 2.0.2)
+
+**Context:** the contract (2.0.1) describes 83 operations, but every client
+until now hand-wrote its own requests. A hand-written SDK drifts the moment a
+route or field changes, and a generated SDK with a runtime it cannot type is
+not much better: the browser build must not pull in Node, and rate-limit
+handling must not be a `while (true)`.
+
+**Options considered:**
+- **A generic `request(path, method)` wrapper.** Small, but it does not give a
+  typed method per route, so the contract cannot be enforced. Rejected.
+- **OpenAPI codegen as a dependency (`openapi-typescript`, `orval`).** It would
+  generate types but no runtime, still needs a hand-written client, and adds a
+  build-time dependency the repo would have to install and pin. The renderer is
+  ~400 lines of plain Node instead. Rejected.
+- **Ship compiled JS from a TypeScript source tree.** Every consumer install
+  would need a build step, and the committed output would be unreviewable
+  machine code. Rejected: the package ships hand-written JS with generated
+  `.d.ts` declarations, so editors and `tsc` see the contract's types and the
+  runtime is reviewable.
+- **Chosen: generated declarations plus a generated route table and resource
+  namespace.** `docs/api/openapi-v1.json` is the only input; `npm run check`
+  regenerates in memory and compares byte for byte. The one explicit
+  `operationId → namespace.method` map is the review point, and an unmapped
+  route fails generation rather than shipping untyped.
+
+**Consequences:**
+- `fetch` is the whole transport (`Response`, `Headers`, `AbortController`),
+  so the browser entry reaches no `node:` module. `src/node.js` is the only
+  file that imports `node:fs`, and a test walks the import graph from
+  `src/browser.js` to prove it.
+- Retries are 429-only and bounded by `maxRetries` (default 2): a 429 means the
+  request was not processed, so replaying it cannot duplicate a write even for
+  a non-idempotent command. A `Retry-After` longer than `maxRetryAfterMs`
+  (default 60 s) is surfaced instead of slept through, because sleeping an hour
+  inside a request is worse than telling the caller.
+- Token refresh is at most once per request (proactive on known expiry,
+  reactive on 401). The refresh hook returning `null` clears the retry, so a
+  stale credential cannot loop.
+- The document publishes no query parameters; the SDK types the handler names
+  it can verify and records the gap in `docs/API_CONTRACT.md` §5.1 rather than
+  pretending the contract covers paging.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

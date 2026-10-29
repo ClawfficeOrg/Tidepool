@@ -1,0 +1,42 @@
+{
+  "name": "problem-details failures",
+  "steps": [
+    {
+      "request": { "method": "GET", "path": "/v1/projects/proj_missing" },
+      "response": {
+        "status": 404,
+        "headers": { "content-type": "application/problem+json" },
+        "body": {
+          "type": "https://tidepool.dev/problems/not_found",
+          "title": "Not found",
+          "status": 404,
+          "code": "not_found",
+          "detail": "no such project in this organization",
+          "requestId": "req_body_01"
+        }
+      }
+    },
+    {
+      "request": { "method": "GET", "path": "/v1/api-keys/whoami" },
+      "response": {
+        "status": 403,
+        "headers": { "content-type": "application/problem+json", "x-request-id": "req_header_02" },
+        "body": {
+          "type": "https://tidepool.dev/problems/missing_scope",
+          "title": "Forbidden",
+          "status": 403,
+          "code": "missing_scope",
+          "detail": "key lacks projects:read"
+        }
+      }
+    },
+    {
+      "request": { "method": "GET", "path": "/v1/players/player_01" },
+      "response": {
+        "status": 401,
+        "headers": { "content-type": "application/json", "x-request-id": "req_header_03" },
+        "body": { "error": "unauthorized", "message": "invalid token" }
+      }
+    }
+  ]
+}

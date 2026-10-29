@@ -1,0 +1,51 @@
+{
+  "name": "relay event backfill paging follows the sequence cursor",
+  "steps": [
+    {
+      "request": { "method": "GET", "path": "/v1/sessions/ses_01/relay/events", "query": { "after": "0", "limit": "2" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "next": 2,
+          "events": [
+            {
+              "id": "rev_01",
+              "session": "ses_01",
+              "sequence": 1,
+              "kind": "started",
+              "payload": { "agent": "codex" },
+              "createdAt": "2026-10-29T05:00:00Z"
+            },
+            {
+              "id": "rev_02",
+              "session": "ses_01",
+              "sequence": 2,
+              "kind": "output",
+              "payload": { "line": "compiling" },
+              "createdAt": "2026-10-29T05:00:01Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": { "method": "GET", "path": "/v1/sessions/ses_01/relay/events", "query": { "after": "2", "limit": "2" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "next": null,
+          "events": [
+            {
+              "id": "rev_03",
+              "session": "ses_01",
+              "sequence": 3,
+              "kind": "stopped",
+              "payload": {},
+              "createdAt": "2026-10-29T05:00:02Z"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

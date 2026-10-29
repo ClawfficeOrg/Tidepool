@@ -91,7 +91,7 @@
         {
           "id": "2.0.2",
           "title": "TypeScript SDK",
-          "status": "pending",
+          "status": "done",
           "goal": "sdk/ts: a typed client generated from, and checked against, the contract. Covers the pool identity and API keys, hosts and enrollment, host presence and capabilities, connections, projects and configuration, triggers and validation, workflows, dispatch and manual runs, runs and activity, chatrooms with cursor paging and a live stream, and the session relay. Includes token refresh, request ids surfaced from problem-details errors, retries with backoff on 429 honouring Retry-After, and a browser-safe and a Node build. Published to npm under the Clawffice scope.",
           "touches": [
             "sdk/ts/",
@@ -109,8 +109,9 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the TypeScript SDK",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "TypeScript SDK",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T06:24:58Z"
         },
         {
           "id": "2.0.3",
@@ -855,7 +856,8 @@
         "tag_on_complete": true,
         "release_notes": "Tidepool 0.6.0 ships the clients: the machine-readable hub contract, TypeScript, Rust and Python SDKs with one conformance suite, the tidepool CLI, the Svelte control plane, the ratatui control console, and the reference human client as a Zoid tray application. Rhumb federation and the hosted multi-tenant pool are deferred to v3.",
         "changelog_entries": [
-          "Machine-readable hub API contract"
+          "Machine-readable hub API contract",
+          "TypeScript SDK"
         ]
       }
     }
