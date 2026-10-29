@@ -2551,3 +2551,42 @@ them here when answered.
    email | username | numeric id). `username` alone is *not* canonical.
 5. **Subaccount limits** — *open*; pending product input.
 6. **Analytics event schema** — *open*; deferred to Phase 1.0.
+
+---
+
+## 2026-10-29 — The client holds the host credential, and the grant is never inferred (task 2.3.2)
+
+**Decision: the client's settings store is the only place a pool URL, operator
+JWT or host relationship credential is written.** It lives at
+`$TIDEPOOL_CLIENT_HOME/settings.json` (tests and portable runs) or the per-user
+config directory for `com.clawffice.Tidepool`. `SettingsStore::save` refuses a
+path inside a git working tree, writes a sibling temporary file and renames it
+with `0600` on Unix, and reports a corrupt file without replacing it. Both
+`ClientSettings` and `StoredHost` redact their secrets in `Debug`, and no error,
+notice or status line carries one. Unlike the CLI's `TIDEPOOL_HOME`, the client
+uses its own `TIDEPOOL_CLIENT_HOME`: a host credential and an operator store are
+different secrets and should not share a file.
+
+**Decision: `host.execute` has no default and is never remembered as granted.**
+`ExecutionPermission` is `Granted`, `NotGranted` or `Unknown`;
+`Machine::may_run_agents` is true only for the pool's explicit
+`execution_enabled: true`. A remembered enrollment shows `Unknown` on launch,
+and a pool that stops answering downgrades a known `Granted` to `Unknown`. The
+grant and the revoke are calls the machine makes after the consequence is shown
+(`GRANT_CONSEQUENCE` / `REVOKE_CONSEQUENCE`), never implied by enrollment.
+
+**Decision: the app speaks the pool's HTTP routes with `ureq` directly rather
+than depending on the Rust SDK crate.** The app and the SDK are both package
+`tidepool-client` v0.1.0 in different workspaces; Cargo cannot hold both in one
+graph without renaming one. The app therefore uses the SDK's own HTTP client and
+the documented route shapes, keeping the wire behavior the same while leaving
+the SDK's package identity alone. The end-to-end test runs that real client
+against a loopback pool that answers the documented routes, so the paths, bearer
+header and JSON bodies are exercised without a live database.
+
+**What is still a person's check:** whether the pool shows the enrolled machine
+as `connected` in the running app. Presence comes from the host WebSocket, which
+this task does not implement (it is not in the owned paths); the client reads
+and renders whatever status the pool reports. The settings window does not yet
+render `MachineStatus`; that surface arrives with the client settings task
+(2.3.7), so this work is the engine plus its tests.

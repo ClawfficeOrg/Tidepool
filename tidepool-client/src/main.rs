@@ -8,6 +8,21 @@
 //   macOS build does not call the Windows icon seam or the state-colour setter.
 #![allow(unused_unsafe, unused_imports, dead_code)]
 
+// Pool connection and this machine's enrollment. The modules are declared
+// inline so the generated template's file layout is untouched: `mod host`
+// still resolves its children under `src/host/`.
+mod host {
+    //! This machine's relationship with a pool: the sign-in, the two-step host
+    //! enrollment and the execution grant, which is always explicit.
+
+    pub mod client;
+    pub mod enroll;
+}
+
+// The client's own settings store: the pool URL and the host relationship
+// credential, outside any repository and redacted everywhere it is printed.
+mod settings;
+
 mod host_entry;
 mod icon_assets;
 mod lifecycle;

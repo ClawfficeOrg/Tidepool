@@ -2,6 +2,51 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Pool connection and this machine's enrollment (task 2.3.2)
+
+### Added
+- `tidepool-client/src/settings.rs` — the client's own settings store at
+  `$TIDEPOOL_CLIENT_HOME/settings.json` or the per-user configuration directory
+  under `com.clawffice.Tidepool`. It holds the pool URL, the operator JWT and the
+  host relationship credential; `save` refuses a path inside a git working tree
+  and writes atomically with `0600` on Unix, a corrupt file is reported and left
+  in place, and every `Debug` implementation redacts secrets. A missing file is
+  empty settings, which is what keeps an unconfigured client usable.
+- `tidepool-client/src/host/client.rs` — the pool's HTTP surface over the same
+  `ureq` the Rust SDK uses: operator sign-in, host registration, the
+  single-use enrollment token, the public enroll exchange, host listing and
+  grant/revoke. Pool URLs are validated before use, host ids are checked before
+  they enter a path, and the error type names `unreachable`, `unauthorized`,
+  `forbidden`, a pool problem (status and code) or a protocol failure without
+  carrying a credential. `Session`'s `Debug` redacts its token.
+- `tidepool-client/src/host/enroll.rs` — `Machine`, the enrollment state machine:
+  sign in, the CLI's two-step enrollment (register, mint, generate the
+  credential here, exchange), refresh the host's presence and execution state,
+  and grant/revoke `host.execute` explicitly. `ExecutionPermission` has no default
+  and `Machine::may_run_agents` is false unless the pool reports a grant; a pool
+  that stops answering downgrades a known grant to `unknown`. `status_lines`
+  renders the pool, this machine and the execution state with the grant's
+  consequence stated, and carries no secret.
+- Unit tests over a scripted `PoolApi` for enrollment, grant, revoke, a failed
+  exchange, an unreachable pool and a stale grant, plus an end-to-end that drives
+  the real HTTP client against a loopback pool speaking the documented routes.
+  An additional end-to-end for a running dev stack runs only when
+  `TIDEPOOL_E2E_POOL_URL`, `TIDEPOOL_E2E_EMAIL`, `TIDEPOOL_E2E_PASSWORD` and
+  `TIDEPOOL_E2E_HOSTNAME` are set.
+
+### Changed
+- `tidepool-client/Cargo.toml` — `serde`, `serde_json`, `thiserror` and `ureq`
+  (the SDK's HTTP client) for the pool surface; `Cargo.lock` follows.
+- `tidepool-client/src/main.rs` — declares the `host` and `settings` modules.
+
+### Notes
+- The credential's only destination is the settings store: the tests assert the
+  store is the only file written, that `Debug` output does not contain it, and
+  that a failed exchange leaves the store byte-for-byte unchanged.
+- Enrolling and revoking need a real pool for presence (`connected` comes from
+  the host WebSocket, which this task does not implement), so a person must
+  confirm the pool shows this machine connected in the running app.
+
 ## [Unreleased] — 2026-10-29 — The reference client generated from Zoid's tray template (task 2.3.1)
 
 ### Added

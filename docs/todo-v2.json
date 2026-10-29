@@ -720,7 +720,7 @@
         {
           "id": "2.3.2",
           "title": "Pool connection and this machine's enrollment",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Sign in to a pool from the client, enrol this machine as a host through the same two-step exchange the CLI performs, and show this machine's status and whether it may run agents, with the grant performed from the machine and its consequence stated. A pool URL and credential live in the client's own settings store and never in a repository, a log or a layout file.",
           "touches": [
             "tidepool-client/src/host/enroll.rs",
@@ -744,7 +744,9 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.2.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:03:02Z",
+          "human_look": "The client enrols this machine and the pool shows it as connected"
         },
         {
           "id": "2.3.3",
