@@ -2,6 +2,28 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Console scaffold and connection handling (task 2.2.1)
+
+### Added
+- `tidepool-console/` — the operator's terminal: a `ratatui` + `crossterm` binary
+  over the Rust SDK with a tabbed shell (Hosts, Runs, Rooms, Settings), a status
+  line that always carries the pool, the signed-in member and the connection
+  state, keyboard navigation and a command palette built from the same `Action`
+  list the keys dispatch. Every action in `Action::ALL` is a palette entry, so a
+  palette-less action cannot exist without a failing test.
+- `tidepool-console/src/app.rs` — the credential-backed startup path reuses
+  `tidepool_cli::credentials`, so one `tidepool login` serves the CLI and the
+  console. No network call happens at startup unless the store names a pool and
+  a token; an unreachable (or unusable) pool becomes one notice plus
+  `UNREACHABLE` and the console keeps taking keys. Unit tests script the
+  `PoolClient` trait and cover the no-pool, signed-out, online, unreachable,
+  reconnect, quit and palette paths.
+- `tidepool-console/src/ui/` — the renderer and per-tab rendering tests at
+  40×10 and 140×40 against `TestBackend`, including every connection state, the
+  single unreachable notice and the palette.
+- `Cargo.toml` (workspace) — `tidepool-console` joined `members` and
+  `default-members`, so the existing gate builds and tests it.
+
 ## [Unreleased] — 2026-10-29 — Control plane settings, palettes and pool-served hosting (task 2.1.10)
 
 ### Added

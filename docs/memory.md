@@ -2248,6 +2248,36 @@ lives in `src/routes/settings/preferences.ts` with tests.
 
 ---
 
+## 2026-10-29 — The console borrows the CLI's login and has one action list (task 2.2.1)
+
+**Decision: the console does not own a credential format.** It loads
+`tidepool_cli::credentials::CredentialStore`, the same file and the same path
+rules as the CLI, rather than copying the store or inventing a second login.
+Signing in once therefore serves both binaries, and a store that the CLI refuses
+to write is refused by the console for the same reason. The store's `Debug`
+already redacts secrets, so the console never had to learn how.
+
+**Decision: keys and the palette are the same actions.** `Action` is the only
+list; `Action::ALL` is what the palette renders, and every key binding dispatches
+one of those values. A test asserts the palette's entries equal `Action::ALL`, so
+an action reachable from a key but not the palette (or the reverse) fails the
+gate rather than drifting.
+
+**Decision: startup probes at most once, and only with a pool and a token.**
+`App::from_credentials` drops the client when the store names no pool, and
+`App::start` only probes from `Connecting`; that is the mechanical form of "no
+network call on startup unless a pool is configured". Any failure — transport,
+refused URL, 401 — becomes `Connection::Unreachable` plus one notice, never a
+panic and never a second notice: the notice is a single `Option`, so reconnect
+replaces it instead of stacking. The console keeps taking keys in that state.
+
+**Consequence: the workspace gained a member.** `tidepool-console` is in
+`members` and `default-members` so `cargo fmt/clippy/test` cover it; that edit to
+the root `Cargo.toml` is outside the task's `touches` but the crate cannot be
+built by the existing gate without it.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve
