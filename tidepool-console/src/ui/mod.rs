@@ -14,6 +14,8 @@ use ratatui::widgets::{Block, Clear, Paragraph, Tabs, Wrap};
 
 use crate::app::{App, Connection, Tab};
 
+pub mod hosts;
+
 /// Draw one whole frame.
 pub fn render(app: &App, frame: &mut Frame) {
     let area = frame.area();
@@ -47,6 +49,10 @@ fn render_tabs(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_body(app: &App, frame: &mut Frame, area: Rect) {
+    if app.tab() == Tab::Hosts {
+        hosts::render(app.hosts(), app.pool(), frame, area);
+        return;
+    }
     let block = Block::bordered().title(format!(" {} ", app.tab().title()));
     let paragraph = Paragraph::new(body_lines(app))
         .block(block)
@@ -56,15 +62,12 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
 
 /// The placeholder body for the tab in front.
 ///
-/// The scaffold has no lists yet; each tab says which task brings its screen and
-/// Settings reports the connection in full, including the reason a failed probe
-/// gave.
+/// The hosts tab draws itself; the remaining scaffolds say which task brings
+/// their screen, and Settings reports the connection in full, including the
+/// reason a failed probe gave.
 fn body_lines(app: &App) -> Vec<Line<'static>> {
     match app.tab() {
-        Tab::Hosts => vec![
-            Line::from("No hosts loaded yet."),
-            Line::from("Hosts and presence arrive with task 2.2.2."),
-        ],
+        Tab::Hosts => Vec::new(),
         Tab::Runs => vec![
             Line::from("No runs loaded yet."),
             Line::from("Triggers and runs arrive with task 2.2.3."),
@@ -209,7 +212,7 @@ mod tests {
 
     fn body_marker(tab: Tab) -> &'static str {
         match tab {
-            Tab::Hosts => "No hosts loaded yet.",
+            Tab::Hosts => "No hosts enrolled yet.",
             Tab::Runs => "No runs loaded yet.",
             Tab::Rooms => "No rooms loaded yet.",
             Tab::Settings => "Credentials:",
@@ -300,7 +303,7 @@ mod tests {
             "{screen}"
         );
         assert!(screen.contains("UNREACHABLE"), "{screen}");
-        assert!(screen.contains("No hosts loaded yet."), "{screen}");
+        assert!(screen.contains("No hosts enrolled yet."), "{screen}");
     }
 
     #[test]

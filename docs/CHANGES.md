@@ -2,6 +2,37 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Console hosts and presence screen (task 2.2.2)
+
+### Added
+- `tidepool-console/src/tabs/hosts.rs` — the hosts tab's state and client
+  surface: enrolled hosts with slug, status, the presence instant this console
+  observed and whether `host.execute` is granted. Sorting covers every column in
+  both directions, filtering cycles the reported statuses and the `/` search
+  matches every column. `HostsState::drive` performs one pending action and one
+  2-second presence read, so a host that goes offline shows offline on the next
+  frame without a key press. Enrolling registers the host, mints its single-use
+  token and renders the reference-agent command that consumes it; `g` and `x`
+  grant and revoke execution. Capability reports are cached per host, re-read on
+  selection and after a grant, and retried with `c`.
+- `tidepool-console/src/ui/hosts.rs` — the table (selection, sort arrows,
+  status colours), the detail pane with the host's ids, execution state, last
+  seen and capabilities exactly as reported, the enrol prompt and the one-time
+  enrollment offer with its token, expiry and command. Stacked layout below 70
+  columns, side by side above it.
+- `tidepool-console/src/tabs/mod.rs` — the tab-module root.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/ui/mod.rs` / `src/main.rs` — the shell
+  now owns the hosts state, routes the tab's keys before the global bindings,
+  ticks the tab from the event loop (no input needed for a presence change) and
+  delegates the Hosts body to the new renderer. `PoolClient` extends
+  `HostsClient`; the SDK-backed client implements the five host calls.
+- Tests: scripted-client unit tests for sorting, filtering, live status,
+  enrollment, grant/revoke and failure paths; `TestBackend` rendering tests for
+  the table, the detail pane, the empty state, the enrollment offer and a
+  headless presence change.
+
 ## [Unreleased] — 2026-10-29 — Console scaffold and connection handling (task 2.2.1)
 
 ### Added

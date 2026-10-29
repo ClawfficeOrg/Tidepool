@@ -18,6 +18,7 @@
 #![allow(clippy::result_large_err)]
 
 mod app;
+mod tabs;
 mod ui;
 
 use std::io::Stdout;
@@ -31,7 +32,15 @@ use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tidepool_client::blocking::Client as SdkClient;
-use tidepool_client::endpoints::GetV1PoolMe;
+use tidepool_client::endpoints::{
+    DeleteV1HostsIdExecution, GetV1Hosts, GetV1HostsIdCapabilities, GetV1PoolMe, PostV1Hosts,
+    PostV1HostsEnrollmentTokens, PostV1HostsIdExecution,
+};
+use tidepool_client::types::{
+    CreateHostRequest, HostCapabilityReport, HostView, JsonValue, MintEnrollmentTokenRequest,
+};
+
+use crate::tabs::hosts::Enrollment;
 
 fn main() -> ExitCode {
     match run() {
@@ -91,6 +100,44 @@ impl app::PoolClient for SdkPoolClient {
     }
 }
 
+impl tabs::hosts::HostsClient for SdkPoolClient {
+    fn list_hosts(&mut self) -> app::Result<Vec<HostView>> {
+        Ok(self.client.call(&GetV1Hosts::new())?.hosts)
+    }
+
+    fn host_capabilities(&mut self, host_id: &str) -> app::Result<HostCapabilityReport> {
+        Ok(self.client.call(&GetV1HostsIdCapabilities::new(host_id))?)
+    }
+
+    fn enroll_host(&mut self, hostname: &str) -> app::Result<Enrollment> {
+        let host = self.client.call(&PostV1Hosts::new(CreateHostRequest {
+            hostname: hostname.to_owned(),
+            display_name: None,
+        }))?;
+        let minted = self.client.call(&PostV1HostsEnrollmentTokens::new(
+            MintEnrollmentTokenRequest {
+                host_id: host.id.clone(),
+            },
+        ))?;
+        Ok(Enrollment {
+            host,
+            token: minted.token,
+            expires_at: minted.enrollment_token.expires_at,
+        })
+    }
+
+    fn grant_execution(&mut self, host_id: &str) -> app::Result<HostView> {
+        Ok(self.client.call(&PostV1HostsIdExecution::new(
+            host_id,
+            JsonValue::Object(Default::default()),
+        ))?)
+    }
+
+    fn revoke_execution(&mut self, host_id: &str) -> app::Result<HostView> {
+        Ok(self.client.call(&DeleteV1HostsIdExecution::new(host_id))?)
+    }
+}
+
 /// A terminal held in raw mode on the alternate screen, restored on drop.
 struct Tui {
     terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -134,6 +181,7 @@ fn run_console(console: &mut app::App) -> app::Result<()> {
     let mut tui = Tui::start()?;
     while !console.should_quit() {
         tui.terminal.draw(|frame| ui::render(console, frame))?;
+        console.tick();
         if event::poll(Duration::from_millis(250))?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press

@@ -12,8 +12,12 @@
 //! taking keys, so an operator who started it on a disconnected laptop can still
 //! read the tabs and quit cleanly.
 
+use std::time::Instant;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tidepool_cli::credentials::CredentialFile;
+
+use crate::tabs::hosts::{HostsClient, HostsState};
 
 /// Everything that can go wrong before or during a console run.
 #[derive(Debug, thiserror::Error)]
@@ -180,10 +184,11 @@ pub struct Identity {
 
 /// What the console needs from a pool.
 ///
-/// The trait is deliberately small: the scaffold asks who it is talking to and
-/// nothing else. Later screens add reads here, which keeps the scripted client
-/// in the tests the same shape as the SDK-backed one.
-pub trait PoolClient {
+/// The trait is deliberately small: the scaffold asks who it is talking to, and
+/// [`HostsClient`] adds exactly what the hosts tab reads and does. Later screens
+/// add reads here, which keeps the scripted client in the tests the same shape
+/// as the SDK-backed one.
+pub trait PoolClient: HostsClient {
     /// Ask the pool who the token belongs to.
     fn identity(&mut self) -> Result<Identity>;
 }
@@ -249,6 +254,7 @@ pub struct App {
     pool: Option<String>,
     member: Option<String>,
     client: Option<Box<dyn PoolClient>>,
+    hosts: HostsState,
     quit: bool,
 }
 
@@ -278,17 +284,22 @@ impl App {
             pool,
             member,
             client,
+            hosts: HostsState::new(),
             quit: false,
         }
     }
 
-    /// Perform the one startup probe, when there is a pool to probe.
+    /// Perform the one startup probe, when there is a pool to probe, then fill
+    /// the hosts tab once the pool answers.
     ///
     /// With no pool — or a pool and no token — this returns without touching
     /// the network.
     pub fn start(&mut self) {
         if self.connection == Connection::Connecting {
             self.probe();
+        }
+        if self.connection == Connection::Online {
+            self.pump_hosts(Instant::now());
         }
     }
 
@@ -320,6 +331,29 @@ impl App {
         self.connection = Connection::Connecting;
         self.notice = None;
         self.probe();
+        if self.connection == Connection::Online {
+            self.pump_hosts(Instant::now());
+        }
+    }
+
+    /// Drive the active screen's timers: no key press is needed for a host that
+    /// goes offline to appear offline on the next frame.
+    pub fn tick(&mut self) {
+        self.tick_at(Instant::now());
+    }
+
+    /// [`App::tick`] with the clock supplied, so the tests can advance it.
+    pub(crate) fn tick_at(&mut self, now: Instant) {
+        if self.connection == Connection::Online {
+            self.pump_hosts(now);
+        }
+    }
+
+    fn pump_hosts(&mut self, now: Instant) {
+        let Some(client) = self.client.as_mut() else {
+            return;
+        };
+        self.hosts.drive(&mut **client, now);
     }
 
     fn probe(&mut self) {
@@ -374,6 +408,10 @@ impl App {
         }
         if self.palette.is_some() {
             self.on_palette_key(key);
+            return;
+        }
+        if self.tab == Tab::Hosts && self.hosts.on_key(key) {
+            self.pump_hosts(Instant::now());
             return;
         }
         match key.code {
@@ -453,6 +491,11 @@ impl App {
         self.member.as_deref()
     }
 
+    /// The hosts tab's state.
+    pub fn hosts(&self) -> &HostsState {
+        &self.hosts
+    }
+
     /// Whether the event loop should stop.
     pub fn should_quit(&self) -> bool {
         self.quit
@@ -490,11 +533,15 @@ pub(crate) mod testing {
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
 
+    use tidepool_client::types::{HostCapabilityReport, HostView};
+
     use super::{ConsoleError, Identity, PoolClient};
+    use crate::tabs::hosts::{Enrollment, HostsClient};
 
     /// A client that answers from a script and counts its calls.
     pub(crate) struct ScriptedClient {
         results: VecDeque<Result<Identity, ConsoleError>>,
+        hosts: VecDeque<Result<Vec<HostView>, ConsoleError>>,
         calls: Arc<Mutex<usize>>,
     }
 
@@ -519,8 +566,14 @@ pub(crate) mod testing {
         pub(crate) fn scripted(results: Vec<Result<Identity, ConsoleError>>) -> Self {
             Self {
                 results: results.into(),
+                hosts: VecDeque::new(),
                 calls: Arc::new(Mutex::new(0)),
             }
+        }
+
+        /// Queue one host list for the hosts tab's next read.
+        pub(crate) fn queue_hosts(&mut self, hosts: Vec<HostView>) {
+            self.hosts.push_back(Ok(hosts));
         }
 
         pub(crate) fn handle(&self) -> Arc<Mutex<usize>> {
@@ -536,6 +589,33 @@ pub(crate) mod testing {
             self.results
                 .pop_front()
                 .unwrap_or_else(|| Err(transport("no scripted answer")))
+        }
+    }
+
+    /// The scaffold scripts no capabilities; the hosts tab's own tests script
+    /// that surface.
+    impl HostsClient for ScriptedClient {
+        fn list_hosts(&mut self) -> Result<Vec<HostView>, ConsoleError> {
+            self.hosts.pop_front().unwrap_or_else(|| Ok(Vec::new()))
+        }
+
+        fn host_capabilities(
+            &mut self,
+            _host_id: &str,
+        ) -> Result<HostCapabilityReport, ConsoleError> {
+            Err(transport("no scripted capability report"))
+        }
+
+        fn enroll_host(&mut self, _hostname: &str) -> Result<Enrollment, ConsoleError> {
+            Err(transport("no scripted enrollment"))
+        }
+
+        fn grant_execution(&mut self, _host_id: &str) -> Result<HostView, ConsoleError> {
+            Err(transport("no scripted grant"))
+        }
+
+        fn revoke_execution(&mut self, _host_id: &str) -> Result<HostView, ConsoleError> {
+            Err(transport("no scripted revoke"))
         }
     }
 
@@ -845,5 +925,54 @@ mod tests {
         assert!(line.starts_with("NO POOL"), "{line}");
         assert!(line.contains("pool no pool"), "{line}");
         assert!(line.contains("member not signed in"), "{line}");
+    }
+
+    #[test]
+    fn the_event_loop_refreshes_presence_without_a_key() {
+        use crate::tabs::hosts::REFRESH_INTERVAL;
+        use crate::tabs::hosts::testing::host;
+
+        let mut client = ScriptedClient::online("ops@x");
+        client.queue_hosts(vec![host("h-1", "alpha", "connected", false)]);
+        client.queue_hosts(vec![host("h-1", "alpha", "offline", false)]);
+        let mut app = App::from_credentials(
+            &file(Some("pool.test"), Some("ops@x"), Some("token")),
+            Some(Box::new(client)),
+        );
+        app.start();
+        assert_eq!(app.hosts().len(), 1);
+
+        let now = Instant::now();
+        app.tick_at(now + REFRESH_INTERVAL);
+        let rows = app.hosts().visible_rows(now + REFRESH_INTERVAL);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].host().status,
+            "offline",
+            "the tick alone moved the host offline"
+        );
+    }
+
+    #[test]
+    fn the_hosts_tab_owns_its_keys() {
+        let mut app = online_app("ops@x");
+        app.on_key(key(KeyCode::Char('e')));
+        assert_eq!(app.hosts().prompt(), Some(("hostname", "")));
+
+        app.on_key(key(KeyCode::Char('q')));
+        assert!(!app.should_quit(), "q typed into the hostname prompt");
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.hosts().prompt(), None);
+
+        app.on_key(key(KeyCode::Char('q')));
+        assert!(app.should_quit(), "q quits once the prompt is closed");
+    }
+
+    #[test]
+    fn ticking_without_an_online_pool_is_a_no_op() {
+        let mut app = App::from_credentials(&file(None, None, None), None);
+        app.tick();
+        assert_eq!(app.connection(), &Connection::NoPool);
+        assert!(app.hosts().is_empty());
     }
 }

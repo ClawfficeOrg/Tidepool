@@ -2278,6 +2278,47 @@ built by the existing gate without it.
 
 ---
 
+## 2026-10-29 — Presence is polled, last seen is local, capabilities are verbatim (task 2.2.2)
+
+**Decision: the hosts tab polls `GET /v1/hosts` instead of waiting for a push.**
+The hub contract has no host-presence stream (the chatrooms have one; hosts do
+not), and the console may not add an endpoint. So the shell's event loop calls
+`App::tick`, the tab re-reads the list every two seconds, and a host that
+disappears from `connected` is drawn offline on the next frame with no key
+press. The read is throttled in the tab, so the 250 ms redraw does not become a
+4 Hz API client, and a failed read keeps the previous rows on screen with one
+notice rather than blanking the table.
+
+**Decision: "last seen" is what this console saw, and says so.** `HostView` has
+no `last_seen_at`; inventing one from `created_at` would be indistinguishable
+from a real observation. The tab records the instant a poll last saw the host
+`connected` and keeps it when a later poll reports the host offline; a host
+never seen connected reads `never`. The pane's label is the observation, not a
+pool timestamp, which is the honest shape until the contract grows one.
+
+**Decision: capabilities are rendered from the report, unchanged.** The detail
+pane prints `reported_at`, `offered_providers` and one line per reported
+`AgentCapability` (provider/model/mode, then thinking and provider-native
+options only when the host sent them). It adds no default mode, no provider
+list and no inferred entry; an empty report renders "no capabilities reported".
+The report is cached per host, dropped on grant/revoke (the offered set may
+change), and `c` re-reads it after a failure.
+
+**Decision: enrollment is one push action, and the command is the reference
+agent's.** The tab registers the host and mints the ten-minute single-use token
+in the same request pair, then shows the token once with the
+`tidepool-host-agent` invocation that exchanges it (`HOST_ID`, `ENROLLMENT_TOKEN`,
+`POOL_HTTP_URL`). The token is never written to the credential store or the
+log; dismissing the offer discards it.
+
+**Consequence: shell wiring is outside the owned paths.**
+`tidepool-console/src/app.rs`, `src/ui/mod.rs`, `src/main.rs` and the new
+`src/tabs/mod.rs` gained the state field, the key routing, the tick and the SDK
+implementations; `docs/CHANGES.md` records the same. Everything decidable lives
+in `tabs/hosts.rs` and `ui/hosts.rs` with tests.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve
