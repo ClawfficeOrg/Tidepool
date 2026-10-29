@@ -31,6 +31,12 @@ mod popover_view;
 
 mod main_window;
 
+// The client's chat surface: the member's rooms, cursor history, live frames,
+// presence and posting. A session in a room answers as a session, never as the
+// person; the controller is independent of GPUI so it is tested headlessly.
+mod chat;
+mod chat_view;
+
 // The client's session loop and the pane that draws it: list, start, follow,
 // steer, queue and abort. The controller is independent of GPUI so it can be
 // tested without a window.

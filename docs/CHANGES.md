@@ -2,6 +2,55 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Chatrooms and talking to a session (task 2.3.4)
+
+### Added
+- `tidepool-client/src/chat/model.rs` — the pool's chatroom wire shapes
+  (`ChatRoom`, `ChatMember`, `ChatMessage`, `ChatPage`), author descriptors and
+  the merge rules. A message is keyed by its immutable server id and ordered by
+  its server sequence, never by a timestamp, so a history page and a live frame
+  that carry the same message produce one row. `AuthorKind` gives a person and
+  an agent session different words (`Person` / `Agent session`), different
+  glyphs (`●` / `◆`) and different tags, so they are distinguishable with
+  colour off.
+- `tidepool-client/src/chat/mod.rs` — `ChatController`, the headless state over
+  one `ChatTransport`: room list, forward cursor backfill, a backward cursor
+  walk for older pages, live `chat.history` / `chat.message` / `chat.current` /
+  `chat.presence` frames, presence and posting. Currentness is `CatchingUp` on
+  open and after a dropped stream, and becomes `Current` only when a read
+  reaches the head or the server sends `chat.current`. A reconnect is labelled
+  `Reconnecting` (catch-up) until then. A listed session member can be bound to
+  the room and reply through `send_as_session`; a reply authored as a person is
+  refused rather than merged. A person's message authored as a session is
+  refused the same way.
+- `tidepool-client/src/chat/http.rs` — `HttpChat` over the documented routes
+  (`GET /v1/chatrooms`, members, cursor history, `POST .../messages`). Room ids
+  are path-checked and an empty or oversized body is refused before a request.
+  Session posting returns `SessionPostingUnavailable`: the v1 member route
+  cannot act as a session, and posting there would attribute the agent's words
+  to the person.
+- `tidepool-client/src/chat_view.rs` — the chat pane: transcript rows carrying
+  the author's word, glyph and tag, the catch-up/current/reconnecting banner,
+  the presence line (members, sessions, watchers) and the composer hint. The
+  rows and banners are pure functions so they are tested without a window.
+- Tests for paging merge and the backward cursor walk, author rendering,
+  session membership and session posting, refusal of misattributed authors,
+  presence never removing a message, live messages keeping server ids, and a
+  reconnect staying catch-up until `chat.current`.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `chat` and `chat_view` modules
+  (outside the task's owned paths, required to compile the new code).
+
+### Notes
+- The pool's chatroom service already supports a `session` principal, but its
+  HTTP route authenticates an operator and always authors as that person. The
+  client therefore refuses a session send instead of misattributing it; a
+  session-authenticated send route (or a host agent that posts for the session)
+  is the follow-up this client is ready for. The scripted end-to-end in the
+  tests exercises the client and a session in one room on both sides of that
+  seam.
+
 ## [Unreleased] — 2026-10-29 — Sessions: list, start, follow, steer and abort (task 2.3.3)
 
 ### Added

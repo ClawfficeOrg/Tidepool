@@ -780,7 +780,7 @@
         {
           "id": "2.3.4",
           "title": "Chatrooms and talking to a session",
-          "status": "pending",
+          "status": "done",
           "goal": "The client's chat surface: the member's rooms, history by cursor, live messages and presence, and posting. A session running on this machine can join a room and reply in it, so a person can talk to an agent from the room rather than only from a session pane, and a session's replies are authored as a session and not as a person.",
           "touches": [
             "tidepool-client/src/chat/",
@@ -798,11 +798,12 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added chatrooms and session conversation to the client",
+          "changelog": "Chatrooms and talking to a session",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.5.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:33:21Z"
         },
         {
           "id": "2.3.5",
@@ -903,7 +904,8 @@
           "Triggers and runs screen",
           "Rooms and relay follow",
           "Session handling, parity with the CLI and scripting mode",
-          "Console identity: banner and palette"
+          "Console identity: banner and palette",
+          "Chatrooms and talking to a session"
         ]
       }
     }

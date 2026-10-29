@@ -2644,3 +2644,50 @@ place; the pool route is a follow-up outside this task's owned paths.
 against a live pool and host agent and confirm it appears in the pool's activity.
 The client's side of that (the relay calls, their order and bodies) is tested
 against a loopback pool; the pool-side record depends on the gap above.
+
+---
+
+## 2026-10-29 — Chatrooms in the client: merge by server id, currentness is fetched, session authorship is guarded (task 2.3.4)
+
+**Decision: the client merges chat by the pool's id and orders by the pool's
+sequence.** A history page, a live `chat.message` frame, a reconnect replay and
+a `chat.history` frame can carry the same message in any order.
+`merge_messages` keeps one row per id, lets the newer copy win and orders by
+`sequence` with the id as a tie-break. A live message therefore keeps the id the
+pool minted, and an overlapping page is invisible rather than a second row.
+Timestamps are never compared.
+
+**Decision: opening a room pages forward to the head, and "older" walks the same
+cursor back.** `GET /v1/chatrooms/{room}/messages` takes only `after`, so
+opening follows `next` until a page reports none, which is also the currentness
+signal. Older pages step `after` back one page at a time, keep only sequences
+below the oldest held message, and merge by id. The client keeps the newest
+`ROOM_WINDOW` (200) messages on open; older pages grow that window instead of
+replacing it.
+
+**Decision: currentness is a fetched fact.** `Currentness::CatchingUp` is the
+initial state and the state after a dropped stream. Only a read that reaches the
+head or the server's `chat.current` frame becomes `Current`. A reconnect shows
+`Reconnecting — ... not current until the pool confirms it`, and `chat.history`
+frames do not shorten that. Presence is separate and never removes a message.
+
+**Decision: a session's words are never posted as a person's, or the reverse.**
+`bind_session` admits only a session the pool lists as a room member.
+`session_reply` posts through `send_as_session` and refuses a response authored
+by anyone but that session; `post` refuses a response authored by a session.
+The refused message is not merged, so a misattribution cannot appear in the
+transcript even transiently.
+
+**Open gap for the pool.** The chatroom service supports `Principal::Session`,
+but the HTTP route (`src/api/chatrooms.rs`) authenticates an operator and always
+authors as that person. There is no session-authenticated send route in v1, and
+the host agent exposes sessions input/abort only. `HttpChat::send_as_session`
+therefore returns `SessionPostingUnavailable` rather than posting the agent's
+reply under the member's name. The client model, binding, rendering and refusal
+are tested; a pool route (or a host agent that posts for the session) is the
+follow-up outside this task's owned paths.
+
+**Consequence: module wiring and docs are outside the owned paths.**
+`tidepool-client/src/main.rs` gained `mod chat;` and `mod chat_view;` so the
+module is part of the binary and its tests run; `docs/CHANGES.md` and this file
+are updated per AGENTS.md.
