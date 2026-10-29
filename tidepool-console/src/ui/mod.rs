@@ -15,6 +15,7 @@ use ratatui::widgets::{Block, Clear, Paragraph, Tabs, Wrap};
 use crate::app::{App, Connection, Tab};
 
 pub mod hosts;
+pub mod runs;
 
 /// Draw one whole frame.
 pub fn render(app: &App, frame: &mut Frame) {
@@ -53,6 +54,10 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
         hosts::render(app.hosts(), app.pool(), frame, area);
         return;
     }
+    if app.tab() == Tab::Runs {
+        runs::render(app.runs(), frame, area);
+        return;
+    }
     let block = Block::bordered().title(format!(" {} ", app.tab().title()));
     let paragraph = Paragraph::new(body_lines(app))
         .block(block)
@@ -68,10 +73,7 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
 fn body_lines(app: &App) -> Vec<Line<'static>> {
     match app.tab() {
         Tab::Hosts => Vec::new(),
-        Tab::Runs => vec![
-            Line::from("No runs loaded yet."),
-            Line::from("Triggers and runs arrive with task 2.2.3."),
-        ],
+        Tab::Runs => Vec::new(),
         Tab::Rooms => vec![
             Line::from("No rooms loaded yet."),
             Line::from("Chatrooms and the relay arrive with task 2.2.4."),

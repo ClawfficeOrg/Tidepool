@@ -18,6 +18,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tidepool_cli::credentials::CredentialFile;
 
 use crate::tabs::hosts::{HostsClient, HostsState};
+use crate::tabs::runs::{RunsClient, RunsState};
 
 /// Everything that can go wrong before or during a console run.
 #[derive(Debug, thiserror::Error)]
@@ -185,10 +186,10 @@ pub struct Identity {
 /// What the console needs from a pool.
 ///
 /// The trait is deliberately small: the scaffold asks who it is talking to, and
-/// [`HostsClient`] adds exactly what the hosts tab reads and does. Later screens
-/// add reads here, which keeps the scripted client in the tests the same shape
-/// as the SDK-backed one.
-pub trait PoolClient: HostsClient {
+/// [`HostsClient`] and [`RunsClient`] add exactly what the hosts and runs tabs
+/// read and do. Later screens add reads here, which keeps the scripted client in
+/// the tests the same shape as the SDK-backed one.
+pub trait PoolClient: HostsClient + RunsClient {
     /// Ask the pool who the token belongs to.
     fn identity(&mut self) -> Result<Identity>;
 }
@@ -255,6 +256,7 @@ pub struct App {
     member: Option<String>,
     client: Option<Box<dyn PoolClient>>,
     hosts: HostsState,
+    runs: RunsState,
     quit: bool,
 }
 
@@ -276,6 +278,8 @@ impl App {
                 None => (Connection::SignedOut, Some(sign_in_notice(&pool)), None),
             },
         };
+        let mut runs = RunsState::new();
+        runs.set_member(member.clone());
         Self {
             tab: Tab::Hosts,
             palette: None,
@@ -285,6 +289,7 @@ impl App {
             member,
             client,
             hosts: HostsState::new(),
+            runs,
             quit: false,
         }
     }
@@ -300,6 +305,7 @@ impl App {
         }
         if self.connection == Connection::Online {
             self.pump_hosts(Instant::now());
+            self.pump_runs(Instant::now());
         }
     }
 
@@ -333,6 +339,7 @@ impl App {
         self.probe();
         if self.connection == Connection::Online {
             self.pump_hosts(Instant::now());
+            self.pump_runs(Instant::now());
         }
     }
 
@@ -346,6 +353,7 @@ impl App {
     pub(crate) fn tick_at(&mut self, now: Instant) {
         if self.connection == Connection::Online {
             self.pump_hosts(now);
+            self.pump_runs(now);
         }
     }
 
@@ -356,6 +364,13 @@ impl App {
         self.hosts.drive(&mut **client, now);
     }
 
+    fn pump_runs(&mut self, now: Instant) {
+        let Some(client) = self.client.as_mut() else {
+            return;
+        };
+        self.runs.drive(&mut **client, now);
+    }
+
     fn probe(&mut self) {
         let Some(client) = self.client.as_mut() else {
             return;
@@ -363,6 +378,7 @@ impl App {
         match client.identity() {
             Ok(identity) => {
                 self.member = Some(identity.member);
+                self.runs.set_member(self.member.clone());
                 self.connection = Connection::Online;
                 self.notice = None;
             }
@@ -412,6 +428,10 @@ impl App {
         }
         if self.tab == Tab::Hosts && self.hosts.on_key(key) {
             self.pump_hosts(Instant::now());
+            return;
+        }
+        if self.tab == Tab::Runs && self.runs.on_key(key) {
+            self.pump_runs(Instant::now());
             return;
         }
         match key.code {
@@ -496,6 +516,11 @@ impl App {
         &self.hosts
     }
 
+    /// The runs tab's state.
+    pub fn runs(&self) -> &RunsState {
+        &self.runs
+    }
+
     /// Whether the event loop should stop.
     pub fn should_quit(&self) -> bool {
         self.quit
@@ -533,10 +558,15 @@ pub(crate) mod testing {
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
 
-    use tidepool_client::types::{HostCapabilityReport, HostView};
+    use tidepool_client::endpoints::GetV1ActivityQuery;
+    use tidepool_client::types::{
+        ActivityPage, ActivityRunDetail, HostCapabilityReport, HostView, ManualDispatchRequest,
+        ManualDispatchResponse, ProjectView,
+    };
 
     use super::{ConsoleError, Identity, PoolClient};
     use crate::tabs::hosts::{Enrollment, HostsClient};
+    use crate::tabs::runs::{RunsClient, TriggerSummary};
 
     /// A client that answers from a script and counts its calls.
     pub(crate) struct ScriptedClient {
@@ -619,12 +649,41 @@ pub(crate) mod testing {
         }
     }
 
+    /// The scaffold scripts no activity; the runs tab's own tests script that
+    /// surface.
+    impl RunsClient for ScriptedClient {
+        fn list_projects(&mut self) -> Result<Vec<ProjectView>, ConsoleError> {
+            Ok(Vec::new())
+        }
+
+        fn list_activity(
+            &mut self,
+            _query: GetV1ActivityQuery,
+        ) -> Result<ActivityPage, ConsoleError> {
+            Ok(ActivityPage::default())
+        }
+
+        fn run_detail(&mut self, _run: &str) -> Result<ActivityRunDetail, ConsoleError> {
+            Err(transport("no scripted run detail"))
+        }
+
+        fn dispatch(
+            &mut self,
+            _request: ManualDispatchRequest,
+        ) -> Result<ManualDispatchResponse, ConsoleError> {
+            Err(transport("no scripted dispatch"))
+        }
+
+        fn list_triggers(&mut self, _project: &str) -> Result<Vec<TriggerSummary>, ConsoleError> {
+            Ok(Vec::new())
+        }
+    }
+
     /// How many times a scripted client was asked.
     pub(crate) fn calls(handle: &Arc<Mutex<usize>>) -> usize {
         handle.lock().map(|calls| *calls).unwrap_or_default()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::testing::{ScriptedClient, calls};

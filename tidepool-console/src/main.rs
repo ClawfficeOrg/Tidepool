@@ -33,14 +33,17 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tidepool_client::blocking::Client as SdkClient;
 use tidepool_client::endpoints::{
-    DeleteV1HostsIdExecution, GetV1Hosts, GetV1HostsIdCapabilities, GetV1PoolMe, PostV1Hosts,
-    PostV1HostsEnrollmentTokens, PostV1HostsIdExecution,
+    DeleteV1HostsIdExecution, GetV1Activity, GetV1ActivityQuery, GetV1ActivityRunsRun, GetV1Hosts,
+    GetV1HostsIdCapabilities, GetV1PoolMe, GetV1Projects, GetV1ProjectsIdConfiguration,
+    PostV1Hosts, PostV1HostsEnrollmentTokens, PostV1HostsIdExecution, PostV1Runs,
 };
 use tidepool_client::types::{
-    CreateHostRequest, HostCapabilityReport, HostView, JsonValue, MintEnrollmentTokenRequest,
+    ActivityPage, ActivityRunDetail, CreateHostRequest, HostCapabilityReport, HostView, JsonValue,
+    ManualDispatchRequest, ManualDispatchResponse, MintEnrollmentTokenRequest, ProjectView,
 };
 
 use crate::tabs::hosts::Enrollment;
+use crate::tabs::runs::{RunsClient, TriggerSummary, triggers_from_revision};
 
 fn main() -> ExitCode {
     match run() {
@@ -135,6 +138,31 @@ impl tabs::hosts::HostsClient for SdkPoolClient {
 
     fn revoke_execution(&mut self, host_id: &str) -> app::Result<HostView> {
         Ok(self.client.call(&DeleteV1HostsIdExecution::new(host_id))?)
+    }
+}
+
+impl RunsClient for SdkPoolClient {
+    fn list_projects(&mut self) -> app::Result<Vec<ProjectView>> {
+        Ok(self.client.call(&GetV1Projects::new())?.projects)
+    }
+
+    fn list_activity(&mut self, query: GetV1ActivityQuery) -> app::Result<ActivityPage> {
+        Ok(self.client.call(&GetV1Activity::new().with_query(query))?)
+    }
+
+    fn run_detail(&mut self, run: &str) -> app::Result<ActivityRunDetail> {
+        Ok(self.client.call(&GetV1ActivityRunsRun::new(run))?)
+    }
+
+    fn dispatch(&mut self, request: ManualDispatchRequest) -> app::Result<ManualDispatchResponse> {
+        Ok(self.client.call(&PostV1Runs::new(request))?)
+    }
+
+    fn list_triggers(&mut self, project: &str) -> app::Result<Vec<TriggerSummary>> {
+        let revision = self
+            .client
+            .call(&GetV1ProjectsIdConfiguration::new(project))?;
+        Ok(triggers_from_revision(&revision))
     }
 }
 

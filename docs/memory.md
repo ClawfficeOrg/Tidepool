@@ -2319,6 +2319,52 @@ in `tabs/hosts.rs` and `ui/hosts.rs` with tests.
 
 ---
 
+## 2026-10-29 — The runs tab follows the clock, and trigger names come from the revision (task 2.2.3)
+
+**Decision: "live" is a bounded poll of `GET /v1/activity/runs/{run}`.** The
+activity API has no push channel for a run detail, so the tab reads it again
+every second while the run or any step is pending or running. A run that says
+`succeeded` but still has a running step keeps following, because the run word
+is written when the last step finishes; once every step is terminal the timer
+stops and a further tick makes no request. The poll interval is injected through
+`drive(client, now)`, so the tests advance the clock instead of sleeping.
+
+**Decision: filters are sent and applied again.** The tab builds
+`GetV1ActivityQuery` from only the non-empty filters, which is what the pool
+expects (an absent filter means "all"), and then applies the same predicates to
+each page it receives. A pool that ignored a filter, or a stale page that
+arrived after the filter changed, therefore cannot show another project's or
+provider's records. A missing field never satisfies an active filter.
+
+**Decision: the trigger list reads the active configuration revision.** The
+pool has no trigger-list route (the CLI already documents the same gap), so the
+console reads `GET /v1/projects/{id}/configuration` and parses the authored
+`triggers/` files. The control plane's canonical writer emits block YAML, so the
+tab has a small reader for exactly that shape and accepts JSON too; an
+unreadable file is still listed with the parse problem beside it rather than
+hidden. A trigger is shown active only when the revision itself is active and
+valid.
+
+**Decision: dispatch refuses locally what the pool would refuse.** The actor
+must be in the selected trigger's `from_users` allowlist (case-insensitive), and
+an inactive or unknown trigger is refused before a request leaves the console.
+The delivery key is generated once when the form opens and stays stable if the
+person edits and retries, so a double press returns the existing run; a fresh
+form gets a fresh key. The actor defaults to the signed-in member.
+
+**Decision: a failure code is a sentence with the code beside it.** The table
+mirrors the control plane's mapping. A known code renders as words; an unknown
+code keeps the pool's own text and still shows the code; a bare code in
+`reason` is treated the same way. Nothing is hidden, so an operator can quote
+the code in a bug report.
+
+**Consequence: shell wiring and one dependency are outside the owned paths.**
+`app.rs`, `ui/mod.rs`, `tabs/mod.rs`, `main.rs` gained the state field, key
+routing, tick and SDK calls, and `tidepool-console/Cargo.toml` added
+`serde_json` (already in the workspace lock) for the authored documents.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

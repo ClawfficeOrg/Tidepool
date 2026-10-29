@@ -2,6 +2,41 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Console triggers and runs screen (task 2.2.3)
+
+### Added
+- `tidepool-console/src/tabs/runs.rs` — the runs tab's state and client
+  surface: the combined activity feed narrowed by project, provider, trigger
+  and status, with every active filter sent to `GET /v1/activity` and applied
+  again to the page received. A run detail is read on open and re-read once a
+  second while the run or any step is pending or running; trailing output lines
+  follow without a key press and the poll stops once every step is terminal.
+  Manual dispatch collects project, trigger, actor, delivery key, input and an
+  optional revision, refuses an actor the trigger's `from_users` allowlist does
+  not name, and follows the run it creates or matches. The read-only trigger
+  list comes from the project's active configuration revision, parsing the
+  authored `triggers/` files as JSON or block YAML. Failure codes are mapped to
+  sentences (`daemon_not_connected`, `host_not_found`, `execution_failed`, …)
+  with the stable code kept beside them.
+- `tidepool-console/src/ui/runs.rs` — the activity table, the trigger pane
+  (event, filters, active or inactive), the run detail with each step's status,
+  output tail and failure sentence plus code, and the dispatch form. Side by
+  side above 100 columns, stacked below it.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/ui/mod.rs` / `src/tabs/mod.rs` /
+  `src/main.rs` — the shell owns the runs state, routes the tab's keys before
+  the global bindings, ticks the tab from the event loop and delegates the Runs
+  body to the new renderer. `PoolClient` extends `RunsClient`; the SDK-backed
+  client implements the five runs calls.
+- `tidepool-console/Cargo.toml` — `serde_json` for reading authored trigger
+  documents (already in the workspace lock). No new crate version is selected.
+- Tests: scripted-client unit tests for filter combination and client-side
+  matching, clock-driven feed refresh, live detail following and stopping, tail
+  truncation, dispatch input collection and actor refusal, delivery-key
+  stability, failure-code wording and trigger parsing; `TestBackend` rendering
+  tests for the feed, trigger pane, detail, failure code and dispatch form.
+
 ## [Unreleased] — 2026-10-29 — Console hosts and presence screen (task 2.2.2)
 
 ### Added

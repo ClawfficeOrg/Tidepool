@@ -3073,6 +3073,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "ratatui",
+ "serde_json",
  "thiserror 1.0.69",
  "tidepool-cli",
  "tidepool-client",
