@@ -1573,6 +1573,52 @@ handling must not be a `while (true)`.
 
 ---
 
+## 2026-10-29 — Rust SDK: one contract, one typed request per route, blocking by default (task 2.0.3)
+
+**Context:** the ratatui console, the reference host agent and the Zoid client
+all need the hub contract from Rust. The TypeScript SDK already defines the
+resource shape, but Rust consumers live in a terminal and on an agent that must
+not care which async executor is fashionable. The crate therefore has to be the
+same library again, not a second opinion, and it must be usable with no runtime.
+
+**Options considered:**
+- **Async-only, Tokio required.** One transport, but every consumer pays for a
+  runtime even when it only lists hosts once, and the CLI would have to create
+  one. Rejected: "no unavoidably async runtime choice" is a stated goal.
+- **A hand-written method per route.** Readable, but 83 routes and 90 schemas
+  drift the day the contract changes, and the drift is silent. Rejected.
+- **OpenAPI codegen as a dependency.** The TS SDK already proved a ~600-line
+  local renderer is enough and keeps the review point explicit. Rejected.
+- **Chosen: a feature-split crate with generated artifacts.** No default
+  feature is the contract-only core; `blocking` (default) is `ureq` with no
+  runtime; `async` is `reqwest` and therefore Tokio. `docs/api/openapi-v1.json`
+  is the only input, and every route becomes a type implementing
+  `route::Endpoint` with a typed `Response`, path, query and body. The
+  `operationId → namespace.method` map is explicit and fails generation if a
+  route is unmapped, exactly as in `sdk/ts`.
+
+**Consequences:**
+- The test suite parses the committed contract and asserts that the route
+  table is the same set of operations with the same methods, paths, path
+  parameters and body presence. Node is not needed to run `cargo test`; the
+  generator's `--check` is the byte-for-byte gate in CI.
+- Generated files are rustfmt-formatted by the generator itself, so `cargo fmt
+  --check` and `generate.mjs --check` agree. Without that, the two gates would
+  fight.
+- The blocking facade is the richer one: cursor iterators and a real socket
+  (`tungstenite`). The async facade returns the same typed stream handle and
+  leaves the socket to the caller, avoiding a second async-stack dependency
+  (`tokio-tungstenite`) for a feature only one client uses.
+- Retry semantics are copied deliberately from the TypeScript SDK so the
+  conformance suite in 2.0.5 can compare them: 429 only, bounded, `Retry-After`
+  honoured up to 60 s, refresh at most once per request. Only the
+  delta-seconds `Retry-After` form is parsed; the pool sends nothing else.
+- `Problem` is parsed leniently (only `code` is required) so a failure from a
+  proxy or a game route still yields a typed error with the status and the
+  `x-request-id` header.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

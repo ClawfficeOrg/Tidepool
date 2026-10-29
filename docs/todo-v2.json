@@ -116,7 +116,7 @@
         {
           "id": "2.0.3",
           "title": "Rust SDK",
-          "status": "pending",
+          "status": "done",
           "goal": "sdk/rust: crate `tidepool-client`, the Rust binding of the same contract and the same resource shape as the TypeScript SDK, sharing its types where the contract allows. This is what the ratatui console, the reference host agent and the Zoid client depend on, so it favours a small dependency set, no unavoidably async runtime choice, and a blocking facade over the async core.",
           "touches": [
             "sdk/rust/",
@@ -134,8 +134,9 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the Rust SDK",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Rust SDK",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T06:50:21Z"
         },
         {
           "id": "2.0.4",
@@ -857,7 +858,8 @@
         "release_notes": "Tidepool 0.6.0 ships the clients: the machine-readable hub contract, TypeScript, Rust and Python SDKs with one conformance suite, the tidepool CLI, the Svelte control plane, the ratatui control console, and the reference human client as a Zoid tray application. Rhumb federation and the hosted multi-tenant pool are deferred to v3.",
         "changelog_entries": [
           "Machine-readable hub API contract",
-          "TypeScript SDK"
+          "TypeScript SDK",
+          "Rust SDK"
         ]
       }
     }

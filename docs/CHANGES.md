@@ -2,6 +2,37 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Rust SDK (task 2.0.3)
+
+### Added
+- `sdk/rust/` — `tidepool-client`, the Rust binding of
+  `docs/api/openapi-v1.json` (API v1, contract 1.0.0). One typed request per
+  contract route (83 operations), the route table with auth model, required
+  scope and role, the generated namespace wrappers, typed success and request
+  bodies, and a generic `request_json` path keyed by operation id.
+- `sdk/rust/src/generated/{types,routes,endpoints,resources}.rs` — generated
+  artifacts, rustfmt-clean, checked against the contract by the crate tests.
+- `sdk/rust/scripts/generate.mjs` — the generator: the only input is the
+  committed contract, the `operationId → namespace.method` map fails on an
+  unmapped route, and `--check` compares the committed artifacts byte for byte.
+- `sdk/rust/src/blocking.rs` — the default blocking facade over `ureq`: ambient
+  credentials, refresh-once, bounded 429 retries that honour `Retry-After`,
+  problem-details errors, and a typed chatroom socket over `tungstenite`.
+  No caller-written runtime.
+- `sdk/rust/src/asynchronous.rs` — the opt-in async facade over `reqwest` with
+  the same surface and an async refresh hook.
+- `sdk/rust/src/paging.rs` — `chat_messages`, `relay_events` and `activity`
+  iterators following `next`/`nextCursor`.
+- `sdk/rust/tests/` — contract-parity, types, blocking, async, paging and
+  streaming tests over scripted local servers; the dev-stack test is opt-in and
+  ignored.
+- `Cargo.toml` — `sdk/rust` added to the workspace.
+
+### Changed
+- `sdk/rust/Cargo.toml` — default features are a blocking build with no async
+  runtime; `--no-default-features` is the contract-only core and `async` is
+  opt-in.
+
 ## [Unreleased] — 2026-10-29 — TypeScript SDK (task 2.0.2)
 
 ### Added

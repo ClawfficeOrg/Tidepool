@@ -35,5 +35,5 @@ hex = "0.4"
 validator = { version = "0.20", features = ["derive"] }
 
 [workspace]
-members = [".", "crates/tidepool-host-agent"]
+members = [".", "crates/tidepool-host-agent", "sdk/rust"]
 resolver = "2"
