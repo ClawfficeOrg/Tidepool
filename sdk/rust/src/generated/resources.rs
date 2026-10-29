@@ -480,6 +480,14 @@ pub mod blocking_api {
             client.call(&crate::endpoints::PostV1PoolLogin::new(body))
         }
 
+        /// Sign out: revoke the presented operator token
+        pub fn logout(
+            client: &crate::blocking::Client,
+            body: crate::types::JsonValue,
+        ) -> crate::Result<()> {
+            client.call(&crate::endpoints::PostV1PoolLogout::new(body))
+        }
+
         /// Fetch the signed-in operator and organization
         pub fn me(
             client: &crate::blocking::Client,
@@ -1319,6 +1327,16 @@ pub mod async_api {
         ) -> crate::Result<crate::types::PoolLoginResponse> {
             client
                 .call(&crate::endpoints::PostV1PoolLogin::new(body))
+                .await
+        }
+
+        /// Sign out: revoke the presented operator token
+        pub async fn logout(
+            client: &crate::asynchronous::Client,
+            body: crate::types::JsonValue,
+        ) -> crate::Result<()> {
+            client
+                .call(&crate::endpoints::PostV1PoolLogout::new(body))
                 .await
         }
 

@@ -28,7 +28,7 @@ def contract_operations():
 
 def test_every_contract_route_is_in_the_generated_table():
     operations = contract_operations()
-    assert len(operations) == 83
+    assert len(operations) == 84
     assert set(ROUTES) == set(operations)
     assert len(ROUTE_LIST) == len(operations)
 

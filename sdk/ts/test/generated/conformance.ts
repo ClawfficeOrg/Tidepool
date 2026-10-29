@@ -313,6 +313,11 @@ void post_v1_pool_login;
 // @ts-expect-error the request body is typed by the contract
 void client.pool.login(42, )
 
+const post_v1_pool_logout: Promise<void> = client.pool.logout({} as JsonObject, );
+void post_v1_pool_logout;
+// @ts-expect-error the request body is typed by the contract
+void client.pool.logout(42, )
+
 const post_v1_pool_password: Promise<void> = client.pool.changePassword({} as ChangePasswordRequest, );
 void post_v1_pool_password;
 // @ts-expect-error the request body is typed by the contract

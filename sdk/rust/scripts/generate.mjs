@@ -49,6 +49,7 @@ const NAMES = {
   post_v1_pool_invitations_accept: ["pool", "acceptInvitation"],
   delete_v1_pool_invitations_id: ["pool", "revokeInvitation"],
   post_v1_pool_password: ["pool", "changePassword"],
+  post_v1_pool_logout: ["pool", "logout"],
 
   get_v1_api_keys: ["apiKeys", "list"],
   post_v1_api_keys: ["apiKeys", "create"],

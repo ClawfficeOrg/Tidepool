@@ -614,6 +614,14 @@ class SyncPool:
             options=options,
         )
 
+    def logout(self, body: Any = None, options: "CallOptions" = None) -> None:
+        """Sign out: revoke the presented operator token"""
+        return self._client.call(
+            'post_v1_pool_logout',
+            body=body,
+            options=options,
+        )
+
     def me(self, options: "CallOptions" = None) -> PoolIdentityView:
         """Fetch the signed-in operator and organization"""
         return self._client.call(
@@ -1442,6 +1450,14 @@ class AsyncPool:
         """Sign an operator in and issue a JWT"""
         return await self._client.call(
             'post_v1_pool_login',
+            body=body,
+            options=options,
+        )
+
+    async def logout(self, body: Any = None, options: "CallOptions" = None) -> None:
+        """Sign out: revoke the presented operator token"""
+        return await self._client.call(
+            'post_v1_pool_logout',
             body=body,
             options=options,
         )

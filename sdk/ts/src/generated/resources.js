@@ -193,6 +193,9 @@ export function buildResources(client) {
       login(body, options) {
         return client._call("post_v1_pool_login", options, undefined, body);
       },
+      logout(body, options) {
+        return client._call("post_v1_pool_logout", options, undefined, body);
+      },
       me(options) {
         return client._call("get_v1_pool_me", options, undefined, undefined);
       },

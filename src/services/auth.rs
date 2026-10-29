@@ -38,6 +38,10 @@ pub struct Claims {
     pub iat: i64,
     /// Expiry, seconds since the UNIX epoch.
     pub exp: i64,
+    /// Token id, used to revoke this token on sign-out. Absent on tokens
+    /// issued before revocation existed; those cannot be revoked early.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>,
 }
 
 /// Hash a plaintext password with Argon2id and the OS RNG salt.
@@ -95,6 +99,7 @@ pub fn issue_jwt(secret: &str, subject: &str, ttl_secs: u64) -> Result<String> {
         sub: subject.to_string(),
         iat: now,
         exp,
+        jti: Some(uuid::Uuid::new_v4().to_string()),
     };
     encode(
         &Header::new(Algorithm::HS256),

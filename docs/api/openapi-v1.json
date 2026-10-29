@@ -6965,6 +6965,79 @@
         "x-surface": "hub"
       }
     },
+    "/v1/pool/logout": {
+      "post": {
+        "operationId": "post_v1_pool_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Sign out: revoke the presented operator token",
+        "tags": [
+          "pool"
+        ],
+        "x-auth": "member",
+        "x-contract-version": "1.0.0",
+        "x-surface": "hub"
+      }
+    },
     "/v1/pool/me": {
       "get": {
         "operationId": "get_v1_pool_me",

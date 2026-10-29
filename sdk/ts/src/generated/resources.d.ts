@@ -308,6 +308,10 @@ export interface Resources {
      */
     login(body: PoolLoginRequest, options?: RequestOptions): Promise<PoolLoginResponse>;
     /**
+     * Sign out: revoke the presented operator token
+     */
+    logout(body: JsonObject, options?: RequestOptions): Promise<void>;
+    /**
      * Fetch the signed-in operator and organization
      */
     me(options?: RequestOptions): Promise<PoolIdentityView>;

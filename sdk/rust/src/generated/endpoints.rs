@@ -2001,6 +2001,35 @@ impl Endpoint for PostV1PoolLogin {
     }
 }
 
+/// Sign out: revoke the presented operator token
+/// `POST /v1/pool/logout`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PostV1PoolLogout {
+    /// Request body.
+    pub body: crate::types::JsonValue,
+}
+
+impl PostV1PoolLogout {
+    /// Build the request.
+    pub fn new(body: crate::types::JsonValue) -> Self {
+        Self {
+            body: body,
+            ..Self::default()
+        }
+    }
+}
+
+impl Endpoint for PostV1PoolLogout {
+    type Response = ();
+    const ROUTE: &'static crate::route::RouteInfo = &crate::routes::ROUTE_POST_V1_POOL_LOGOUT;
+    fn path(&self) -> String {
+        Self::ROUTE.path.to_owned()
+    }
+    fn body(&self) -> crate::Result<Option<Vec<u8>>> {
+        Ok(Some(serde_json::to_vec(&self.body)?))
+    }
+}
+
 /// Replace the operator's password (clears first-sign-in requirement)
 /// `POST /v1/pool/password`.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -2616,6 +2645,7 @@ mod typed {
         assert_endpoint::<PostV1PoolInvitations>();
         assert_endpoint::<PostV1PoolInvitationsAccept>();
         assert_endpoint::<PostV1PoolLogin>();
+        assert_endpoint::<PostV1PoolLogout>();
         assert_endpoint::<PostV1PoolPassword>();
         assert_endpoint::<PostV1Projects>();
         assert_endpoint::<PostV1ProjectsIdConfigurationInstall>();

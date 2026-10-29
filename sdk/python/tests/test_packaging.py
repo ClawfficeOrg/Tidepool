@@ -78,4 +78,4 @@ def test_wheel_contains_the_package_and_imports_without_installing(tmp_path):
         [sys.executable, "-c", probe], capture_output=True, text=True, timeout=60
     )
     assert imported.returncode == 0, imported.stderr
-    assert imported.stdout.strip() == "83 0.1.0"
+    assert imported.stdout.strip() == "84 0.1.0"

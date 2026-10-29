@@ -8,6 +8,7 @@
 //! Override with `DATABASE_URL`.
 
 use actix_web::{App, http::StatusCode, test, web};
+use redis::aio::ConnectionManager;
 use serde_json::{Value, json};
 use sqlx::MySqlPool;
 use tidepool::{
@@ -27,6 +28,19 @@ const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_
 const JWT_SECRET: &str = "integration-test-chatrooms-jwt-secret-32ch";
 
 static DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+// The dev stack publishes Redis on 6380 (see config/docker-compose.dev.override.yml).
+const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6380";
+
+/// The session store operator routes require: they fail closed without one.
+async fn sessions() -> web::Data<ConnectionManager> {
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| DEFAULT_REDIS_URL.into());
+    web::Data::new(
+        tidepool::services::redis::connect(&url)
+            .await
+            .expect("Redis unavailable; start the dev stack or set REDIS_URL"),
+    )
+}
 
 async fn pool() -> MySqlPool {
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB_URL.into());
@@ -198,6 +212,7 @@ async fn membership_gates_reads_and_writes_indistinguishably() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::chatrooms::config),
     )
     .await;
@@ -353,6 +368,7 @@ async fn cursor_paging_stays_stable_while_new_messages_arrive() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::chatrooms::config),
     )
     .await;
@@ -493,6 +509,7 @@ async fn the_live_stream_refuses_non_members_and_bad_tokens() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::chatrooms::config),
     )
     .await;

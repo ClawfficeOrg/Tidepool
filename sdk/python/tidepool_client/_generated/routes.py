@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-CONTRACT_SHA256 = 'eceeec7d353bdf813d0f77140f5727983785fa65ae632df6d3fc2831bf80bfb2'
+CONTRACT_SHA256 = '8b278c367588c9205ce0cf69ef17b58e9d20aa760fd0f1a3818e049dcf738957'
 
 CONTRACT_VERSION = '1.0.0'
 
@@ -1519,6 +1519,28 @@ ROUTES: Dict[str, Route] = {
         surface='hub',
         deprecated=False,
         summary='Sign an operator in and issue a JWT',
+    ),
+    'post_v1_pool_logout': Route(
+        operation_id='post_v1_pool_logout',
+        method='POST',
+        path='/v1/pool/logout',
+        namespace=('pool',),
+        name='logout',
+        path_params=(),
+        query_params=(),
+        has_body=True,
+        body_model=None,
+        response_kind='empty',
+        response_models=(),
+        success=(204,),
+        errors=(401, 403),
+        rate_limited=True,
+        auth='member',
+        scope=None,
+        role=None,
+        surface='hub',
+        deprecated=False,
+        summary='Sign out: revoke the presented operator token',
     ),
     'post_v1_pool_password': Route(
         operation_id='post_v1_pool_password',

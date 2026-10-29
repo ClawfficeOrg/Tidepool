@@ -7,7 +7,7 @@ pub use crate::route::{Auth, Method, RouteInfo, Surface};
 
 /// SHA-256 of the contract this module was generated from.
 pub const CONTRACT_SHA256: &str =
-    "eceeec7d353bdf813d0f77140f5727983785fa65ae632df6d3fc2831bf80bfb2";
+    "8b278c367588c9205ce0cf69ef17b58e9d20aa760fd0f1a3818e049dcf738957";
 
 /// Contract version reported by the committed document.
 pub const CONTRACT_VERSION: &str = "1.0.0";
@@ -1346,6 +1346,26 @@ pub static ROUTE_POST_V1_POOL_LOGIN: RouteInfo = RouteInfo {
     summary: "Sign an operator in and issue a JWT",
 };
 
+/// `POST /v1/pool/logout` — Sign out: revoke the presented operator token
+pub static ROUTE_POST_V1_POOL_LOGOUT: RouteInfo = RouteInfo {
+    operation_id: "post_v1_pool_logout",
+    method: Method::Post,
+    path: "/v1/pool/logout",
+    path_params: &[],
+    query_params: &[],
+    has_body: true,
+    response: "()",
+    success: &[204],
+    errors: &[401, 403],
+    rate_limited: true,
+    auth: Auth::Member,
+    scope: None,
+    role: None,
+    surface: Surface::Hub,
+    deprecated: false,
+    summary: "Sign out: revoke the presented operator token",
+};
+
 /// `POST /v1/pool/password` — Replace the operator's password (clears first-sign-in requirement)
 pub static ROUTE_POST_V1_POOL_PASSWORD: RouteInfo = RouteInfo {
     operation_id: "post_v1_pool_password",
@@ -1754,6 +1774,7 @@ pub static ROUTES: &[&RouteInfo] = &[
     &ROUTE_POST_V1_POOL_INVITATIONS,
     &ROUTE_POST_V1_POOL_INVITATIONS_ACCEPT,
     &ROUTE_POST_V1_POOL_LOGIN,
+    &ROUTE_POST_V1_POOL_LOGOUT,
     &ROUTE_POST_V1_POOL_PASSWORD,
     &ROUTE_POST_V1_PROJECTS,
     &ROUTE_POST_V1_PROJECTS_ID_CONFIGURATION_INSTALL,

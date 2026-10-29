@@ -411,6 +411,14 @@ const ROUTES: &[RouteSpec] = &[
         ..HUB
     },
     RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/pool/logout",
+        tag: "pool",
+        summary: "Sign out: revoke the presented operator token",
+        success: "204",
+        ..HUB
+    },
+    RouteSpec {
         method: HttpMethod::Get,
         path: "/v1/pool/members",
         tag: "pool",
@@ -2723,22 +2731,22 @@ mod tests {
         const SYSTEM_PATHS: &[&str] =
             &["/healthz", "/metrics", "/openapi.json", "/openapi/v1.json"];
 
-        assert_eq!(ROUTES.len(), 83, "ROUTES must describe all 83 routes");
+        assert_eq!(ROUTES.len(), 84, "ROUTES must describe all 84 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.surface == Surface::Hub)
                 .count(),
-            60,
-            "the hub contract documents 60 operations"
+            61,
+            "the hub contract documents 61 operations"
         );
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            79,
-            "19 game and 60 hub operations must stay under /v1/"
+            80,
+            "19 game and 61 hub operations must stay under /v1/"
         );
 
         let system: BTreeSet<&str> = ROUTES
@@ -3164,7 +3172,7 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 60, "expected 60 hub operations");
+        assert_eq!(registered.len(), 61, "expected 61 hub operations");
     }
 
     /// The published, commit-tracked artifact must be exactly what the tables

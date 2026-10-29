@@ -78,6 +78,7 @@ The machine-readable document is served at `/openapi.json` and at the pinned maj
 | POST | `/v1/pool/login` | public | — | PoolLoginRequest | 200 | PoolLoginResponse |
 | GET | `/v1/pool/me` | member | — | — | 200 | PoolIdentityView |
 | POST | `/v1/pool/password` | member | — | ChangePasswordRequest | 204 | — |
+| POST | `/v1/pool/logout` | member | — | — | 204 | — |
 | GET | `/v1/pool/members` | member | — | — | 200 | MembersResponse |
 | PATCH | `/v1/pool/members/{id}` | member | — | UpdateRoleRequest | 200 | PoolUserView |
 | DELETE | `/v1/pool/members/{id}` | member | — | — | 204 | — |
