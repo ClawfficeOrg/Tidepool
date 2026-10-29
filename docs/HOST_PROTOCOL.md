@@ -125,6 +125,16 @@ replay safe).
 {"v": 1, "type": "interrupt_execution", "executionId": "<id>"}
 ```
 
+An operator sends it with
+`POST /v1/hosts/{id}/executions/{execution_id}/interrupt` (member token, a
+viewer is refused). The execution must belong to that host. A running
+execution is answered `202` with `"sent": true`; an execution that is already
+terminal is answered `200` with `"sent": false` and nothing is sent; a host
+with no live socket fails with `daemon_not_connected`. The grant is not
+required, so work can still be stopped after `host.execute` is revoked. The
+route does not change the recorded status: the host's `execution_completed`
+does.
+
 The host stops the execution and answers with `execution_completed` and
 `status: "interrupted"`. Interrupting an unknown or already-completed
 execution is answered with the existing completion or a no-op error frame.

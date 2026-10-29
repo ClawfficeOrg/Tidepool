@@ -5,6 +5,8 @@
 //! - `GET    /v1/hosts/{id}`  — fetch one live host
 //! - `PATCH  /v1/hosts/{id}`  — rename slug/display name; id is immutable
 //! - `DELETE /v1/hosts/{id}`  — revoke the pool relationship
+//! - `POST   /v1/hosts/{id}/executions/{execution_id}/interrupt` — send
+//!   `interrupt_execution` to the host running that execution
 //!
 //! Revoked hosts are absent from every endpoint. Mutating routes reject a
 //! viewer with the hub problem contract.
@@ -44,6 +46,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/{id}/capabilities", web::get().to(get_capabilities))
             .route("/{id}/capabilities", web::post().to(report_capabilities))
             .route("/{id}/executions", web::post().to(create_execution))
+            .route(
+                "/{id}/executions/{execution_id}/interrupt",
+                web::post().to(interrupt_execution),
+            )
             .route("/{id}", web::get().to(get_host))
             .route("/{id}", web::patch().to(rename_host))
             .route("/{id}", web::delete().to(revoke_host)),
@@ -505,12 +511,76 @@ async fn create_execution(
     }
 }
 
+/// Interrupt response.
+#[derive(Debug, Serialize)]
+pub struct InterruptExecutionResponse {
+    /// Execution state as recorded when the request was handled. The host's
+    /// `execution_completed` frame updates it later.
+    pub execution: HostExecutionView,
+    /// True when `interrupt_execution` was sent; false when the execution was
+    /// already terminal and nothing was sent.
+    pub sent: bool,
+}
+
+/// Ask the host running an execution to stop it.
+#[tracing::instrument(skip(pool, auth))]
+async fn interrupt_execution(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    path: web::Path<(String, String)>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(e) = auth.require_mutating() {
+        return error_response(e);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    let (host_id, execution_id) = path.into_inner();
+
+    match protocol_svc::interrupt_host_execution(
+        pool.get_ref(),
+        auth.organization_id(),
+        &host_id,
+        &execution_id,
+    )
+    .await
+    {
+        Ok((execution, sent)) => {
+            crate::services::api_keys::audit(
+                pool.get_ref(),
+                AuditEntry {
+                    organization_id: auth.organization_id(),
+                    actor: actor(&auth),
+                    action: "host.execution_interrupt",
+                    target_kind: Some("execution"),
+                    target_public_id: Some(&execution.id),
+                    detail: serde_json::json!({ "sent": sent }),
+                },
+            )
+            .await;
+            let status = if sent {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::OK
+            };
+            HttpResponse::build(status).json(InterruptExecutionResponse { execution, sent })
+        }
+        Err(e) => map_protocol_error(e, &req),
+    }
+}
+
 fn map_protocol_error(error: HostProtocolError, req: &HttpRequest) -> HttpResponse {
     let (status, code, detail) = match error {
         HostProtocolError::NotFound => (
             StatusCode::NOT_FOUND,
             ProblemCode::NotFound,
             "host not found".to_string(),
+        ),
+        HostProtocolError::ExecutionNotFound => (
+            StatusCode::NOT_FOUND,
+            ProblemCode::NotFound,
+            "execution not found".to_string(),
         ),
         HostProtocolError::NotGranted => (
             StatusCode::FORBIDDEN,
@@ -621,6 +691,18 @@ mod tests {
     async fn list_requires_a_member_token() {
         let app = test::init_service(App::new().configure(config)).await;
         let req = test::TestRequest::get().uri("/v1/hosts").to_request();
+        assert_eq!(
+            test::call_service(&app, req).await.status(),
+            TestStatus::UNAUTHORIZED
+        );
+    }
+
+    #[actix_web::test]
+    async fn interrupt_requires_a_member_token() {
+        let app = test::init_service(App::new().configure(config)).await;
+        let req = test::TestRequest::post()
+            .uri("/v1/hosts/host-1/executions/exec-1/interrupt")
+            .to_request();
         assert_eq!(
             test::call_service(&app, req).await.status(),
             TestStatus::UNAUTHORIZED

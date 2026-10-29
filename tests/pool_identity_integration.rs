@@ -2054,6 +2054,112 @@ async fn create_execution_refuses_a_host_without_the_execution_grant() {
         .expect("disconnect");
 }
 
+// ── operator interrupt route ──────────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn interrupt_route_is_scoped_to_the_host_and_skips_terminal_executions() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let mut hosts = Vec::new();
+    for hostname in ["interrupt-host", "other-interrupt-host"] {
+        let host = host_svc::register_host(
+            &pool,
+            organization_id,
+            host_svc::NewHost {
+                hostname: hostname.into(),
+                display_name: None,
+            },
+            AuditActor::System,
+        )
+        .await
+        .expect("register");
+        let internal: u64 = sqlx::query_scalar("SELECT id FROM hosts WHERE public_id = ?")
+            .bind(&host.public_id)
+            .fetch_one(&pool)
+            .await
+            .expect("host id");
+        hosts.push((host.public_id, internal));
+    }
+    let (host_id, host_internal) = hosts[0].clone();
+    let (other_host_id, _) = hosts[1].clone();
+    for (execution_id, status) in [
+        ("exec-int-running", "running"),
+        ("exec-int-done", "succeeded"),
+    ] {
+        sqlx::query(
+            "INSERT INTO host_executions (public_id, host_id, prompt, status) \
+             VALUES (?, ?, 'hello', ?)",
+        )
+        .bind(execution_id)
+        .bind(host_internal)
+        .bind(status)
+        .execute(&pool)
+        .await
+        .expect("insert execution");
+    }
+
+    let interrupt = |host: &str, execution_id: &str| {
+        test::TestRequest::post()
+            .uri(&format!(
+                "/v1/hosts/{host}/executions/{execution_id}/interrupt"
+            ))
+            .insert_header(("Authorization", format!("Bearer {owner_token}")))
+            .to_request()
+    };
+
+    // Unknown host and unknown execution are not found.
+    let resp = test::call_service(&app, interrupt("no-such-host", "exec-int-running")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let resp = test::call_service(&app, interrupt(&host_id, "exec-missing")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["code"], "not_found");
+
+    // An execution is only reachable through the host that runs it.
+    let resp = test::call_service(&app, interrupt(&other_host_id, "exec-int-running")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // A terminal execution is returned as recorded; nothing is sent.
+    let resp = test::call_service(&app, interrupt(&host_id, "exec-int-done")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["sent"], false);
+    assert_eq!(body["execution"]["status"], "succeeded");
+
+    // A running execution needs the host's live socket.
+    let resp = test::call_service(&app, interrupt(&host_id, "exec-int-running")).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["code"], "daemon_not_connected");
+
+    // The route does not change the recorded state; only the host's
+    // completion frame does.
+    let execution = tidepool::services::host_protocol::find_execution(&pool, "exec-int-running")
+        .await
+        .expect("find")
+        .expect("exists");
+    assert_eq!(
+        execution.status,
+        tidepool::entities::host_execution::ExecutionStatus::Running
+    );
+}
+
 // ── connections registry (task 1.3.1) ─────────────────────────────────────
 
 #[actix_web::test]

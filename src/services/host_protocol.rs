@@ -42,6 +42,9 @@ pub enum HostProtocolError {
     /// Host is unknown/revoked.
     #[error("host not found")]
     NotFound,
+    /// No execution with that id runs on this host.
+    #[error("execution not found")]
+    ExecutionNotFound,
     /// The host has not granted execution (`host.execute` is off).
     #[error("host.execute: execution has not been granted for this host")]
     NotGranted,
@@ -200,6 +203,49 @@ pub async fn interrupt_execution(
     Ok(())
 }
 
+/// Operator-facing interrupt, scoped to one host in one organization.
+///
+/// The execution must belong to `host_public_id`, and the host must belong to
+/// `organization_id`; anything else is not found. A terminal execution is
+/// returned as recorded and no frame is sent. Otherwise `interrupt_execution`
+/// is sent to the host's live socket, and the host answers with
+/// `execution_completed`. The execution grant is not required: interrupting
+/// is how work is stopped after the grant is revoked.
+///
+/// Returns the execution as currently recorded and whether a frame was sent.
+pub async fn interrupt_host_execution(
+    pool: &MySqlPool,
+    organization_id: u64,
+    host_public_id: &str,
+    execution_id: &str,
+) -> Result<(HostExecutionView, bool), HostProtocolError> {
+    let host = crate::services::hosts::find_host(pool, organization_id, host_public_id)
+        .await
+        .map_err(|error| match error {
+            crate::services::hosts::HostServiceError::Database(e) => HostProtocolError::Database(e),
+            _ => HostProtocolError::NotFound,
+        })?
+        .ok_or(HostProtocolError::NotFound)?;
+    let execution = find_execution(pool, execution_id)
+        .await?
+        .filter(|execution| execution.host_id == host.id)
+        .ok_or(HostProtocolError::ExecutionNotFound)?;
+    if is_terminal(execution.status) {
+        return Ok((HostExecutionView::from(&execution), false));
+    }
+    if !send_frame(&host.public_id, interrupt_frame(execution_id)) {
+        return Err(HostProtocolError::SocketGone);
+    }
+    Ok((HostExecutionView::from(&execution), true))
+}
+
+fn is_terminal(status: ExecutionStatus) -> bool {
+    matches!(
+        status,
+        ExecutionStatus::Succeeded | ExecutionStatus::Failed | ExecutionStatus::Interrupted
+    )
+}
+
 /// Append output observed from the host.
 pub async fn record_output(
     pool: &MySqlPool,
@@ -321,6 +367,15 @@ mod tests {
         assert_eq!(frame["v"], 1);
         assert_eq!(frame["type"], "interrupt_execution");
         assert_eq!(frame["executionId"], "exec-1");
+    }
+
+    #[test]
+    fn only_completed_states_are_terminal() {
+        assert!(!is_terminal(ExecutionStatus::Queued));
+        assert!(!is_terminal(ExecutionStatus::Running));
+        assert!(is_terminal(ExecutionStatus::Succeeded));
+        assert!(is_terminal(ExecutionStatus::Failed));
+        assert!(is_terminal(ExecutionStatus::Interrupted));
     }
 
     #[test]

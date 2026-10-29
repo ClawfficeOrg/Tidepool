@@ -400,6 +400,16 @@ const ROUTES: &[RouteSpec] = &[
     },
     RouteSpec {
         method: HttpMethod::Post,
+        path: "/v1/hosts/{id}/executions/{execution_id}/interrupt",
+        tag: "pool",
+        summary: "Send interrupt_execution to the host running an execution",
+        secure: true,
+        required_scope: None,
+        has_body: false,
+        success: "202",
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
         path: "/v1/webhooks/github/{slug}",
         tag: "pool",
         summary: "Receive a GitHub App webhook; signature verified and delivery deduplicated",
@@ -992,14 +1002,14 @@ mod tests {
     fn game_routes_are_unmoved_under_v1() {
         const SYSTEM_PATHS: &[&str] = &["/healthz", "/metrics", "/openapi.json"];
 
-        assert_eq!(ROUTES.len(), 67, "ROUTES must describe all 67 routes");
+        assert_eq!(ROUTES.len(), 68, "ROUTES must describe all 68 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            64,
-            "the 19 game route specs and 45 pool/host/connection/project routes must stay under /v1/"
+            65,
+            "the 19 game route specs and 46 pool/host/connection/project routes must stay under /v1/"
         );
 
         let system: std::collections::BTreeSet<&str> = ROUTES
@@ -1199,6 +1209,6 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 45, "expected 45 hub operations");
+        assert_eq!(registered.len(), 46, "expected 46 hub operations");
     }
 }
