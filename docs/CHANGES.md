@@ -2,6 +2,48 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — The reference client generated from Zoid's tray template (task 2.3.1)
+
+### Added
+- `tidepool-client/` — the reference human client, generated from Zoid **9.0.0**'s
+  `tray` template as a menu + popover + window app that starts icon-only
+  (`open_on_launch = false`, so no Dock/taskbar entry and no window at launch).
+  The menu's **Open App** opens the main window; a left-click on the icon toggles
+  the popover. `zoid-project.json` records the generator version, template id and
+  codegen paths, and `vendor/` holds the generated copy of `zoid-gpui` and
+  `zoid-core`.
+- `tidepool-client/assets/` — the clawffice-design tray identity: the 16x16 and
+  32x32 menu-bar PNGs are the 12x12 `pool` cell sprite rasterised one pixel per
+  cell with no antialiasing (and the 2x is exactly the 1x artwork at double
+  scale); the Windows `.ico` is the design system's own multi-image
+  `tidepool-icon.ico`. `cells.json`, `SOURCE.json` and `README.md` record the
+  design commit (`995b41606e65`) and hashes, and `render_tray_icons.py`
+  regenerates the PNGs with only the Python standard library.
+- `tidepool-client/ui/app.json` — the editable popover structure. `src/ui/` is
+  Zoid-generated from it and documented as not hand-edited; the export is
+  deterministic and the project is formatted after it.
+- `tidepool-client/tests/tray.rs` and the tests in `src/main.rs` — headless
+  coverage for the generated shape (icon-only start, menu, popover, window), the
+  template's own tray/popover/window tests, the icon assets (size, crispness,
+  palette, 1x/2x equality, ICO sizes) and the generated-source documentation.
+
+### Changed
+- `tidepool-client/Cargo.toml` — the client is its own Cargo workspace. It is
+  deliberately not a member of the root workspace, so the server's
+  `cargo test`/`clippy` gate does not build a GPUI app and its package name does
+  not collide with the Rust SDK crate `sdk/rust` (also named `tidepool-client`).
+- Zoid 9.0.0's CLI does not expose the tray app-shape flags (they are editor
+  wizard variables). The project was rendered with the same template request the
+  wizard makes; `tidepool-client/README.md` documents the command, the surface
+  choices and this limitation rather than claiming a CLI flag exists.
+
+### Human check still required
+- The running app: icon-only launch with no Dock entry, a popover on click and a
+  window from **Open App**.
+- Menu-bar legibility of the sprite on light and dark menubars.
+
+---
+
 ## [Unreleased] — 2026-10-29 — Console identity: banner, cell sprite and Clawffice palette (task 2.2.6)
 
 ### Added

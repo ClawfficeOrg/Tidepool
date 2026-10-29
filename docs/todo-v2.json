@@ -691,7 +691,7 @@
         {
           "id": "2.3.1",
           "title": "Generate the client from the Zoid tray template",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Generate tidepool-client with `zoid create tidepool-client --template tray`, choosing the surfaces the app needs: a menu, a popover and a main window, starting icon-only without a Dock entry. Set the Tidepool name, the clawffice-design icon and cell sprite as the tray icon on each platform, and keep ui/app.json as the editable structure exported into src/ui/. Record the generated version of Zoid and the template in the README, because this app doubles as the template's example.",
           "touches": [
             "tidepool-client/ui/app.json",
@@ -713,7 +713,9 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Generated the reference client from the Zoid tray template",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T15:46:17Z",
+          "human_look": "exact CLI reproduction (Zoid 9.0.0 exposes shape choices only in the wizard); app starts icon-only and opens popover/window in the running app; tray icon legibility at menu-bar size"
         },
         {
           "id": "2.3.2",

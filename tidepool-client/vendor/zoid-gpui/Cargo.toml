@@ -1,0 +1,37 @@
+[package]
+name = "zoid-gpui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit = { version = "0.6" }
+gpui = { package = "gpui-pre", version = "0.3" }
+regex = "1.11"
+unicode-segmentation = "1.12.0"
+zoid-core = { path = "../zoid-core" }
+# Optional like in `Cargo.toml`, but with NO default (see [features]):
+# generated projects opt into the terminal fixture check per template so
+# only terminal-capable projects inherit the Ghostty/Zig native toolchain.
+#
+# Lines ending in the `zoid-vendor: terminal` marker are dropped when a
+# project is vendored without the terminal chain (`zoid_template::vendor`):
+# cargo reads the manifest of every path dependency, optional or not, so the
+# path below must not exist in a project that has no `vendor/zoid-terminal`.
+# Keep the marker on every line that names `zoid-terminal`.
+
+[features]
+default = []
+gpu-canvas = []
+
+# `src/lib.rs` gates a module on `feature = "terminal"`. Without the feature
+# line above (a project vendored without the terminal chain) that name would
+# be an unexpected cfg; declare it so the crate stays warning-free under the
+# project's own lints.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("terminal"))'] }
+
+# Mirrors Cargo.toml dev-dependencies: gpui-kit's workspace = true
+# resolves to the version dep used above.
+[dev-dependencies]
+gpui-kit = { version = "0.6", features = ["test-support"] }
+gpui = { package = "gpui-pre", version = "0.3", features = ["test-support"] }

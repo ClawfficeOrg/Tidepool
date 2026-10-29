@@ -1,0 +1,18 @@
+[package]
+name = "zoid-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+log = "0.4"
+semver = "1.0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1.1.2"
+
+# Mirrors Cargo.toml: the unit tests in src/ use these, so a generated
+# project that members vendor crates into a workspace and runs
+# `cargo test`/`clippy --all-targets` needs them (E0433 otherwise).
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"

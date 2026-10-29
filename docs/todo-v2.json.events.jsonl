@@ -42,3 +42,5 @@
 {"at": "2026-10-29T15:13:10Z", "event": "done", "task": "2.2.5", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Session handling, parity with the CLI and scripting mode", "filed_under": "2.3"}
 {"at": "2026-10-29T15:13:11Z", "event": "start", "task": "2.2.6", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T23:13:11Z"}
 {"at": "2026-10-29T15:31:37Z", "event": "done", "task": "2.2.6", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Console identity: banner and palette", "filed_under": "2.3", "phase_complete": true}
+{"at": "2026-10-29T15:31:38Z", "event": "start", "task": "2.3.1", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T23:31:38Z"}
+{"at": "2026-10-29T15:46:17Z", "event": "look_defer", "task": "2.3.1", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "exact CLI reproduction (Zoid 9.0.0 exposes shape choices only in the wizard); app starts icon-only and opens popover/window in the running app; tray icon legibility at menu-bar size"}
