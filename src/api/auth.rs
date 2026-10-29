@@ -189,6 +189,7 @@ mod tests {
             rate_limit: RateLimitConfig::default(),
             pool_bootstrap: None,
             public_origin: None,
+            cors_origins: Vec::new(),
         };
         let app =
             test::init_service(App::new().app_data(web::Data::new(cfg)).configure(config)).await;
@@ -229,6 +230,7 @@ mod tests {
             rate_limit: RateLimitConfig::default(),
             pool_bootstrap: None,
             public_origin: None,
+            cors_origins: Vec::new(),
         };
         let app =
             test::init_service(App::new().app_data(web::Data::new(cfg)).configure(config)).await;

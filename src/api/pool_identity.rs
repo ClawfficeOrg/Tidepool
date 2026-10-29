@@ -719,6 +719,7 @@ mod tests {
             rate_limit: RateLimitConfig::default(),
             pool_bootstrap: bootstrap,
             public_origin: None,
+            cors_origins: Vec::new(),
         }
     }
 

@@ -91,6 +91,7 @@ fn config(pool_bootstrap: Option<PoolBootstrapConfig>) -> Config {
         rate_limit: RateLimitConfig::default(),
         pool_bootstrap,
         public_origin: None,
+        cors_origins: Vec::new(),
     }
 }
 

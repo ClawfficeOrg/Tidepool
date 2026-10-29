@@ -19,6 +19,7 @@
 
 use crate::config::Config;
 use crate::entities::chatroom::{MessageView, Principal};
+use crate::middleware::cors::websocket_origin_permitted;
 use crate::services::auth as auth_svc;
 use crate::services::chatrooms as chatroom_svc;
 use crate::services::pool_identity;
@@ -232,6 +233,11 @@ pub async fn stream(
     pool: Option<web::Data<MySqlPool>>,
     config: web::Data<Config>,
 ) -> Result<HttpResponse, Error> {
+    // A browser sends `Origin` on a WebSocket upgrade and CORS does not cover
+    // it, so the same allowlist is enforced here before anything else.
+    if !websocket_origin_permitted(&req, &config.cors_origins, config.public_origin.as_deref()) {
+        return Ok(HttpResponse::Forbidden().finish());
+    }
     let Some(pool) = pool else {
         return Ok(HttpResponse::ServiceUnavailable().finish());
     };
