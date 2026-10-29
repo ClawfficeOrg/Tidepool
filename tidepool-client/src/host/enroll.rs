@@ -300,6 +300,16 @@ impl<A: PoolApi> Machine<A> {
         self.status().may_run_agents()
     }
 
+    /// The operator session from the last sign-in, when one is stored.
+    pub fn session(&self) -> Option<&Session> {
+        self.session.as_ref()
+    }
+
+    /// This machine's host id, once it is enrolled.
+    pub fn host_id(&self) -> Option<&str> {
+        self.host.as_ref().map(|host| host.id.as_str())
+    }
+
     /// The last problem worth telling the operator, if any.
     pub fn notice(&self) -> Option<&str> {
         self.notice.as_deref()

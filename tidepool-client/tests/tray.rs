@@ -71,6 +71,12 @@ mod host {
     pub use crate::host_enroll as enroll;
 }
 
+// The main window's activity pane comes from the runs modules.
+#[path = "../src/runs/mod.rs"]
+pub mod runs;
+#[path = "../src/runs_view.rs"]
+mod runs_view;
+
 use gpui::{AppContext, TestAppContext};
 use tray_icon::TrayIcon;
 

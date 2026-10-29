@@ -23,7 +23,11 @@ use gpui_kit::component::input::{Input, InputState};
 
 use crate::host::client::HttpPool;
 use crate::host::enroll::{EnrolledHost, Machine};
+use crate::runs::http::HttpRuns;
+use crate::runs::{RunsController, RunsSnapshot};
+use crate::runs_view::RunsView;
 use crate::settings_window::open_settings_window;
+use std::time::Instant;
 
 /// The window's starting size. Unlike the popover, this is a resizable normal
 /// window, so these are only the initial bounds.
@@ -142,6 +146,12 @@ pub struct MainWindow {
     machine_status: SharedString,
     /// True while a sign-in and enrol runs off the UI thread.
     working: bool,
+    /// The activity pane, created on the first successful refresh.
+    runs: Option<gpui::Entity<RunsView>>,
+    /// Progress or the reason the last runs refresh failed.
+    runs_status: SharedString,
+    /// True while a runs refresh runs off the UI thread.
+    runs_loading: bool,
 }
 
 /// The inputs for signing in to a pool and enrolling this machine.
@@ -165,6 +175,49 @@ impl MainWindow {
             machine_lines: Vec::new(),
             machine_status: SharedString::default(),
             working: false,
+            runs: None,
+            runs_status: SharedString::default(),
+            runs_loading: false,
+        }
+    }
+
+    /// Loads the activity pane from the pool, off the UI thread.
+    fn refresh_runs(&mut self, cx: &mut Context<Self>) {
+        if self.runs_loading {
+            return;
+        }
+        self.runs_loading = true;
+        self.runs_status = "Loading runs…".into();
+        cx.notify();
+        cx.spawn(async move |this, cx: &mut AsyncApp| {
+            let outcome = cx
+                .background_executor()
+                .spawn(async move { load_runs() })
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                view.finish_runs(outcome, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Applies a finished runs refresh: the pane is created once, then updated.
+    fn finish_runs(&mut self, outcome: Result<RunsSnapshot, String>, cx: &mut Context<Self>) {
+        self.runs_loading = false;
+        match outcome {
+            Ok(snapshot) => {
+                self.runs_status = SharedString::default();
+                if let Some(view) = self.runs.clone() {
+                    view.update(cx, |view, cx| {
+                        view.set_snapshot(snapshot);
+                        cx.notify();
+                    });
+                } else {
+                    self.runs = Some(cx.new(|cx| RunsView::new(snapshot, cx)));
+                }
+            }
+            Err(reason) => self.runs_status = format!("Could not load runs: {reason}").into(),
         }
     }
 
@@ -230,6 +283,22 @@ fn sign_in_and_enrol(
         .enroll_this_machine(&machine_hostname())
         .map_err(|error| error.to_string())?;
     Ok((host, machine.status_lines()))
+}
+
+/// Loads the operator's activity from the pool. Blocking I/O, so it runs on the
+/// background executor. Needs a stored sign-in.
+fn load_runs() -> Result<RunsSnapshot, String> {
+    let machine = Machine::open(HttpPool::new());
+    let session = machine
+        .session()
+        .cloned()
+        .ok_or_else(|| "sign in first".to_string())?;
+    let local_host = machine.host_id().map(str::to_string);
+    let mut controller = RunsController::new(HttpRuns::new(session), local_host);
+    controller
+        .refresh(Instant::now())
+        .map_err(|error| error.to_string())?;
+    Ok(controller.snapshot())
 }
 
 /// This machine's hostname, or a placeholder when the OS does not report one.
@@ -316,6 +385,20 @@ impl Render for MainWindow {
                             .text_color(muted)
                             .child(self.machine_status.clone()),
                     )
+                    .child(
+                        Button::new("main-window-runs")
+                            .secondary()
+                            .label("Refresh runs")
+                            .disabled(self.runs_loading)
+                            .on_click(cx.listener(|view, _, _, cx| view.refresh_runs(cx))),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(muted)
+                            .child(self.runs_status.clone()),
+                    )
+                    .children(self.runs.clone())
             })
             .child(
                 div()
