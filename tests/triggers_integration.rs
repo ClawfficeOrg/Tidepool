@@ -85,6 +85,7 @@ fn config() -> Config {
         rate_limit: RateLimitConfig::default(),
         pool_bootstrap: None,
         public_origin: None,
+        cors_origins: Vec::new(),
     }
 }
 

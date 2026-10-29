@@ -4,7 +4,7 @@ use tidepool::{
     api,
     config::Config,
     db,
-    middleware::{metrics, problem, rate_limit, request_id},
+    middleware::{cors, metrics, problem, rate_limit, request_id},
     services, sockets,
 };
 use tracing::info;
@@ -224,6 +224,11 @@ async fn main() -> std::io::Result<()> {
     // Build the pool and migrate. This is the only startup path: a database
     // that cannot be reached, or a migration that fails, stops the process
     // before it listens. Never serve a partially migrated schema.
+    if cfg.cors_origins.is_empty() {
+        info!("CORS disabled: TIDEPOOL_CORS_ORIGINS is not set");
+    } else {
+        info!(cors_origins = ?cfg.cors_origins, "CORS enabled for browser origins");
+    }
     if let Some(origin) = cfg.public_origin.as_deref() {
         info!(public_origin = %origin, "Public origin configured");
     }
@@ -336,7 +341,13 @@ async fn main() -> std::io::Result<()> {
             .wrap(metrics::MetricsMiddleware)
             .wrap(problem::HubProblem)
             .wrap(request_id::RequestIdMiddleware)
-            .app_data(cfg_data.clone());
+            // Outermost: a preflight is answered before rate limiting, auth
+            // and every other layer, and every other response is decorated.
+            .wrap(actix_web::middleware::from_fn(cors::cors))
+            .app_data(cfg_data.clone())
+            .app_data(web::Data::new(cors::CorsOrigins(
+                cfg_data.cors_origins.clone(),
+            )));
         if let Some(r) = redis_mgr.clone() {
             // Rate limiting rides the same Redis manager; without it the
             // middleware finds no limiter app data and passes through.

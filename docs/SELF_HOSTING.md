@@ -248,6 +248,38 @@ Migrations run on every boot and are idempotent, so an upgrade is
 covered by the migrations/backup task; until then, back up the MySQL volume by
 dumping the database rather than copying the volume files.
 
+## Calling the pool from a browser on another origin
+
+By default the pool sends no CORS headers, which is right when the control
+plane is served by the pool itself. When the control plane is served from its
+own hostname, list that origin in `TIDEPOOL_CORS_ORIGINS`, a comma-separated
+list of exact origins (scheme, host, optional port; no path, no trailing slash):
+
+```
+TIDEPOOL_CORS_ORIGINS=https://control.example.com
+```
+
+- Unset or empty means no CORS headers: behaviour is unchanged.
+- `*`, a missing scheme, a path or a trailing slash stop the pool at startup.
+  The allowed origins are logged at startup.
+- A request from a listed origin gets that exact origin echoed in
+  `Access-Control-Allow-Origin`, plus `Vary: Origin` and
+  `Access-Control-Expose-Headers: x-request-id`. Any other origin gets nothing.
+- A preflight (`OPTIONS`) from a listed origin is answered `204` before rate
+  limiting and authentication, with methods `GET, POST, PATCH, PUT, DELETE,
+  OPTIONS`, headers `Authorization, Content-Type, x-request-id` and a 600 second
+  max age. Credentials mode is not enabled: the control plane sends a Bearer
+  token, not cookies.
+- The room live stream (`/v1/chatrooms/{room}/stream`) is a browser WebSocket,
+  which CORS does not cover. When the setting is non-empty, an upgrade carrying
+  an `Origin` that is not listed, not `TIDEPOOL_PUBLIC_ORIGIN` and not the
+  request's own host is refused with `403`. `/ws/host` is unchanged.
+
+Put Authentik forward-auth on the control plane's router only. The pool's router
+must not have it: the pool authenticates every call itself, and a preflight
+carries no credentials, so a forward-auth redirect on the pool's hostname would
+break the browser's cross-origin calls.
+
 ## VPS deployment with TLS
 
 The VPS runs the pool behind a TLS-terminating proxy. The pool itself is bound
