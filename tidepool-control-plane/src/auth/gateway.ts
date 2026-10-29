@@ -55,7 +55,8 @@ export class PoolAuthGateway implements AuthGateway {
 
   constructor(baseUrl: string, options: PoolAuthGatewayOptions = {}) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
-    const transport = options.fetch ?? globalThis.fetch;
+    // Bound: browsers throw "Illegal invocation" when fetch is called on another receiver.
+    const transport = options.fetch ?? globalThis.fetch?.bind(globalThis);
     if (typeof transport !== 'function') {
       throw new TypeError('no fetch implementation; pass options.fetch');
     }

@@ -69,7 +69,8 @@ export class TidepoolClient {
     }
     /** Absolute base URL, no trailing slash. */
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.fetchImpl = options.fetch ?? globalThis.fetch;
+    // Bound: browsers throw "Illegal invocation" when fetch is called on another receiver.
+    this.fetchImpl = options.fetch ?? globalThis.fetch?.bind(globalThis);
     if (typeof this.fetchImpl !== "function") {
       throw new TidepoolUsageError("no fetch implementation; pass options.fetch");
     }
