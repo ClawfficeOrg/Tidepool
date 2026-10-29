@@ -94,6 +94,7 @@ fn run() -> app::Result<()> {
         Some(reason) => console.startup_failure(reason),
         None => console.start(),
     }
+    console.show_startup();
     run_console(&mut console)
 }
 

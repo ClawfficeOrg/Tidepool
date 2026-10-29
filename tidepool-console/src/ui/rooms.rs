@@ -9,12 +9,13 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
 use tidepool_client::types::{MessageView, RoomMemberView, RoomView};
 
 use crate::tabs::rooms::{Origin, RoomsState, author_label};
+use crate::ui::banner::{self, StyleRole};
 
 /// Draw the rooms tab into `area`.
 pub fn render(state: &RoomsState, frame: &mut Frame, area: Rect) {
@@ -105,31 +106,31 @@ fn footer_lines(state: &RoomsState) -> Vec<Line<'static>> {
     if state.loading_older() {
         lines.push(Line::from(Span::styled(
             "reading the older page through the cursor…".to_owned(),
-            Style::new().fg(Color::Cyan),
+            banner::style(StyleRole::Focus),
         )));
     }
     if let Some(problem) = state.older_problem() {
         lines.push(Line::from(Span::styled(
             format!("older page failed: {problem}"),
-            Style::new().fg(Color::Red),
+            banner::style(StyleRole::Danger),
         )));
     }
     if let Some(problem) = state.history_problem() {
         lines.push(Line::from(Span::styled(
             format!("history: {problem}"),
-            Style::new().fg(Color::Red),
+            banner::style(StyleRole::Danger),
         )));
     }
     if let Some(problem) = state.members_problem() {
         lines.push(Line::from(Span::styled(
             format!("presence: {problem}"),
-            Style::new().fg(Color::Yellow),
+            banner::style(StyleRole::Warning),
         )));
     }
     if let Some(problem) = state.rooms_problem() {
         lines.push(Line::from(Span::styled(
             format!("rooms: {problem}"),
-            Style::new().fg(Color::Red),
+            banner::style(StyleRole::Danger),
         )));
     }
     if let Some(follow) = state.relay()
@@ -137,13 +138,13 @@ fn footer_lines(state: &RoomsState) -> Vec<Line<'static>> {
     {
         lines.push(Line::from(Span::styled(
             format!("relay: {problem}"),
-            Style::new().fg(Color::Yellow),
+            banner::style(StyleRole::Warning),
         )));
     }
     if let Some(notice) = state.notice() {
         lines.push(Line::from(Span::styled(
             notice.to_owned(),
-            Style::new().fg(Color::Yellow),
+            banner::style(StyleRole::Warning),
         )));
     }
     lines
@@ -184,7 +185,7 @@ fn room_lines(room: &RoomView) -> Line<'static> {
     Line::from(vec![
         Span::styled(room.name.clone(), Style::new().add_modifier(Modifier::BOLD)),
         Span::raw(format!("  {}  ", room.visibility)),
-        Span::styled(room.id.clone(), Style::new().fg(Color::DarkGray)),
+        Span::styled(room.id.clone(), banner::style(StyleRole::Muted)),
     ])
 }
 
@@ -261,16 +262,16 @@ fn message_heading(message: &MessageView) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             format!("#{} ", message.sequence),
-            Style::new().fg(Color::DarkGray),
+            banner::style(StyleRole::Muted),
         ),
         Span::styled(
             author_label(message),
-            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            banner::style(StyleRole::Focus).add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(message.created_at.clone(), Style::new().fg(Color::DarkGray)),
+        Span::styled(message.created_at.clone(), banner::style(StyleRole::Muted)),
         Span::raw("  "),
-        Span::styled(message.id.clone(), Style::new().fg(Color::Gray)),
+        Span::styled(message.id.clone(), banner::style(StyleRole::Muted)),
     ])
 }
 
@@ -305,7 +306,7 @@ fn render_members(state: &RoomsState, frame: &mut Frame, area: Rect) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "The pool exposes the room's member list; the console reads it every 3 s.",
-        Style::new().fg(Color::DarkGray),
+        banner::style(StyleRole::Muted),
     )));
     frame.render_widget(
         Paragraph::new(lines).block(block).wrap(Wrap { trim: true }),
@@ -315,16 +316,16 @@ fn render_members(state: &RoomsState, frame: &mut Frame, area: Rect) {
 
 fn member_line(member: &RoomMemberView) -> Line<'static> {
     let (kind, style) = match member.principal.kind.as_str() {
-        "session" => ("session", Style::new().fg(Color::Magenta)),
-        "user" => ("user", Style::new().fg(Color::Green)),
-        other => (other, Style::new().fg(Color::Gray)),
+        "session" => ("session", banner::style(StyleRole::Info)),
+        "user" => ("user", banner::style(StyleRole::Success)),
+        other => (other, banner::style(StyleRole::Muted)),
     };
     Line::from(vec![
         Span::styled(member.principal.id.clone(), style),
         Span::raw(format!("  {} · {kind}", member.role)),
         Span::styled(
             format!("  joined {}", member.joined_at),
-            Style::new().fg(Color::DarkGray),
+            banner::style(StyleRole::Muted),
         ),
     ])
 }
@@ -369,14 +370,14 @@ fn render_relay(state: &RoomsState, frame: &mut Frame, area: Rect) {
         if live_from == Some(index) {
             lines.push(Line::from(Span::styled(
                 "──── backfill ends · live from here ────",
-                Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                banner::style(StyleRole::Warning).add_modifier(Modifier::BOLD),
             )));
         }
         let (word, style) = (
             row.origin.word(),
             match row.origin {
-                Origin::Backfill => Style::new().fg(Color::Gray),
-                Origin::Live => Style::new().fg(Color::Green),
+                Origin::Backfill => banner::style(StyleRole::Muted),
+                Origin::Live => banner::style(StyleRole::Success),
             },
         );
         lines.push(Line::from(vec![
@@ -392,7 +393,7 @@ fn render_relay(state: &RoomsState, frame: &mut Frame, area: Rect) {
         let payload = serde_json::to_string(&row.event.payload).unwrap_or_default();
         lines.push(Line::from(Span::styled(
             format!("    {payload}"),
-            Style::new().fg(Color::DarkGray),
+            banner::style(StyleRole::Muted),
         )));
     }
     frame.render_widget(
@@ -570,20 +571,22 @@ mod tests {
             .find(|(text, _colours)| text.contains("live") && text.contains("#4 status"))
             .map(|(_text, colours)| colours)
             .expect("a live row");
+        let muted = banner::colour(banner::StyleRole::Muted);
+        let live = banner::colour(banner::StyleRole::Success);
         assert!(
-            backfill_row.contains(&Color::Gray),
-            "the backfilled row is grey: {backfill_row:?}"
+            backfill_row.contains(&muted),
+            "the backfilled row is muted: {backfill_row:?}"
         );
         assert!(
-            !backfill_row.contains(&Color::Green),
+            !backfill_row.contains(&live),
             "the backfilled row is not live-coloured"
         );
         assert!(
-            live_row.contains(&Color::Green),
-            "the live row is green: {live_row:?}"
+            live_row.contains(&live),
+            "the live row is success-coloured: {live_row:?}"
         );
         assert!(
-            !live_row.contains(&Color::Gray),
+            !live_row.contains(&muted),
             "the live row is not backfill-coloured"
         );
     }

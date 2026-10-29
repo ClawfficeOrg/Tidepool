@@ -92,7 +92,26 @@ The terminal UI covers the same work with keys, on four tabs:
 - **Settings** — the connection, the pool, the member and the role.
 
 `Tab`/`Shift-Tab` move between tabs, `1`–`4` jump to one, `p` or `:` opens the
-command palette, `r` reconnects and `q` quits.
+command palette, `r` reconnects, `a` opens the about screen and `q` quits.
+
+## Identity
+
+The first frame is the Tidepool banner from `clawffice-design`, rendered from
+the design repository's own ANSI file rather than a copy pasted into Rust. The
+banner, the 12×12 pool cell sprite and the colours live in
+[`assets/design/`](assets/design/), with the design commit and file hashes in
+`SOURCE.json`; a sibling checkout of the design repository is compared by the
+tests when it is present.
+
+The palette is the Clawffice palette, not the terminal's defaults. `biolume` is
+the default, and `TIDEPOOL_PALETTE` selects `biolume`, `boiled`, `deep-tide`,
+`phosphor` or `sea-glass`. The Tidepool product hue (`tide`) drives focus,
+selection and borders; status words also carry a success, warning or danger
+colour from the palette. A terminal that cannot show colour (`NO_COLOR`, or
+`TERM=dumb`) gets the same screens with every style stripped, and a terminal
+narrower than the banner gets a cropped banner or, below 40 columns, the
+one-line wordmark instead of a panic. `a` opens the about screen, which reports
+the console version, the contract version, the palette and the design commit.
 
 ## Neither skin holds logic the pool does not
 

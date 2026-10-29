@@ -2454,6 +2454,46 @@ carries the task entry.
 
 ---
 
+---
+
+## 2026-10-29 — The console renders the design source, not a copy of it (task 2.2.6)
+
+**Decision: the banner and palette are vendored design files, parsed at run
+time.** `tidepool-console/assets/design/` holds the Tidepool banner `.ans`, its
+`.txt` twin, `core.json`, `apps/tidepool.json`, `cells.json` and the five
+palettes, with `SOURCE.json` recording the commit and a hash per file. `banner.rs`
+parses the ANSI and the JSON; no glyph row or RGB literal is written in Rust.
+This follows the control plane's pinned-snapshot decision for the same reasons:
+an offline checkout must build, and drift should fail a test rather than become
+a silent second design system.
+
+**Consequences:**
+- The banner test compares the parsed rows to the design's own `.txt`, and the
+  drift test compares every vendored file to a sibling `clawffice-design`
+  checkout when one exists. A hand-edited banner fails both.
+- Colours are roles, not terminal colours. `StyleRole` is the only vocabulary
+  the components use; `banner::style` resolves it against the active palette on
+  a thread-local installed for one frame by `ui::render`. That keeps the theme
+  out of every helper signature while a no-colour terminal still gets an empty
+  style everywhere, including the tabs and tables.
+- Focus and selection use the `tide` product hue, not the palette primary, as
+  the design system requires. Status words keep their word and glyph; colour is
+  an addition, never the only signal.
+- A banner needs width. Below 80 columns the art is cropped, below 40 it is the
+  design wordmark plus the banner's own tagline. The splash is skipped entirely
+  on a terminal smaller than 24×8, so a tiny pane still shows the tabs.
+- The about screen is a modal (`a`, `Action::About`) rather than a fifth tab:
+  it reports the console and contract versions, the palette and the design
+  commit without changing the four-tab model the keyboard and tests already
+  encode.
+
+**Shell wiring outside the owned paths:** `ui/mod.rs` installs the theme and
+draws the splash/about; `app.rs` holds the theme, splash and about state;
+`main.rs` shows the splash; the three tab renderers swap terminal colours for
+roles. `Cargo.toml` gains `serde` for the token files.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

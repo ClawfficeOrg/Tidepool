@@ -16,7 +16,11 @@ path = "src/main.rs"
 [dependencies]
 ratatui = "0.29"
 crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
 tidepool-client = { path = "../sdk/rust" }
 tidepool-cli = { path = "../cli" }
+
+[dev-dependencies]
+sha2 = "0.10"

@@ -1,0 +1,121 @@
+{
+  "name": "Clawffice",
+  "palette": {
+    "default": "biolume",
+    "available": [
+      "biolume",
+      "deep-tide",
+      "sea-glass",
+      "phosphor",
+      "boiled"
+    ]
+  },
+  "color": {
+    "brand": {
+      "phosphor-500": "#C6F24E",
+      "claw-300": "#FDAE6B",
+      "claw-500": "#F26B21",
+      "tide-500": "#1E7FC2",
+      "tide-700": "#0F4F86"
+    },
+    "product": {
+      "claw": {
+        "dark": "#F26B21",
+        "light": "#C7410C"
+      },
+      "claw-300": {
+        "dark": "#FDAE6B",
+        "light": "#A8501A"
+      },
+      "tide": {
+        "dark": "#4A9FE0",
+        "light": "#1864AB"
+      },
+      "tide-300": {
+        "dark": "#8CC4F0",
+        "light": "#2F6FA8"
+      },
+      "chitin": {
+        "dark": "#9BB8B6",
+        "light": "#56706E"
+      },
+      "spectre": {
+        "dark": "#3FD0E8",
+        "light": "#0A6F8C"
+      },
+      "phosphor": {
+        "dark": "#C6F24E",
+        "light": "#466F09"
+      },
+      "alias": {
+        "dark": "#B79CF5",
+        "light": "#6741D9"
+      },
+      "sonar": {
+        "dark": "#8794FF",
+        "light": "#4250C8"
+      },
+      "brass": {
+        "dark": "#EBCB5B",
+        "light": "#8A6A00"
+      },
+      "lagoon": {
+        "dark": "#35D0B2",
+        "light": "#0B7B6B"
+      },
+      "cortex": {
+        "dark": "#F28DB8",
+        "light": "#C2255C"
+      },
+      "paper": {
+        "dark": "#E9E1D0",
+        "light": "#6B5B3E"
+      }
+    }
+  },
+  "font": {
+    "mono": "ShureTechMono Nerd Font Propo",
+    "mono-fallback": "Share Tech Mono",
+    "sans": "Instrument Sans",
+    "size": {
+      "caption": 12,
+      "code": 13,
+      "body": 14,
+      "heading": 16,
+      "title": 24,
+      "display": 44
+    }
+  },
+  "space": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32,
+    48,
+    64
+  ],
+  "radius": {
+    "cell": 0,
+    "chip": 4,
+    "control": 8,
+    "panel": 12
+  },
+  "motion": {
+    "hover-ms": 120,
+    "pane-ms": 180,
+    "easing": "ease-out"
+  },
+  "icon": {
+    "set": "Iconoir",
+    "stroke": 1.5,
+    "size": 16
+  },
+  "logo": {
+    "outline": "#06141B",
+    "outline-ratio": 0.023,
+    "second-colour": "#F26B21",
+    "cell-grid": 12
+  }
+}

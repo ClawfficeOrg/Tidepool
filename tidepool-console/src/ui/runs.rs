@@ -7,7 +7,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 
@@ -15,6 +15,7 @@ use crate::tabs::runs::{
     DispatchForm, RunsState, TAIL_LINES, entry_title, failure_explanation, kind_word, output_tail,
     run_failure_explanation, status_word, step_output,
 };
+use crate::ui::banner::{self, StyleRole};
 use tidepool_client::types::RunView;
 
 /// Draw the runs tab into `area`.
@@ -85,7 +86,7 @@ fn footer_lines(state: &RunsState) -> Vec<Line<'static>> {
     if let Some(notice) = state.notice() {
         lines.push(Line::from(Span::styled(
             notice.to_owned(),
-            Style::new().fg(Color::Yellow),
+            banner::style(StyleRole::Warning),
         )));
     }
     lines
@@ -195,9 +196,9 @@ fn render_triggers(state: &RunsState, frame: &mut Frame, area: Rect) {
             Span::styled(
                 state_word.to_owned(),
                 if trigger.active {
-                    Style::new().fg(Color::Green)
+                    banner::style(StyleRole::Success)
                 } else {
-                    Style::new().fg(Color::Gray)
+                    banner::style(StyleRole::Muted)
                 },
             ),
         ]));
@@ -206,7 +207,7 @@ fn render_triggers(state: &RunsState, frame: &mut Frame, area: Rect) {
         if let Some(problem) = &trigger.problem {
             lines.push(Line::from(Span::styled(
                 format!("  unreadable: {problem}"),
-                Style::new().fg(Color::Red),
+                banner::style(StyleRole::Danger),
             )));
         }
     }
@@ -267,7 +268,7 @@ fn detail_lines(state: &RunsState, run: &RunView) -> Vec<Line<'static>> {
         Line::from(""),
         Line::from(Span::styled(
             "steps",
-            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            banner::style(StyleRole::Focus).add_modifier(Modifier::BOLD),
         )),
     ];
     if run.steps.is_empty() {
@@ -293,7 +294,7 @@ fn detail_lines(state: &RunsState, run: &RunView) -> Vec<Line<'static>> {
         {
             lines.push(Line::from(Span::styled(
                 format!("    {}", failure.sentence),
-                Style::new().fg(Color::Red),
+                banner::style(StyleRole::Danger),
             )));
             if let Some(detail) = failure.detail {
                 lines.push(Line::from(format!("    {detail}")));
@@ -313,7 +314,7 @@ fn detail_lines(state: &RunsState, run: &RunView) -> Vec<Line<'static>> {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             failure.sentence,
-            Style::new().fg(Color::Red),
+            banner::style(StyleRole::Danger),
         )));
         lines.push(Line::from(format!(
             "code: {}",
@@ -323,7 +324,7 @@ fn detail_lines(state: &RunsState, run: &RunView) -> Vec<Line<'static>> {
     if let Some(problem) = state.detail_problem() {
         lines.push(Line::from(Span::styled(
             format!("last read failed: {problem}"),
-            Style::new().fg(Color::Yellow),
+            banner::style(StyleRole::Warning),
         )));
     }
     lines.push(Line::from(if state.following() {
@@ -344,15 +345,13 @@ fn render_form(form: &DispatchForm, frame: &mut Frame, area: Rect) {
         let focused = index == form.focus();
         let marker = if focused { "▸ " } else { "  " };
         let style = if focused {
-            Style::new()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::UNDERLINED)
+            banner::style(StyleRole::Focus).add_modifier(Modifier::UNDERLINED)
         } else {
             Style::new()
         };
         lines.push(Line::from(vec![
             Span::raw(marker),
-            Span::styled(format!("{label}: "), Style::new().fg(Color::Cyan)),
+            Span::styled(format!("{label}: "), banner::style(StyleRole::Focus)),
             Span::styled((*value).to_owned(), style),
         ]));
     }
@@ -361,7 +360,7 @@ fn render_form(form: &DispatchForm, frame: &mut Frame, area: Rect) {
         for issue in form.issues() {
             lines.push(Line::from(Span::styled(
                 issue.clone(),
-                Style::new().fg(Color::Red),
+                banner::style(StyleRole::Danger),
             )));
         }
     }
@@ -379,12 +378,12 @@ fn render_form(form: &DispatchForm, frame: &mut Frame, area: Rect) {
 
 fn status_style(status: &str) -> Style {
     match status {
-        "succeeded" | "matched" => Style::new().fg(Color::Green),
-        "running" => Style::new().fg(Color::Cyan),
-        "pending" | "queued" | "received" => Style::new().fg(Color::Yellow),
-        "failed" | "rejected" => Style::new().fg(Color::Red),
-        "interrupted" => Style::new().fg(Color::Magenta),
-        "skipped" | "unmatched" => Style::new().fg(Color::Gray),
+        "succeeded" | "matched" => banner::style(StyleRole::Success),
+        "running" => banner::style(StyleRole::Focus),
+        "pending" | "queued" | "received" => banner::style(StyleRole::Warning),
+        "failed" | "rejected" => banner::style(StyleRole::Danger),
+        "interrupted" => banner::style(StyleRole::Second),
+        "skipped" | "unmatched" => banner::style(StyleRole::Muted),
         _ => Style::new(),
     }
 }

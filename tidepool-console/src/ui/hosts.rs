@@ -9,11 +9,12 @@ use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, TableState, Wrap};
 
 use crate::tabs::hosts::{CapabilityState, Column, HostsState, capability_line};
+use crate::ui::banner::{self, StyleRole};
 
 /// Draw the hosts tab into `area`.
 pub fn render(state: &HostsState, pool: Option<&str>, frame: &mut Frame, area: Rect) {
@@ -74,7 +75,7 @@ fn footer_lines(state: &HostsState, pool: Option<&str>) -> Vec<Line<'static>> {
         lines.push(Line::from(vec![
             Span::styled(
                 "ENROLMENT TOKEN",
-                Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                banner::style(StyleRole::Warning).add_modifier(Modifier::BOLD),
             ),
             Span::raw(format!(" (single use) expires {}", offer.expires_at)),
         ]));
@@ -84,7 +85,7 @@ fn footer_lines(state: &HostsState, pool: Option<&str>) -> Vec<Line<'static>> {
     }
     match state.prompt() {
         Some((label, draft)) => lines.push(Line::from(vec![
-            Span::styled(label.to_owned(), Style::new().fg(Color::Cyan)),
+            Span::styled(label.to_owned(), banner::style(StyleRole::Focus)),
             Span::raw(": "),
             Span::styled(
                 draft.to_owned(),
@@ -99,7 +100,7 @@ fn footer_lines(state: &HostsState, pool: Option<&str>) -> Vec<Line<'static>> {
     if let Some(notice) = state.notice() {
         lines.push(Line::from(Span::styled(
             notice.to_owned(),
-            Style::new().fg(Color::Yellow),
+            banner::style(StyleRole::Warning),
         )));
     }
     lines
@@ -206,7 +207,7 @@ fn detail_lines(state: &HostsState, now: Instant) -> Vec<Line<'static>> {
         Line::from(""),
         Line::from(Span::styled(
             "capabilities (as reported)",
-            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            banner::style(StyleRole::Focus).add_modifier(Modifier::BOLD),
         )),
     ];
     match state.capabilities(&host.id) {
@@ -238,10 +239,10 @@ fn detail_lines(state: &HostsState, now: Instant) -> Vec<Line<'static>> {
 
 fn status_style(status: &str) -> Style {
     match status {
-        "connected" => Style::new().fg(Color::Green),
-        "pending_approval" => Style::new().fg(Color::Yellow),
-        "offline" => Style::new().fg(Color::Gray),
-        "revoked" => Style::new().fg(Color::Red),
+        "connected" => banner::style(StyleRole::Success),
+        "pending_approval" => banner::style(StyleRole::Warning),
+        "offline" => banner::style(StyleRole::Muted),
+        "revoked" => banner::style(StyleRole::Danger),
         _ => Style::new(),
     }
 }

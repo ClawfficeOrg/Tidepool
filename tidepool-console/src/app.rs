@@ -21,6 +21,7 @@ use crate::auth::{Capability, Role};
 use crate::tabs::hosts::{HostsClient, HostsState};
 use crate::tabs::rooms::{RoomsClient, RoomsState};
 use crate::tabs::runs::{RunsClient, RunsState};
+use crate::ui::banner::Theme;
 
 /// Everything that can go wrong before or during a console run.
 #[derive(Debug, thiserror::Error)]
@@ -104,13 +105,15 @@ pub enum Action {
     PreviousTab,
     /// Ask the pool again whether it answers.
     Reconnect,
+    /// Open the about screen: the banner, the cell sprite and the versions.
+    About,
     /// Leave the console.
     Quit,
 }
 
 impl Action {
     /// Every action, in the order the palette lists them.
-    pub const ALL: [Action; 8] = [
+    pub const ALL: [Action; 9] = [
         Action::ShowTab(Tab::Hosts),
         Action::ShowTab(Tab::Runs),
         Action::ShowTab(Tab::Rooms),
@@ -118,6 +121,7 @@ impl Action {
         Action::NextTab,
         Action::PreviousTab,
         Action::Reconnect,
+        Action::About,
         Action::Quit,
     ];
 
@@ -131,6 +135,7 @@ impl Action {
             Action::NextTab => "Next tab",
             Action::PreviousTab => "Previous tab",
             Action::Reconnect => "Reconnect to the pool",
+            Action::About => "About Tidepool",
             Action::Quit => "Quit the console",
         }
     }
@@ -266,6 +271,9 @@ pub struct App {
     hosts: HostsState,
     runs: RunsState,
     rooms: RoomsState,
+    theme: Theme,
+    about: bool,
+    splash: bool,
     quit: bool,
 }
 
@@ -303,6 +311,9 @@ impl App {
             hosts: HostsState::new(),
             runs,
             rooms,
+            theme: Theme::from_environment(),
+            about: false,
+            splash: false,
             quit: false,
         }
     }
@@ -427,6 +438,7 @@ impl App {
             Action::NextTab => self.tab = self.tab.next(),
             Action::PreviousTab => self.tab = self.tab.previous(),
             Action::Reconnect => self.reconnect(),
+            Action::About => self.show_about(),
             Action::Quit => self.quit = true,
         }
     }
@@ -434,8 +446,11 @@ impl App {
     /// Handle one key press.
     ///
     /// The palette owns printable keys while it is open, so `q` filters rather
-    /// than quitting; `Ctrl-C` always quits.
+    /// than quitting; `Ctrl-C` always quits. The startup splash is dismissed by
+    /// the first key, which then continues to its normal handler, so the first
+    /// key is never swallowed.
     pub fn on_key(&mut self, key: KeyEvent) {
+        self.splash = false;
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::Char('c') => {
@@ -448,6 +463,14 @@ impl App {
                 }
                 _ => {}
             }
+        }
+        if self.about {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('a') => self.close_about(),
+                KeyCode::Char('q') => self.dispatch(Action::Quit),
+                _ => {}
+            }
+            return;
         }
         if self.palette.is_some() {
             self.on_palette_key(key);
@@ -480,6 +503,7 @@ impl App {
                 self.dispatch(Action::PreviousTab)
             }
             KeyCode::Char('r') => self.dispatch(Action::Reconnect),
+            KeyCode::Char('a') => self.dispatch(Action::About),
             KeyCode::Char(digit @ '1'..='4') => {
                 let index = digit as usize - '1' as usize;
                 if let Some(tab) = Tab::ALL.get(index) {
@@ -578,6 +602,43 @@ impl App {
     /// The palette, while it is open.
     pub fn palette(&self) -> Option<&Palette> {
         self.palette.as_ref()
+    }
+
+    /// The Clawffice theme this console draws with.
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Replace the theme, so a test can draw a palette or a no-colour terminal.
+    #[cfg(test)]
+    pub(crate) fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
+    }
+
+    /// Whether the about screen is in front.
+    pub fn about(&self) -> bool {
+        self.about
+    }
+
+    /// Open the about screen.
+    pub fn show_about(&mut self) {
+        self.palette = None;
+        self.about = true;
+    }
+
+    /// Close the about screen.
+    pub fn close_about(&mut self) {
+        self.about = false;
+    }
+
+    /// Show the banner until the first key press.
+    pub fn show_startup(&mut self) {
+        self.splash = true;
+    }
+
+    /// Whether the splash is still in front.
+    pub fn splash(&self) -> bool {
+        self.splash
     }
 
     /// The single notice the shell shows, if any.
@@ -1063,6 +1124,7 @@ mod tests {
                     assert_eq!(app.connection(), &Connection::Online);
                     assert_eq!(calls(&handle), 2);
                 }
+                Action::About => assert!(app.about()),
                 Action::Quit => assert!(app.should_quit()),
             }
         }

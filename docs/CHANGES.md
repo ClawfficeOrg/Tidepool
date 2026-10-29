@@ -2,6 +2,51 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Console identity: banner, cell sprite and Clawffice palette (task 2.2.6)
+
+### Added
+- `tidepool-console/assets/design/` — a pinned copy of the `clawffice-design`
+  files the console renders: the Tidepool ANSI banner and its plain-text twin,
+  `core.json`, `apps/tidepool.json`, `cells.json` and all five palettes.
+  `SOURCE.json` records the design commit and a sha256 per file, and
+  `assets/design/README.md` records how to regenerate it. Nothing is fetched at
+  build time, so an offline checkout still builds.
+- `tidepool-console/src/ui/banner.rs` — parses the design banner's true-colour
+  ANSI into styled spans, reads the 12×12 `pool` cell sprite from `cells.json`,
+  resolves every palette role from the design tokens, and draws the startup
+  splash and the about screen. `NO_COLOR` and `TERM=dumb` drop every style;
+  widths below 80 columns crop the art and below 40 columns fall back to the
+  design wordmark. `TIDEPOOL_PALETTE` selects any of the five palettes, with
+  `biolume` as the design default.
+- `tidepool-console/src/app.rs` — the theme, the startup splash and the about
+  screen are app state; `Action::About` and the `a` key open about, `Esc`/`a`
+  close it, and the first key dismisses the splash without being swallowed.
+  Settings also reports both versions.
+
+### Changed
+- `tidepool-console/src/ui/` — the shell, hosts, runs and rooms screens ask the
+  theme for a role (`StyleRole::Warning`, `Focus`, `Success`, …) instead of
+  using `Color::Yellow` and friends, so the palette reaches every screen and a
+  no-colour terminal has no second rendering path.
+- `tidepool-console/src/main.rs` — the interactive path shows the banner until
+  the first key; headless mode is unchanged.
+- `tidepool-console/README.md` — documents the palette variable, the about key,
+  the no-colour and narrow-terminal behaviour, and the design source.
+
+### Tests
+- The banner's parsed text equals the design's `.txt` source row for row; the
+  vendored files match the sha256 recorded in `SOURCE.json`, and equal a sibling
+  `clawffice-design` checkout when present.
+- Every palette resolves to its design file's role and status colours; focus is
+  the `tide` product hue, not the palette primary.
+- Splash and about render at 80, 60 and 30 columns, with and without colour,
+  asserting the banner/wordmark and both versions, and every tab draws with no
+  style at all on a no-colour theme.
+- A one-pixel area, and the sprite with and without colour, render without a
+  panic.
+
+---
+
 ## [Unreleased] — 2026-10-29 — Console session, CLI parity and headless mode (task 2.2.5)
 
 ### Added
