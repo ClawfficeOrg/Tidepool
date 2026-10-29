@@ -512,6 +512,11 @@ fn map_protocol_error(error: HostProtocolError, req: &HttpRequest) -> HttpRespon
             ProblemCode::NotFound,
             "host not found".to_string(),
         ),
+        HostProtocolError::NotGranted => (
+            StatusCode::FORBIDDEN,
+            ProblemCode::Forbidden,
+            "host.execute: execution has not been granted for this host".to_string(),
+        ),
         HostProtocolError::DaemonNotConnected { slug } => (
             StatusCode::CONFLICT,
             ProblemCode::DaemonNotConnected,

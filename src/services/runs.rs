@@ -90,6 +90,7 @@ impl RunError {
             RunError::Protocol(
                 HostProtocolError::DaemonNotConnected { .. } | HostProtocolError::SocketGone,
             ) => "daemon_not_connected",
+            RunError::Protocol(HostProtocolError::NotGranted) => "forbidden",
             RunError::Database(_) | RunError::Encoding(_) | RunError::Protocol(_) => {
                 "internal_error"
             }
@@ -1494,6 +1495,10 @@ mod tests {
             })
             .code(),
             "daemon_not_connected"
+        );
+        assert_eq!(
+            RunError::Protocol(HostProtocolError::NotGranted).code(),
+            "forbidden"
         );
         assert_eq!(
             RunError::Input(InputError::RequiredInput("repo".into())).code(),

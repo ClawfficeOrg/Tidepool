@@ -1926,6 +1926,134 @@ async fn host_execution_output_completion_and_terminal_replay() {
     assert_eq!(count, 1);
 }
 
+// ── dispatch re-checks the execution grant ────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn create_execution_refuses_a_host_without_the_execution_grant() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "grant-dispatch-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register");
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint");
+    enrollment_svc::enroll_host(&pool, &token, "grant-dispatch-credential-0123456789abcdef")
+        .await
+        .expect("enroll");
+    // Connected (presence is live) but execution was never granted.
+    host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connect");
+
+    let create = |execution_id: &str| {
+        test::TestRequest::post()
+            .uri(&format!("/v1/hosts/{}/executions", host.public_id))
+            .insert_header(("Authorization", format!("Bearer {owner_token}")))
+            .set_json(serde_json::json!({
+                "execution_id": execution_id,
+                "prompt": "hello"
+            }))
+            .to_request()
+    };
+
+    // The operator route refuses with the hub problem shape and stores nothing.
+    let resp = test::call_service(&app, create("exec-ungranted")).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["code"], "forbidden");
+    assert_eq!(
+        body["detail"],
+        "host.execute: execution has not been granted for this host"
+    );
+    assert!(
+        tidepool::services::host_protocol::find_execution(&pool, "exec-ungranted")
+            .await
+            .expect("find")
+            .is_none()
+    );
+
+    // The service refuses the same way for run dispatch.
+    assert!(matches!(
+        tidepool::services::host_protocol::create_execution(
+            &pool,
+            organization_id,
+            &host.public_id,
+            "exec-ungranted",
+            "hello",
+        )
+        .await,
+        Err(tidepool::services::host_protocol::HostProtocolError::NotGranted)
+    ));
+
+    // Once granted, the grant check passes; with no socket registered in this
+    // test the intent is stored and the socket is reported gone.
+    tidepool::services::host_capability::grant_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        AuditActor::System,
+    )
+    .await
+    .expect("grant");
+    let resp = test::call_service(&app, create("exec-granted")).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let stored = tidepool::services::host_protocol::find_execution(&pool, "exec-granted")
+        .await
+        .expect("find")
+        .expect("stored before send");
+    assert_eq!(
+        stored.status,
+        tidepool::entities::host_execution::ExecutionStatus::Queued
+    );
+
+    // Revoking the grant also stops a replay of the non-terminal intent.
+    tidepool::services::host_capability::revoke_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        AuditActor::System,
+    )
+    .await
+    .expect("revoke");
+    let resp = test::call_service(&app, create("exec-granted")).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    host_presence::host_disconnected(&pool, &host.public_id)
+        .await
+        .expect("disconnect");
+}
+
 // ── connections registry (task 1.3.1) ─────────────────────────────────────
 
 #[actix_web::test]

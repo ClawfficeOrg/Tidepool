@@ -189,6 +189,11 @@ fn map_error(error: DispatchError, req: &HttpRequest) -> HttpResponse {
             ProblemCode::DaemonNotConnected,
             error.to_string(),
         ),
+        DispatchError::Run(error) if error.code() == ProblemCode::Forbidden.as_str() => (
+            StatusCode::FORBIDDEN,
+            ProblemCode::Forbidden,
+            error.to_string(),
+        ),
         DispatchError::Run(error) if error.code() == "validation_failed" => (
             StatusCode::UNPROCESSABLE_ENTITY,
             ProblemCode::ValidationFailed,

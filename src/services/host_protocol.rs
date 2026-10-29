@@ -42,6 +42,9 @@ pub enum HostProtocolError {
     /// Host is unknown/revoked.
     #[error("host not found")]
     NotFound,
+    /// The host has not granted execution (`host.execute` is off).
+    #[error("host.execute: execution has not been granted for this host")]
+    NotGranted,
     /// Host is not connected or its heartbeat is stale.
     #[error("daemon_not_connected: host '{slug}' is offline")]
     DaemonNotConnected {
@@ -139,6 +142,10 @@ pub async fn create_execution(
     let host = host_presence::require_connected(pool, organization_id, host_public_id)
         .await
         .map_err(map_presence_error)?;
+    // The grant is re-read at every dispatch, including a replay of a
+    // non-terminal intent: revoking `host.execute` stops new work reaching
+    // the host even while its socket stays open.
+    require_granted(host.execution_granted)?;
 
     if existing.is_none() {
         let result = sqlx::query(
@@ -273,6 +280,15 @@ pub async fn find_execution(
     .map_err(HostProtocolError::Database)
 }
 
+/// Refuse dispatch to a host that has not granted execution.
+pub fn require_granted(execution_granted: bool) -> Result<(), HostProtocolError> {
+    if execution_granted {
+        Ok(())
+    } else {
+        Err(HostProtocolError::NotGranted)
+    }
+}
+
 fn map_presence_error(error: HostPresenceError) -> HostProtocolError {
     match error {
         HostPresenceError::NotFound => HostProtocolError::NotFound,
@@ -305,6 +321,15 @@ mod tests {
         assert_eq!(frame["v"], 1);
         assert_eq!(frame["type"], "interrupt_execution");
         assert_eq!(frame["executionId"], "exec-1");
+    }
+
+    #[test]
+    fn dispatch_requires_the_execution_grant() {
+        assert!(require_granted(true).is_ok());
+        assert!(matches!(
+            require_granted(false),
+            Err(HostProtocolError::NotGranted)
+        ));
     }
 
     #[test]
