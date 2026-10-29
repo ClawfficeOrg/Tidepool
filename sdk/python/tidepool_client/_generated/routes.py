@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-CONTRACT_SHA256 = '7d1637dad19eb999ffee34094a5fac2d50c58734bccc61c876883c0781c6e9f4'
+CONTRACT_SHA256 = 'eceeec7d353bdf813d0f77140f5727983785fa65ae632df6d3fc2831bf80bfb2'
 
 CONTRACT_VERSION = '1.0.0'
 
@@ -1313,7 +1313,7 @@ ROUTES: Dict[str, Route] = {
         response_kind='model',
         response_models=('HostView',),
         success=(201,),
-        errors=(400, 401, 404, 409, 422),
+        errors=(400, 401, 404, 409, 410, 422),
         rate_limited=True,
         auth='public',
         scope=None,

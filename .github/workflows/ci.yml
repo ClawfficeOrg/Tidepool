@@ -263,6 +263,104 @@ jobs:
       - name: Revert migrations (down)
         run: sqlx migrate revert --source migrations
 
+  conformance:
+    name: SDK conformance (real pool)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: tidepool
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/tidepool
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: ci-conformance-secret-ci-conformance-0000
+      HOST: 127.0.0.1
+      PORT: 8090
+      RUST_LOG: info
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            sdk/conformance/adapters/rust/target
+          key: ${{ runner.os }}-cargo-conformance-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-conformance-
+            ${{ runner.os }}-cargo-
+
+      - name: Build the pool, the reference agent and the Rust adapter
+        run: |
+          cargo build -p tidepool -p tidepool-host-agent
+          cargo build --manifest-path sdk/conformance/adapters/rust/Cargo.toml
+
+      - name: Run the suite against a real pool
+        run: |
+          set -euo pipefail
+          ./target/debug/tidepool > /tmp/tidepool.log 2>&1 &
+          POOL=$!
+          trap 'kill $POOL 2>/dev/null || true; if [ -f /tmp/conformance-vars.json.agent.pid ]; then kill "$(cat /tmp/conformance-vars.json.agent.pid)" 2>/dev/null || true; fi' EXIT
+
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8090/healthz >/dev/null 2>&1; then ok=1; break; fi
+            echo "waiting for the pool ($i)"; sleep 1
+          done
+          if [ "$ok" != "1" ]; then
+            echo "the pool never became healthy"
+            tail -80 /tmp/tidepool.log
+            exit 1
+          fi
+
+          python3 sdk/conformance/provision.py \
+            --base-url http://127.0.0.1:8090 \
+            --out /tmp/conformance-vars.json \
+            --agent-bin target/debug/tidepool-host-agent
+
+          python3 sdk/conformance/run_conformance.py \
+            --base-url http://127.0.0.1:8090 \
+            --vars /tmp/conformance-vars.json \
+            --json /tmp/conformance-report.json || {
+              echo "conformance suite failed; pool log follows"
+              tail -120 /tmp/tidepool.log
+              exit 1
+            }
+
   docker-smoke:
     name: Docker build smoke
     runs-on: ubuntu-latest

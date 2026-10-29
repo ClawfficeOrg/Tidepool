@@ -1,0 +1,21 @@
+[package]
+name = "tidepool-conformance-adapter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Conformance adapter for the Rust Tidepool SDK (not published)"
+
+[[bin]]
+name = "tidepool-conformance-adapter"
+path = "src/main.rs"
+
+[dependencies]
+tidepool-client = { path = "../../../rust" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+# The adapter is its own workspace so the main workspace, and its gates, are
+# unchanged. Build with:
+#   cargo build --manifest-path sdk/conformance/adapters/rust/Cargo.toml
+[workspace]

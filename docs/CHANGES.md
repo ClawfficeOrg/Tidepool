@@ -2,6 +2,46 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — SDK conformance suite (task 2.0.5)
+
+### Added
+- `sdk/conformance/` — one scenario list run against all three bindings
+  (Python, TypeScript, Rust), so a divergence in a problem code, a paging
+  cursor or a frame classification fails the build. The harness knows nothing
+  about any one SDK: a binding is a process that answers six generic commands
+  (`contract`, `describe`, `call`, `page`, `stream`, `frames`) over
+  newline-delimited JSON.
+- `sdk/conformance/scenarios/` — fifteen scenarios across eight files covering
+  authentication and scopes, host enrollment and one-time-token replay,
+  capability validation refusals, trigger validation and install revisions,
+  dispatch and offline-host failure, cursor paging and stream resume, and every
+  problem-details shape. Adding a scenario is a data change; no per-binding
+  test code is involved.
+- `sdk/conformance/adapters/` — the three adapters plus `manifest.json`. The
+  Rust adapter is its own workspace so the main gates are unchanged.
+- `sdk/conformance/provision.py` — creates the pool state a run needs over the
+  public API (operator, project, keys, connection, hosts, reference agent,
+  configuration revision, triggers) and writes the `--vars` file.
+- `sdk/conformance/selftest.py` — checks the harness itself: a binding that
+  answers a different error code or cursor fails, captures are per binding, a
+  subset run is never a clean pass, and every shipped scenario loads.
+- `tests/conformance_suite.rs` — runs the selftest and the scenario listing
+  under `cargo test`, so a broken scenario fails the normal gate.
+- `.github/workflows/ci.yml` — a `conformance` job with MySQL and Redis
+  services: migrations, the pool, the reference host agent and the full suite
+  against a real pool, not a mock.
+
+### Changed
+- `docs/api/openapi-v1.json` — `POST /v1/hosts/enroll` now declares `410 Gone`,
+  which the handler already returned for an expired token and for a token whose
+  minting key was revoked. The generated SDK route tables follow; the
+  conformance suite pins `gone` rather than letting the contract drift.
+- `sdk/rust/src/stream.rs` — `ChatFrame::cursor()` now returns the catch-up
+  cursor the envelope carries (`chat.current`) and `None` for a live message;
+  the message sequence stays on `MessageView::sequence`, and the socket driver
+  still advances its resume point from it. Python and TypeScript already
+  behaved this way, and the conformance suite caught the divergence.
+
 ## [Unreleased] — 2026-10-29 — Python SDK (task 2.0.4)
 
 ### Added

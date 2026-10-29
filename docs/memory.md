@@ -1660,6 +1660,51 @@ extra, and it must not become a third opinion about retries or errors.
 
 ---
 
+## 2026-10-29 — SDK conformance: one scenario list, three adapter processes, double comparison (task 2.0.5)
+
+**Context.** Three SDKs were written against the same contract by three
+different generators, so they could agree with the document and still disagree
+with each other on shapes the document does not pin: the exact problem code for
+a refusal, the cursor a page returns, how a socket frame is classified.
+
+**Decision:**
+- **A binding is a process, not a test file.** Every SDK ships one adapter that
+  answers six generic commands (`contract`, `describe`, `call`, `page`,
+  `stream`, `frames`) over newline-delimited JSON. The harness never imports an
+  SDK and holds no per-language code, so a scenario is data: adding one adds a
+  step to a JSON file and all three bindings must answer it. That is what makes
+  "same library three times" enforceable rather than aspirational.
+- **Compare twice.** Each answer is checked against the step's `expect`
+  pattern (the contract's promise) *and* against the other bindings for the
+  paths the step lists in `agree` (the promise the contract does not spell out).
+  The second check is what catches a divergence neither the document nor a
+  single binding's test would fail on.
+- **An incomplete run is never a pass.** `--bindings` exists for debugging and
+  exits 3; a missing adapter, a crashed adapter and a skipped step all fail.
+- **The suite runs against a real pool.** `provision.py` creates the state over
+  the public API and starts the reference host agent for the connected host; CI
+  supplies MySQL, Redis and the server. A mock would agree with itself and
+  prove nothing about the pool's problem codes or cursors.
+- **The harness is gated locally.** `tests/conformance_suite.rs` runs the
+  harness selftest and the scenario listing under `cargo test`, so a broken
+  scenario or a matcher that stopped failing divergences breaks the normal
+  gate without needing a database.
+
+**Consequences:**
+- Captures are scoped per binding. A scenario that registers a host and then
+  mints its enrollment token must not read the sibling binding's id: the token
+  is single use, so a shared scope would fail for the wrong reason.
+- `expect` accepts dotted keys as paths as well as nested objects, so a
+  scenario can pin `body.run.id` without nesting the whole response.
+- The suite is the reason `ChatFrame::cursor()` in the Rust SDK now matches the
+  envelope: `cursor` is the `chat.current` resume point, and a live message
+  exposes its sequence on the message. Python and TypeScript already did this;
+  the three-way comparison is what surfaced it.
+- A new *command* is still an adapter change by design. That is the boundary:
+  the suite owns behaviour, the adapter owns translation.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

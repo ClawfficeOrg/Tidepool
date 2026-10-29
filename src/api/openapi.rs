@@ -644,7 +644,10 @@ const ROUTES: &[RouteSpec] = &[
         request: Some("EnrollHostRequest"),
         response: Some("HostView"),
         success: "201",
-        errors: &["401", "404", "409"],
+        // 410: the token exists but expired, or the key that minted it was
+        // revoked (services::enrollment::EnrollmentError::{TokenExpired,
+        // TokenRevoked}). The conformance suite pins it as `gone`, not 404/409.
+        errors: &["401", "404", "409", "410"],
         ..HUB
     },
     // --------------------------------------------------------- connections

@@ -1136,7 +1136,7 @@ export const ROUTES = Object.freeze({
     body: "EnrollHostRequest",
     response: "HostView",
     success: [201],
-    errors: [400,401,404,409,422],
+    errors: [400,401,404,409,410,422],
     rateLimited: true,
     auth: "public",
     scope: null,

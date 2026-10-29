@@ -7,7 +7,7 @@ pub use crate::route::{Auth, Method, RouteInfo, Surface};
 
 /// SHA-256 of the contract this module was generated from.
 pub const CONTRACT_SHA256: &str =
-    "7d1637dad19eb999ffee34094a5fac2d50c58734bccc61c876883c0781c6e9f4";
+    "eceeec7d353bdf813d0f77140f5727983785fa65ae632df6d3fc2831bf80bfb2";
 
 /// Contract version reported by the committed document.
 pub const CONTRACT_VERSION: &str = "1.0.0";
@@ -1156,7 +1156,7 @@ pub static ROUTE_POST_V1_HOSTS_ENROLL: RouteInfo = RouteInfo {
     has_body: true,
     response: "HostView",
     success: &[201],
-    errors: &[400, 401, 404, 409, 422],
+    errors: &[400, 401, 404, 409, 410, 422],
     rate_limited: true,
     auth: Auth::Public,
     scope: None,

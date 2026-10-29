@@ -1,0 +1,192 @@
+{
+  "scenarios": [
+    {
+      "id": "hosts.enrollment",
+      "title": "Host enrollment is a one-time exchange and a replay is refused",
+      "goal": "Register, mint, enroll and replay. The token is single use, the credential is the host's, and every refusal is the documented problem code.",
+      "steps": [
+        {
+          "id": "register",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts",
+            "body": {
+              "hostname": "conformance-enroll-{{binding}}",
+              "display_name": "Conformance {{binding}}"
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.status": "pending_approval",
+            "body.hostname": "conformance-enroll-{{binding}}",
+            "body.display_name": "Conformance {{binding}}"
+          },
+          "capture": {
+            "enrolled_host_id": "body.id",
+            "enrolled_host_slug": "body.slug"
+          }
+        },
+        {
+          "id": "mint",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enrollment_tokens",
+            "body": { "host_id": "{{enrolled_host_id}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.token": { "$type": "string" },
+            "body.enrollment_token.expires_at": { "$type": "string" }
+          },
+          "capture": { "enrollment_token": "body.token" }
+        },
+        {
+          "id": "enroll",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": {
+              "token": "{{enrollment_token}}",
+              "credential": "conformance-not-a-secret-credential-{{binding}}"
+            }
+          },
+          "expect": {
+            "outcome": "ok",
+            "body.id": "{{enrolled_host_id}}",
+            "body.slug": "{{enrolled_host_slug}}",
+            "body.status": "offline"
+          },
+          "agree": ["body.status"]
+        },
+        {
+          "id": "replay",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": {
+              "token": "{{enrollment_token}}",
+              "credential": "conformance-not-a-secret-credential-{{binding}}"
+            }
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 409,
+            "code": "conflict",
+            "type": { "$regex": "^https://tidepool.dev/problems/" }
+          },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "short-credential",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": { "token": "placeholder", "credential": "short" }
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 422,
+            "code": "validation_failed"
+          },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "malformed-token",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": {
+              "token": "not-a-token",
+              "credential": "conformance-not-a-secret-credential-{{binding}}"
+            }
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 400,
+            "code": "invalid_request"
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    },
+    {
+      "id": "hosts.revoked-token",
+      "title": "Revoking the key that minted a token revokes the token",
+      "goal": "A one-time resource that is gone answers 410 gone, not 404 and not 409, on every binding.",
+      "steps": [
+        {
+          "id": "create-key",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_api_keys",
+            "body": {
+              "name": "conformance-enroll-key-{{binding}}",
+              "scopes": ["daemons:enroll"]
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.secret": { "$type": "string" },
+            "body.api_key.status": "active"
+          },
+          "capture": {
+            "mint_key_id": "body.api_key.id",
+            "mint_key_secret": "body.secret"
+          }
+        },
+        {
+          "id": "register-late-host",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts",
+            "body": { "hostname": "conformance-revoked-{{binding}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body.status": "pending_approval" },
+          "capture": { "late_host_id": "body.id" }
+        },
+        {
+          "id": "mint-with-key",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enrollment_tokens",
+            "body": { "host_id": "{{late_host_id}}" }
+          },
+          "auth": { "apiKey": "{{mint_key_secret}}" },
+          "expect": { "outcome": "ok", "body.token": { "$type": "string" } },
+          "capture": { "late_token": "body.token" }
+        },
+        {
+          "id": "revoke-key",
+          "command": "call",
+          "params": {
+            "operation": "delete_v1_api_keys_id",
+            "pathParams": { "id": "{{mint_key_id}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body": null }
+        },
+        {
+          "id": "enroll-revoked-token",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": {
+              "token": "{{late_token}}",
+              "credential": "conformance-not-a-secret-credential-{{binding}}"
+            }
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 410,
+            "code": "gone"
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    }
+  ]
+}

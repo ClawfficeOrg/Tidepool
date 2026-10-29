@@ -4751,6 +4751,16 @@
             },
             "description": "409 — Conflict — already initialized, already used, or the last owner"
           },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "410 — Gone — invitation expired or revoked"
+          },
           "422": {
             "content": {
               "application/problem+json": {

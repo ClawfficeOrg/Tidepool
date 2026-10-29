@@ -166,7 +166,7 @@
         {
           "id": "2.0.5",
           "title": "SDK conformance suite",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "One suite of scenarios run against all three bindings, so the SDKs are the same library three times rather than three opinions. Scenarios cover authentication and scopes, host enrollment and idempotent replay, capability validation refusals, trigger validation, dispatch and offline-host failure, cursor paging and live-stream resume, and every problem-details error shape. A scenario is added once and every binding must pass it.",
           "touches": [
             "sdk/conformance/",
@@ -187,7 +187,9 @@
           "complexity": "High",
           "agent": "pro_dev_agent",
           "changelog": "Added the cross-SDK conformance suite",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T07:59:23Z",
+          "human_look": "real-pool conformance run happens in the new CI job only; scenario expectations were reviewed against server code but not executed locally (no live MySQL/Redis/server permitted)"
         },
         {
           "id": "2.0.6",

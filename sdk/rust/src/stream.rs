@@ -183,11 +183,15 @@ impl ChatFrame {
         }
     }
 
-    /// The resume point this frame advances to, when it carries one.
+    /// The catch-up cursor this frame carries, when it has one.
+    ///
+    /// Only `chat.current` carries the resume point; a live `chat.message`
+    /// exposes its own sequence on [`MessageView::sequence`] instead. This
+    /// matches the other Tidepool bindings, where `cursor` is the
+    /// `chat.current` field and live messages do not advance it.
     pub fn cursor(&self) -> Option<u64> {
         match self {
             Self::Current { cursor, .. } => *cursor,
-            Self::Message { message, .. } => u64::try_from(message.sequence).ok(),
             _ => None,
         }
     }
@@ -224,7 +228,11 @@ mod tests {
         let message = ChatFrame::parse(&format!(
             r#"{{"type":"chat.message","catchUp":false,"message":{MESSAGE}}}"#
         ));
-        assert_eq!(message.cursor(), Some(7));
+        assert_eq!(message.cursor(), None);
+        match &message {
+            ChatFrame::Message { message, .. } => assert_eq!(message.sequence, 7),
+            other => panic!("unexpected frame {other:?}"),
+        }
         let presence = ChatFrame::parse(r#"{"type":"chat.presence","watchers":["a","b"]}"#);
         match presence {
             ChatFrame::Presence { watchers, .. } => assert_eq!(watchers, vec!["a", "b"]),

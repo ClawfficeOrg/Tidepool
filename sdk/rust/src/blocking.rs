@@ -406,6 +406,19 @@ impl FrameIter {
     }
 }
 
+/// The sequence a socket client resumes after, given one frame.
+///
+/// `chat.current` carries the catch-up boundary directly; a live message
+/// advances the resume point by its own sequence. Both bindings that expose a
+/// resume point do this, so a reconnect after a drop does not replay frames
+/// the client already delivered.
+fn resume_point(frame: &ChatFrame) -> Option<u64> {
+    frame.cursor().or_else(|| match frame {
+        ChatFrame::Message { message, .. } => u64::try_from(message.sequence).ok(),
+        _ => None,
+    })
+}
+
 impl Iterator for FrameIter {
     type Item = Result<ChatFrame>;
 
@@ -417,7 +430,11 @@ impl Iterator for FrameIter {
             match self.socket.read() {
                 Ok(tungstenite::Message::Text(text)) => {
                     let frame = ChatFrame::parse(&text);
-                    if let Some(cursor) = frame.cursor() {
+                    // The frame's own cursor is the catch-up boundary; a live
+                    // message advances the resume point by its sequence. This
+                    // mirrors the TypeScript driver so a dropped socket resumes
+                    // from the highest sequence either of them delivered.
+                    if let Some(cursor) = resume_point(&frame) {
                         self.cursor = Some(cursor);
                     }
                     if matches!(frame, ChatFrame::Error { .. }) {

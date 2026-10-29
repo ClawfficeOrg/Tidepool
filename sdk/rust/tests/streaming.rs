@@ -41,9 +41,9 @@ fn the_stream_yields_history_current_and_live_frames() {
         format!("ws://{address}/v1/chatrooms/room_1/stream?token=jwt")
     );
 
-    let frames: Vec<ChatFrame> = stream
-        .connect()
-        .expect("connect")
+    let mut frames_iter = stream.connect().expect("connect");
+    let frames: Vec<ChatFrame> = frames_iter
+        .by_ref()
         .map(|frame| frame.expect("frame"))
         .collect();
     handle.join().expect("server");
@@ -55,7 +55,16 @@ fn the_stream_yields_history_current_and_live_frames() {
         other => panic!("unexpected frame {other:?}"),
     }
     assert_eq!(frames[1].cursor(), Some(8));
-    assert_eq!(frames[2].cursor(), Some(8));
+    assert_eq!(frames[2].cursor(), None, "a live message is not a cursor");
+    match &frames[2] {
+        ChatFrame::Message { message, .. } => assert_eq!(message.sequence, 8),
+        other => panic!("unexpected frame {other:?}"),
+    }
+    assert_eq!(
+        frames_iter.cursor(),
+        Some(8),
+        "a live message still advances the resume point"
+    );
     match &frames[3] {
         ChatFrame::Presence { watchers, .. } => assert_eq!(watchers, &["user_1"]),
         other => panic!("unexpected frame {other:?}"),

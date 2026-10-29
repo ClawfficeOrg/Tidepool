@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Shape of the variable file run_conformance.py --vars expects. Every value",
+    "here is a placeholder so the scenario list can be validated (--list) and",
+    "unit-tested without a pool; provision.py writes the real file against a",
+    "live server. Do not put real credentials in this file."
+  ],
+  "token": "placeholder-operator-token",
+  "operator_email": "conformance@tidepool.invalid",
+  "actor": "conformance@tidepool.invalid",
+  "project_id": "00000000-0000-4000-8000-000000000000",
+  "api_key": "tpk_placeholder.placeholder",
+  "read_key": "tpk_placeholder.placeholder",
+  "connection_slug": "conformance-github",
+  "offline_host_id": "00000000-0000-4000-8000-000000000001",
+  "offline_host_slug": "conformance-offline",
+  "offline_host_credential": "placeholder-offline-credential",
+  "online_host_id": "00000000-0000-4000-8000-000000000002",
+  "online_host_slug": "conformance-online",
+  "online_host_credential": "placeholder-online-credential",
+  "trigger_offline": "conformance-offline",
+  "trigger_online": "conformance-online",
+  "trigger_forbidden": "conformance-forbidden"
+}
