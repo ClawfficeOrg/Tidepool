@@ -8,6 +8,7 @@
 //! Override with `DATABASE_URL`.
 
 use actix_web::{App, http::StatusCode, test, web};
+use redis::aio::ConnectionManager;
 use serde_json::{Value, json};
 use sqlx::MySqlPool;
 use tidepool::{
@@ -24,6 +25,19 @@ const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_
 const JWT_SECRET: &str = "integration-test-projects-jwt-secret-32chars";
 
 static DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+// The dev stack publishes Redis on 6380 (see config/docker-compose.dev.override.yml).
+const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6380";
+
+/// The session store operator routes require: they fail closed without one.
+async fn sessions() -> web::Data<ConnectionManager> {
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| DEFAULT_REDIS_URL.into());
+    web::Data::new(
+        tidepool::services::redis::connect(&url)
+            .await
+            .expect("Redis unavailable; start the dev stack or set REDIS_URL"),
+    )
+}
 
 async fn pool() -> MySqlPool {
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB_URL.into());
@@ -168,6 +182,7 @@ async fn install_then_fail_leaves_previous_active() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::projects::config),
     )
     .await;
@@ -258,6 +273,7 @@ async fn a_revision_is_immutable_and_files_are_stored_verbatim() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::projects::config),
     )
     .await;
@@ -365,6 +381,7 @@ async fn projects_are_scoped_to_the_organization() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::projects::config),
     )
     .await;
@@ -417,6 +434,7 @@ async fn validate_writes_nothing() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::projects::config),
     )
     .await;

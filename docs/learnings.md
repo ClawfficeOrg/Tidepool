@@ -192,3 +192,28 @@ bullets over prose. Read the last few sections before starting a similar task.
 - An idempotency ledger makes terminal replay independent of connectivity:
   look up the execution before requiring a live host, and return the recorded
   result for terminal rows.
+- Three SDKs generated from one contract can still disagree on shapes the
+  document does not pin. Comparing their answers to each other — not just to
+  the document — is what finds it: `ChatFrame::cursor()` in Rust returned a
+  live message's sequence while Python and TypeScript returned only the
+  `chat.current` cursor, and `POST /v1/hosts/enroll` returned `410` without
+  declaring it. Both were invisible to each SDK's own tests.
+- A scenario that interpolates `{{binding}}` into a value the bindings must
+  agree on will fail the agreement check for the wrong reason: the error
+  message quotes the per-binding slug. Use one constant for shared-failure
+  steps and per-binding values only where the answer is not compared.
+- `cargo test -p tidepool-client --all-features` is intermittently red on a
+  loaded machine: `tests/async_client.rs` reports
+  `hyper::Error(IncompleteMessage)` against the scripted local server roughly
+  one run in five, while `--test async_client` alone passes. Pre-existing and
+  unrelated to the conformance suite; it is why the conformance CI job does not
+  gate on the Rust SDK's own integration suite.
+- A forward-only `after=` cursor can still page backwards: step the cursor back
+  a page, request forward from there and discard everything at or above the
+  requested cursor. A page shorter than the page size is not proof of the start
+  when sequences have gaps, so keep stepping until a full page is collected or
+  `after=0` was read.
+- A test helper that captures its own `Instant` internally shifts every
+  deadline relative to the caller's clock. Return the helper's clock, or a
+  `base + interval` drive lands a few microseconds short of the interval and a
+  timer test fails intermittently by design.

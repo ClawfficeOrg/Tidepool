@@ -1,0 +1,54 @@
+{
+  "name": "chat history paging follows the sequence cursor",
+  "steps": [
+    {
+      "request": { "method": "GET", "path": "/v1/chatrooms/room_01/messages", "query": { "after": "0", "limit": "2" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "next": 2,
+          "messages": [
+            {
+              "id": "msg_01",
+              "body": "first",
+              "project": "proj_01",
+              "created_at": "2026-10-29T05:00:00Z",
+              "sequence": 1,
+              "reply_to": null,
+              "author": { "kind": "user", "id": "operator_01" }
+            },
+            {
+              "id": "msg_02",
+              "body": "second",
+              "project": "proj_01",
+              "created_at": "2026-10-29T05:00:01Z",
+              "sequence": 2,
+              "reply_to": null,
+              "author": { "kind": "user", "id": "operator_01" }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": { "method": "GET", "path": "/v1/chatrooms/room_01/messages", "query": { "after": "2", "limit": "2" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "next": null,
+          "messages": [
+            {
+              "id": "msg_03",
+              "body": "third",
+              "project": "proj_01",
+              "created_at": "2026-10-29T05:00:02Z",
+              "sequence": 3,
+              "reply_to": "msg_01",
+              "author": { "kind": "user", "id": "operator_02" }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+{
+  "scenarios": [
+    {
+      "id": "triggers.validation",
+      "title": "Trigger validation names the exact field that did not resolve",
+      "goal": "A well-formed document whose host or connection does not resolve is a 200 with valid:false and a named issue, identical on every binding.",
+      "steps": [
+        {
+          "id": "valid",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_triggers_validate",
+            "body": {
+              "name": "conformance-validate-{{binding}}",
+              "event": { "provider": "github", "type": "issue.comment_created" },
+              "filters": {
+                "connection": "{{connection_slug}}",
+                "resource": { "kind": "repository", "id": "acme/conformance" },
+                "from_users": ["{{actor}}"]
+              },
+              "run": {
+                "host": "{{offline_host_slug}}",
+                "agent": {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default"
+                }
+              }
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.valid": true,
+            "body.errors": [],
+            "body.name": "conformance-validate-{{binding}}"
+          },
+          "agree": ["body.valid", "body.errors"]
+        },
+        {
+          "id": "unknown-host",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_triggers_validate",
+            "body": {
+              "name": "conformance-validate-unknown-host",
+              "event": { "provider": "github", "type": "issue.comment_created" },
+              "filters": {
+                "connection": "{{connection_slug}}",
+                "resource": { "kind": "repository", "id": "acme/conformance" },
+                "from_users": ["{{actor}}"]
+              },
+              "run": {
+                "host": "no-such-host",
+                "agent": {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default"
+                }
+              }
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.valid": false,
+            "body.errors": { "$contains": { "field": "run.host" } }
+          },
+          "agree": ["body.valid", "body.errors.0.field", "body.errors.0.message"]
+        },
+        {
+          "id": "unknown-connection",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_triggers_validate",
+            "body": {
+              "name": "conformance-validate-unknown-connection",
+              "event": { "provider": "github", "type": "issue.comment_created" },
+              "filters": {
+                "connection": "no-such-connection",
+                "resource": { "kind": "repository", "id": "acme/conformance" },
+                "from_users": ["{{actor}}"]
+              },
+              "run": {
+                "host": "{{offline_host_slug}}",
+                "agent": {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default"
+                }
+              }
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.valid": false,
+            "body.errors": { "$contains": { "field": "filters.connection" } }
+          },
+          "agree": ["body.valid", "body.errors.0.field"]
+        }
+      ]
+    },
+    {
+      "id": "triggers.install",
+      "title": "Installing a trigger is a new revision, and a refused install writes nothing",
+      "goal": "The first install of a name is replaced:false/version 1; the second is replaced:true/version 2 with the same trigger id; an invalid document is 422 configuration_invalid.",
+      "steps": [
+        {
+          "id": "install",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_triggers_install",
+            "body": {
+              "project": "{{project_id}}",
+              "name": "conformance-install-{{binding}}",
+              "event": { "provider": "github", "type": "issue.comment_created" },
+              "filters": {
+                "connection": "{{connection_slug}}",
+                "resource": { "kind": "repository", "id": "acme/conformance" },
+                "from_users": ["{{actor}}"]
+              },
+              "run": {
+                "host": "{{offline_host_slug}}",
+                "agent": {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default"
+                }
+              }
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.name": "conformance-install-{{binding}}",
+            "body.version": 1,
+            "body.replaced": false,
+            "body.active": true,
+            "body.revision": { "$type": "string" }
+          },
+          "capture": { "installed_trigger_id": "body.id" }
+        },
+        {
+          "id": "install-again",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_triggers_install",
+            "body": {
+              "project": "{{project_id}}",
+              "name": "conformance-install-{{binding}}",
+              "event": { "provider": "github", "type": "issue.comment_created" },
+              "filters": {
+                "connection": "{{connection_slug}}",
+                "resource": { "kind": "repository", "id": "acme/conformance" },
+                "from_users": ["{{actor}}"]
+              },
+              "run": {
+                "host": "{{offline_host_slug}}",
+                "agent": {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default"
+                }
+              }
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.id": "{{installed_trigger_id}}",
+            "body.version": 2,
+            "body.replaced": true,
+            "body.active": true
+          }
+        },
+        {
+          "id": "install-invalid",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_triggers_install",
+            "body": {
+              "project": "{{project_id}}",
+              "name": "conformance-install-invalid-{{binding}}",
+              "event": { "provider": "github", "type": "issue.comment_created" },
+              "filters": {
+                "connection": "{{connection_slug}}",
+                "resource": { "kind": "repository", "id": "acme/conformance" },
+                "from_users": ["{{actor}}"]
+              },
+              "run": {
+                "host": "no-such-host-{{binding}}",
+                "agent": {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default"
+                }
+              }
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 422,
+            "code": "configuration_invalid",
+            "detail": { "$contains": "run.host" }
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    }
+  ]
+}

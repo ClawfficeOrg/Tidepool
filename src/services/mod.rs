@@ -29,5 +29,6 @@ pub mod redis;
 pub mod relay;
 pub mod runs;
 pub mod saves;
+pub mod token_revocation;
 pub mod triggers;
 pub mod workflows;

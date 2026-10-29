@@ -1,0 +1,76 @@
+{
+  "scenarios": [
+    {
+      "id": "stream.resume",
+      "title": "The live-stream handle resumes from a cursor and carries the token where the socket expects it",
+      "goal": "A dropped socket reconnects with the last sequence in `after`; the handle is built the same way by every binding and no socket is opened to check it.",
+      "steps": [
+        {
+          "id": "handle",
+          "command": "stream",
+          "params": {
+            "operation": "get_v1_chatrooms_room_stream",
+            "pathParams": { "room": "conformance-room" },
+            "after": 7
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "scheme": "ws",
+            "after": 7,
+            "token_present": true,
+            "token_matches": true,
+            "after_param": "7",
+            "path": "/v1/chatrooms/conformance-room/stream"
+          },
+          "agree": [
+            "scheme",
+            "after",
+            "token_present",
+            "token_matches",
+            "after_param",
+            "path"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stream.frames",
+      "title": "Every socket frame shape parses into the same typed frame",
+      "goal": "History, current, message, presence, catch-up, error and unknown frames are classified identically, including the resume cursor each one carries.",
+      "steps": [
+        {
+          "id": "parse",
+          "command": "frames",
+          "params": {
+            "texts": [
+              "{\"type\":\"chat.history\",\"catchUp\":true,\"messages\":[{\"id\":\"m3\",\"body\":\"three\",\"project\":\"proj\",\"created_at\":\"2026-10-29T00:00:00Z\",\"sequence\":3},{\"id\":\"m4\",\"body\":\"four\",\"project\":\"proj\",\"created_at\":\"2026-10-29T00:00:04Z\",\"sequence\":4}]}",
+              "{\"type\":\"chat.current\",\"cursor\":4}",
+              "{\"type\":\"chat.message\",\"message\":{\"id\":\"m5\",\"body\":\"five\",\"project\":\"proj\",\"created_at\":\"2026-10-29T00:00:05Z\",\"sequence\":5}}",
+              "{\"type\":\"chat.presence\",\"watchers\":[\"user_1\"]}",
+              "{\"type\":\"chat.catchUp\",\"catchUp\":true}",
+              "{\"type\":\"chat.error\",\"code\":\"forbidden\",\"message\":\"not a member\"}",
+              "not-json"
+            ]
+          },
+          "expect": {
+            "frames": [
+              {
+                "kind": "chat.history",
+                "catch_up": true,
+                "cursor": null,
+                "sequences": [3, 4]
+              },
+              { "kind": "chat.current", "catch_up": false, "cursor": 4 },
+              { "kind": "chat.message", "sequences": [5] },
+              { "kind": "chat.presence", "sequences": [] },
+              { "kind": "chat.catchUp", "catch_up": true },
+              { "kind": "chat.error", "code": "forbidden" },
+              { "kind": "unknown", "sequences": [] }
+            ]
+          },
+          "agree": ["frames"]
+        }
+      ]
+    }
+  ]
+}

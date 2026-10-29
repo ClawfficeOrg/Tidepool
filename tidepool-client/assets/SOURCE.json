@@ -1,0 +1,24 @@
+{
+  "$comment": "Provenance for the Tidepool client's tray icons. The cell-sprite source and the Windows app icon are byte-for-byte copies from clawffice-design at source.commit; the menu-bar PNGs are generated from that source by assets/render_tray_icons.py. Regenerate with the script, then rewrite the generated hashes.",
+  "source": {
+    "repo": "clawffice-design",
+    "commit": "995b41606e65",
+    "files": [
+      "tokens/cells.json",
+      "logos/tidepool/tidepool-icon.ico"
+    ]
+  },
+  "sha256": {
+    "cells.json": "171fd9e6e37783cab9e52e8142e7e191373766224970647354c182818dabf8da",
+    "tidepool-icon.ico": "cf8fbe43d64ee77ffbcb5aebe54d7dc392e4c2e1be23d6194e93c86b30c7937c",
+    "tray-icon.ico": "cf8fbe43d64ee77ffbcb5aebe54d7dc392e4c2e1be23d6194e93c86b30c7937c",
+    "tray-icon.png": "be89c096ce13ab792b5d8be14358fcd697621f5fbfecd4ee1ae2d5f8fe4683fd",
+    "tray-icon@2x.png": "bdbd2187f9e9450dca86b3cdad602880005f431cfad9de843cac6c273b5d3343"
+  },
+  "palette": {
+    "product_hue": "#4A9FE0",
+    "accent": "#F26B21",
+    "mist_50": "#E9FBF6",
+    "ink_950": "#030C11"
+  }
+}

@@ -64,7 +64,7 @@
         {
           "id": "2.0.1",
           "title": "Machine-readable hub API contract",
-          "status": "pending",
+          "status": "done",
           "goal": "Extend the pool's OpenAPI document to cover the hub surface with the same discipline the game routes already use: one route table, drift failing CI. Publish it as a versioned artifact at a stable path, generate a human-readable reference from it, and write docs/API_CONTRACT.md stating what is stable, what may change within a major version, and how a breaking change is announced. The contract is the single input for every SDK, so it decides the resource-versus-command shape and records that decision.",
           "touches": [
             "src/api/openapi.rs",
@@ -81,16 +81,17 @@
           "tests": "cargo test openapi; boot the server in degraded mode and validate the served document against the OpenAPI 3.1 meta-schema.",
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Published the machine-readable hub API contract",
+          "changelog": "Machine-readable hub API contract",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.1.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T06:01:45Z"
         },
         {
           "id": "2.0.2",
           "title": "TypeScript SDK",
-          "status": "pending",
+          "status": "done",
           "goal": "sdk/ts: a typed client generated from, and checked against, the contract. Covers the pool identity and API keys, hosts and enrollment, host presence and capabilities, connections, projects and configuration, triggers and validation, workflows, dispatch and manual runs, runs and activity, chatrooms with cursor paging and a live stream, and the session relay. Includes token refresh, request ids surfaced from problem-details errors, retries with backoff on 429 honouring Retry-After, and a browser-safe and a Node build. Published to npm under the Clawffice scope.",
           "touches": [
             "sdk/ts/",
@@ -108,13 +109,14 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the TypeScript SDK",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "TypeScript SDK",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T06:24:58Z"
         },
         {
           "id": "2.0.3",
           "title": "Rust SDK",
-          "status": "pending",
+          "status": "done",
           "goal": "sdk/rust: crate `tidepool-client`, the Rust binding of the same contract and the same resource shape as the TypeScript SDK, sharing its types where the contract allows. This is what the ratatui console, the reference host agent and the Zoid client depend on, so it favours a small dependency set, no unavoidably async runtime choice, and a blocking facade over the async core.",
           "touches": [
             "sdk/rust/",
@@ -132,13 +134,14 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the Rust SDK",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Rust SDK",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T06:50:21Z"
         },
         {
           "id": "2.0.4",
           "title": "Python SDK",
-          "status": "pending",
+          "status": "done",
           "goal": "sdk/python: package `tidepool-client` for the same contract, with an async and a sync client, typed models, and the same retry and error behaviour as the other two. Python is the shortest path for the existing agent tooling in the suite (TideTable, TKRun) to drive a pool, so it stays dependency-light and pip-installable.",
           "touches": [
             "sdk/python/",
@@ -156,13 +159,14 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the Python SDK",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Python SDK",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T07:13:31Z"
         },
         {
           "id": "2.0.5",
           "title": "SDK conformance suite",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "One suite of scenarios run against all three bindings, so the SDKs are the same library three times rather than three opinions. Scenarios cover authentication and scopes, host enrollment and idempotent replay, capability validation refusals, trigger validation, dispatch and offline-host failure, cursor paging and live-stream resume, and every problem-details error shape. A scenario is added once and every binding must pass it.",
           "touches": [
             "sdk/conformance/",
@@ -183,12 +187,14 @@
           "complexity": "High",
           "agent": "pro_dev_agent",
           "changelog": "Added the cross-SDK conformance suite",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T07:59:23Z",
+          "human_look": "real-pool conformance run happens in the new CI job only; scenario expectations were reviewed against server code but not executed locally (no live MySQL/Redis/server permitted)"
         },
         {
           "id": "2.0.6",
           "title": "tidepool CLI",
-          "status": "pending",
+          "status": "done",
           "goal": "cli/: a thin command line over the Rust SDK: `login`, `pool status`, `host list`, `host enroll`, `host grant`, `trigger list`, `trigger validate`, `trigger install`, `run dispatch`, `run watch`, `room list`, `room send`, `relay follow`. It is a client and holds no logic of its own: every command maps to one SDK call and prints the result, with `--json` for scripting. Credentials come from a store the CLI owns; nothing is written to a repository.",
           "touches": [
             "cli/",
@@ -207,8 +213,9 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the tidepool CLI",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "tidepool CLI",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T08:13:19Z"
         }
       ]
     },
@@ -223,7 +230,7 @@
         {
           "id": "2.1.1",
           "title": "Scaffold and clawffice-design tokens",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "tidepool-control-plane: a Svelte and Vite and TypeScript app consuming clawffice-design, with all five palettes and Biolume as the default, the tide product hue driving focus and selection, the Tidepool mark and cell sprite as the favicon and the app icon, and light and dark. Routing, a typed API client from the TypeScript SDK, an app shell with navigation, and an error boundary that renders a problem-details failure readably.",
           "touches": [
             "tidepool-control-plane/src/",
@@ -243,12 +250,14 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Scaffolded the Svelte control plane on clawffice-design tokens",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T08:26:26Z",
+          "human_look": "All five palettes render and Biolume is the default; the shell renders a pool failure as a readable message with its request id"
         },
         {
           "id": "2.1.2",
           "title": "Sign in, setup and sessions",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Browser sign-in against the pool, the first-run setup path when the pool has no operator yet, session handling that survives a reload, and a sign-out that actually ends the session. The UI reflects the signed-in member's role: a control the role cannot use is hidden with a reason rather than failing on submit.",
           "touches": [
             "tidepool-control-plane/src/auth/",
@@ -267,12 +276,14 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added control plane sign-in, setup and sessions",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T08:41:39Z",
+          "human_look": "sign-out invalidates the session server-side (client calls POST /v1/pool/logout and e2e proves it against a local pool, but the hub contract has no logout route yet)"
         },
         {
           "id": "2.1.3",
           "title": "Hosts view",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "The hosts page: every enrolled host with its slug, display name, status (approval required, connected, offline, revoked), last seen, and whether it may run agents. Enrolling a new host from the page produces the one-time token and the exact command to run on that machine. Granting and revoking execution permission is a labelled action with its consequence spelled out. A connected-only host is labelled as such and shows the grant operation.",
           "touches": [
             "tidepool-control-plane/src/routes/hosts/",
@@ -294,12 +305,14 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.2.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:05:03Z",
+          "human_look": "enrolling in the running app shows the one-time token once and the command to run (tests cover the data flow and rendered panel; the browser click-through needs a human)"
         },
         {
           "id": "2.1.4",
           "title": "Connections view",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Configure GitHub, Slack and Discord connections. GitHub and Slack webhook transports show the exact callback URL for the pool's current origin, and Slack offers socket mode for a pool with no public address. Discord configures the bot gateway. Credentials are entered but never read back: the field shows that a value is set and offers to replace it. A connection that fails verification says which check failed, in the provider's own words.",
           "touches": [
             "tidepool-control-plane/src/routes/connections/",
@@ -321,12 +334,14 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.3.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:22:38Z",
+          "human_look": "Changing the pool's public origin shows the callback URLs that must change with it"
         },
         {
           "id": "2.1.5",
           "title": "Projects and the configuration editor",
-          "status": "pending",
+          "status": "done",
           "goal": "The projects page and the configuration editor: the authored file bundle for a project, editable as files, with validation on save through the same endpoint the pool uses, the named field errors surfaced against the offending line, the revision history with a diff between revisions, and which revision is active. Storing the exact authored files is the point, so the editor is a text editor over real files, never a form that regenerates a normalized document.",
           "touches": [
             "tidepool-control-plane/src/routes/projects/",
@@ -344,16 +359,17 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the control plane projects and configuration editor",
+          "changelog": "Projects and the configuration editor",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:34:40Z"
         },
         {
           "id": "2.1.6",
           "title": "Trigger editor with host-checked agent selection",
-          "status": "pending",
+          "status": "done",
           "goal": "Author a trigger as a form or as YAML, the two views staying in step. Choose the host and working directory first, then let the pool ask that host which providers, models, execution modes and thinking options it offers, and offer only those. Saving runs the same validation the pool runs and refuses an agent the host cannot run, naming the field. A value already authored that the host no longer reports is marked unavailable without being replaced, so the author chooses. An offline host explains itself and offers a retry, and the rest of the trigger stays editable.",
           "touches": [
             "tidepool-control-plane/src/routes/triggers/",
@@ -371,16 +387,17 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the control plane trigger editor with host-checked agents",
+          "changelog": "Trigger editor with host-checked agent selection",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.3"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:46:18Z"
         },
         {
           "id": "2.1.7",
           "title": "Runs and activity",
-          "status": "pending",
+          "status": "done",
           "goal": "The activity page and the run detail: what arrived, whether it matched a trigger, and what ran, filtered by project, provider, trigger and status. The run detail follows a running execution live, shows each step's status and output, says whether an arrival created, continued or restored an agent, and offers the operations the step permits. A run that failed because its host went offline says so in those words rather than as a generic error.",
           "touches": [
             "tidepool-control-plane/src/routes/runs/",
@@ -398,16 +415,17 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the control plane runs and activity views",
+          "changelog": "Runs and activity",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.7"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:57:24Z"
         },
         {
           "id": "2.1.8",
           "title": "Members and API keys",
-          "status": "pending",
+          "status": "done",
           "goal": "Manage pool members: invite by email, change a role, remove a member, with the last-owner rule enforced and explained. Manage API keys: create with a chosen scope set, see the prefix, scopes, creation time, last-used time and status, and revoke. The secret is shown once in a copyable block with the warning that it will not be shown again.",
           "touches": [
             "tidepool-control-plane/src/routes/settings/",
@@ -425,16 +443,17 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the control plane members and API keys admin",
+          "changelog": "Members and API keys",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.1.3"
-          ]
+          ],
+          "updated_at": "2026-10-29T10:10:35Z"
         },
         {
           "id": "2.1.9",
           "title": "Chatrooms in the browser",
-          "status": "pending",
+          "status": "done",
           "goal": "The chatroom pages: a member's rooms, the members of a room, history with cursor paging that loads as the reader scrolls up, live messages, and presence. A message's author is rendered distinguishably for a person and for an agent session. A reconnecting client shows cached history labelled as catching up until a fetch says it is current, and never pretends to be current.",
           "touches": [
             "tidepool-control-plane/src/routes/rooms/",
@@ -452,16 +471,17 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added chatrooms to the control plane",
+          "changelog": "Chatrooms in the browser",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.5.3"
-          ]
+          ],
+          "updated_at": "2026-10-29T10:22:41Z"
         },
         {
           "id": "2.1.10",
           "title": "Settings, palettes and self-host serving",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "The settings page: the pool URL, a palette picker across the five Clawffice palettes with Biolume default and the choice remembered, time and density preferences, and about and version. Plus the option to serve the built control plane from the pool itself, so a self-hosted pool can offer its own control plane on one origin with no CORS and no second deployment.",
           "touches": [
             "tidepool-control-plane/src/routes/settings/",
@@ -481,7 +501,9 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added control plane settings, palette picker and pool-served hosting",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T10:32:30Z",
+          "human_look": "The palette choice survives a reload and renders every page (browser reload not observed; storage round-trip and all-route render covered by tests)"
         }
       ]
     },
@@ -496,7 +518,7 @@
         {
           "id": "2.2.1",
           "title": "Console scaffold and connection handling",
-          "status": "pending",
+          "status": "done",
           "goal": "tidepool-console: a Rust binary using ratatui and crossterm over the Rust SDK, with a tabbed shell (Hosts, Runs, Rooms, Settings), a status line that carries the pool, the signed-in member and the connection state, keyboard-driven navigation and a command palette built from the same actions. Credentials come from the CLI's store, so signing in once serves both. No network call happens on startup unless a pool is configured, and an unreachable pool is a notice, not a panic.",
           "touches": [
             "tidepool-console/src/main.rs",
@@ -516,13 +538,14 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Scaffolded the ratatui control console",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Console scaffold and connection handling",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T14:16:18Z"
         },
         {
           "id": "2.2.2",
           "title": "Hosts and presence screen",
-          "status": "pending",
+          "status": "done",
           "goal": "The hosts screen: a table of enrolled hosts with slug, status, last seen and whether they may run agents, sorting and filtering by status, a detail pane showing the reported capabilities, and the actions to enrol a host and to grant or revoke execution permission. Presence updates live so a host going offline is visible without a refresh.",
           "touches": [
             "tidepool-console/src/tabs/hosts.rs",
@@ -540,16 +563,17 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the console hosts and presence screen",
+          "changelog": "Hosts and presence screen",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.2.3"
-          ]
+          ],
+          "updated_at": "2026-10-29T14:27:30Z"
         },
         {
           "id": "2.2.3",
           "title": "Triggers and runs screen",
-          "status": "pending",
+          "status": "done",
           "goal": "The runs screen: activity filtered by project, provider, trigger and status; a run detail that follows a live execution and shows each step's status and tail of output; the manual dispatch action, with its inputs, actor and delivery key; and a read-only trigger list showing each trigger's event, filters and whether it is active. A named failure code is shown in words with the code beside it.",
           "touches": [
             "tidepool-console/src/tabs/runs.rs",
@@ -567,16 +591,17 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the console triggers and runs screen",
+          "changelog": "Triggers and runs screen",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.7"
-          ]
+          ],
+          "updated_at": "2026-10-29T14:40:55Z"
         },
         {
           "id": "2.2.4",
           "title": "Rooms and relay follow",
-          "status": "pending",
+          "status": "done",
           "goal": "The rooms screen: the member's rooms, history loaded by cursor as the reader scrolls, live messages, presence, and composing and sending a message. Plus relay follow: subscribe to a published session and watch its events stream in the console, with the pooling point marked so the reader can tell live from backfilled.",
           "touches": [
             "tidepool-console/src/tabs/rooms.rs",
@@ -594,16 +619,17 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the console rooms and relay follow",
+          "changelog": "Rooms and relay follow",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.5.5"
-          ]
+          ],
+          "updated_at": "2026-10-29T14:57:05Z"
         },
         {
           "id": "2.2.5",
           "title": "Session handling, parity with the CLI and scripting mode",
-          "status": "pending",
+          "status": "done",
           "goal": "Sign in from the console and share the credential store with the CLI, honouring the member's role by hiding what the role cannot do. Add a non-interactive mode that runs one action and prints the same JSON the CLI prints, so the console and the CLI are one tool with two skins and a script can use either. Document which commands exist in both and that neither holds logic the pool does not.",
           "touches": [
             "tidepool-console/src/auth.rs",
@@ -623,13 +649,14 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added console session handling, CLI parity and a headless mode",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Session handling, parity with the CLI and scripting mode",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T15:13:10Z"
         },
         {
           "id": "2.2.6",
           "title": "Console identity: banner and palette",
-          "status": "pending",
+          "status": "done",
           "goal": "Console identity from clawffice-design: the Tidepool banner rendered at startup and in the about screen, the Tidepool cell sprite as terminal art, and a palette that follows the Clawffice palettes rather than inventing terminal colours. Respect a terminal that cannot do colour and a terminal narrower than the layout needs.",
           "touches": [
             "tidepool-console/src/ui/banner.rs",
@@ -647,8 +674,9 @@
           ],
           "complexity": "Low",
           "agent": "basic_dev_agent",
-          "changelog": "Added the console banner and Clawffice palette",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Console identity: banner and palette",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T15:31:37Z"
         }
       ]
     },
@@ -663,7 +691,7 @@
         {
           "id": "2.3.1",
           "title": "Generate the client from the Zoid tray template",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Generate tidepool-client with `zoid create tidepool-client --template tray`, choosing the surfaces the app needs: a menu, a popover and a main window, starting icon-only without a Dock entry. Set the Tidepool name, the clawffice-design icon and cell sprite as the tray icon on each platform, and keep ui/app.json as the editable structure exported into src/ui/. Record the generated version of Zoid and the template in the README, because this app doubles as the template's example.",
           "touches": [
             "tidepool-client/ui/app.json",
@@ -685,12 +713,14 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Generated the reference client from the Zoid tray template",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T15:46:17Z",
+          "human_look": "exact CLI reproduction (Zoid 9.0.0 exposes shape choices only in the wizard); app starts icon-only and opens popover/window in the running app; tray icon legibility at menu-bar size"
         },
         {
           "id": "2.3.2",
           "title": "Pool connection and this machine's enrollment",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Sign in to a pool from the client, enrol this machine as a host through the same two-step exchange the CLI performs, and show this machine's status and whether it may run agents, with the grant performed from the machine and its consequence stated. A pool URL and credential live in the client's own settings store and never in a repository, a log or a layout file.",
           "touches": [
             "tidepool-client/src/host/enroll.rs",
@@ -714,12 +744,14 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.2.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:03:02Z",
+          "human_look": "The client enrols this machine and the pool shows it as connected"
         },
         {
           "id": "2.3.3",
           "title": "Sessions: list, start, follow, steer, abort",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "The client's core loop: list the sessions on this machine, start one in a chosen project directory, follow its timeline live, send a follow-up, steer a running one, queue while it is busy, and abort. The timeline distinguishes what the agent said, what a tool did and what the user asked, and a session that was interrupted or errored says so rather than looking finished.",
           "touches": [
             "tidepool-client/src/sessions/",
@@ -741,12 +773,14 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.2.5"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:24:24Z",
+          "human_look": "A session started from the client appears in the pool's activity"
         },
         {
           "id": "2.3.4",
           "title": "Chatrooms and talking to a session",
-          "status": "pending",
+          "status": "done",
           "goal": "The client's chat surface: the member's rooms, history by cursor, live messages and presence, and posting. A session running on this machine can join a room and reply in it, so a person can talk to an agent from the room rather than only from a session pane, and a session's replies are authored as a session and not as a person.",
           "touches": [
             "tidepool-client/src/chat/",
@@ -764,16 +798,17 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added chatrooms and session conversation to the client",
+          "changelog": "Chatrooms and talking to a session",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.5.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:33:21Z"
         },
         {
           "id": "2.3.5",
           "title": "Runs and activity in the client",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "What the pool has been asked to do, visible from the menu bar: activity filtered by project, provider, trigger and status; a run detail that follows a live execution step by step; and a manual dispatch. A run on this machine is highlighted because it is the machine's own work, and a run that failed because a host was offline says so in those words.",
           "touches": [
             "tidepool-client/src/runs/",
@@ -795,12 +830,14 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.7"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:44:06Z",
+          "human_look": "Activity filters combine and never show another project's runs; A named failure code renders as words with the code available"
         },
         {
           "id": "2.3.6",
           "title": "Menu bar and tray surfaces",
-          "status": "pending",
+          "status": "done",
           "goal": "The always-present surface: a status item whose icon reflects whether the pool is reachable, whether agents are running and whether a room has an unread message, a menu with the actions a person wants without opening the window (open the window, new session, go to a room, pause dispatch, quit), and a popover for the current host and the running sessions. Notifications are opt-in per kind and never fire for something the user has switched off.",
           "touches": [
             "tidepool-client/src/tray/",
@@ -819,13 +856,14 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the client's menu bar and tray surfaces",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Menu bar and tray surfaces",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T16:57:05Z"
         },
         {
           "id": "2.3.7",
           "title": "Palettes, settings and packaging",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "All five Clawffice palettes with Biolume default, remembered across launches; settings for the pool URL, notification kinds, the project directories a person works in and the default agent; and release packaging for macOS (a bundle dragging into Applications), Windows (a zip with an executable) and Linux (a tarball with a desktop entry and icons), following the suite's existing packaging shape. Document that the client is a Zoid example and how to regenerate it.",
           "touches": [
             "tidepool-client/src/theme.rs",
@@ -846,14 +884,35 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added client palettes, settings and release packaging",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T17:13:17Z",
+          "human_look": "Every palette renders every surface and the choice survives a restart"
         }
       ],
       "release": {
         "version": "0.6.0",
         "tag_on_complete": true,
         "release_notes": "Tidepool 0.6.0 ships the clients: the machine-readable hub contract, TypeScript, Rust and Python SDKs with one conformance suite, the tidepool CLI, the Svelte control plane, the ratatui control console, and the reference human client as a Zoid tray application. Rhumb federation and the hosted multi-tenant pool are deferred to v3.",
-        "changelog_entries": []
+        "changelog_entries": [
+          "Machine-readable hub API contract",
+          "TypeScript SDK",
+          "Rust SDK",
+          "Python SDK",
+          "tidepool CLI",
+          "Projects and the configuration editor",
+          "Trigger editor with host-checked agent selection",
+          "Runs and activity",
+          "Members and API keys",
+          "Chatrooms in the browser",
+          "Console scaffold and connection handling",
+          "Hosts and presence screen",
+          "Triggers and runs screen",
+          "Rooms and relay follow",
+          "Session handling, parity with the CLI and scripting mode",
+          "Console identity: banner and palette",
+          "Chatrooms and talking to a session",
+          "Menu bar and tray surfaces"
+        ]
       }
     }
   ]

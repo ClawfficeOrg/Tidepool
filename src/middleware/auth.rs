@@ -20,7 +20,7 @@ use crate::{
     config::Config,
     entities::pool_user::{PoolRole, PoolUser},
     middleware::request_id::RequestId,
-    services::{auth as auth_svc, pool_identity},
+    services::{auth as auth_svc, pool_identity, token_revocation},
 };
 use actix_web::{
     Error, FromRequest, HttpRequest,
@@ -30,6 +30,7 @@ use actix_web::{
     web,
 };
 pub use auth_svc::Claims;
+use redis::aio::ConnectionManager;
 use sqlx::MySqlPool;
 use std::{
     future::{Future, Ready, ready},
@@ -107,6 +108,8 @@ pub struct OperatorAuth {
     pub operator: PoolUser,
     /// Correlation id for 403 problem documents.
     pub request_id: String,
+    /// The verified token claims, used by sign-out to revoke this token.
+    pub claims: Claims,
 }
 
 impl OperatorAuth {
@@ -142,6 +145,7 @@ impl FromRequest for OperatorAuth {
 
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         let pool = req.app_data::<web::Data<MySqlPool>>().cloned();
+        let sessions = req.app_data::<web::Data<ConnectionManager>>().cloned();
         let request_id = RequestId::from_request(req);
 
         // Reuse the JWT extractor: its future is ready immediately.
@@ -155,12 +159,28 @@ impl FromRequest for OperatorAuth {
             let Some(pool) = pool else {
                 return Err(ErrorServiceUnavailable("database unavailable"));
             };
+            // Fail closed: without the session store, sign-out cannot be
+            // enforced, so no operator request is served.
+            let Some(sessions) = sessions else {
+                return Err(ErrorServiceUnavailable("session store unavailable"));
+            };
+            if let Some(jti) = authenticated.claims.jti.as_deref() {
+                match token_revocation::is_revoked(sessions.get_ref(), jti).await {
+                    Ok(false) => {}
+                    Ok(true) => return Err(ErrorUnauthorized("session has been signed out")),
+                    Err(error) => {
+                        tracing::error!(error = %error, "revocation check failed");
+                        return Err(ErrorServiceUnavailable("session store unavailable"));
+                    }
+                }
+            }
             match pool_identity::find_by_public_id(pool.get_ref(), &authenticated.player_public_id)
                 .await
             {
                 Ok(Some(operator)) => Ok(OperatorAuth {
                     operator,
                     request_id,
+                    claims: authenticated.claims,
                 }),
                 Ok(None) => Err(ErrorUnauthorized("operator account required")),
                 Err(error) => {
@@ -335,6 +355,12 @@ mod tests {
 
     fn operator(role: PoolRole) -> OperatorAuth {
         OperatorAuth {
+            claims: Claims {
+                sub: "11111111-1111-4111-8111-111111111111".into(),
+                iat: 0,
+                exp: i64::MAX,
+                jti: Some("test-jti".into()),
+            },
             operator: PoolUser {
                 id: 1,
                 public_id: "11111111-1111-4111-8111-111111111111".into(),

@@ -2,6 +2,1342 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Client palettes, settings and packaging (task 2.3.7)
+
+### Added
+- `tidepool-client/src/theme.rs` — the five Clawffice palettes from
+  `clawffice-design` at `995b41606e65` (Biolume default, Boiled, Deep Tide,
+  Phosphor, Sea Glass) and their mapping into a component-library
+  `ThemeConfig`. Every role the library paints with is set explicitly, `tide`
+  drives focus/selection/links, and `apply` stores the choice in a global and
+  repaints every window. `Sea Glass` carries the light scheme; the other four
+  are dark.
+- `tidepool-client/src/settings.rs` — the store now persists the palette, the
+  notification-kind keys, the project directories the person works in and the
+  default agent, alongside the pool URL and host credentials. A corrupt file is
+  moved to `settings.json.corrupt-<timestamp>` and reported with that path
+  instead of being silently replaced; `open_default_or_empty` keeps the app
+  running with empty settings. `SettingsState`, `install`, `settings`,
+  `palette`, `problem` and `update` make the store a GPUI global so every
+  surface reads and writes one copy.
+- `tidepool-client/src/settings_window.rs` — the settings window now edits the
+  palette, pool URL, notification kinds, project directories and default agent;
+  changes are written atomically through the store, and a load/save problem is
+  shown at the top of the window.
+- `tidepool-client/scripts/package.sh` — macOS `Tidepool.app` in a zip (drag to
+  Applications, `LSUIElement`), Windows zip with `tidepool-client.exe` and icon,
+  and a Linux tarball with `usr/bin`, a `.desktop` entry and hicolor icons at
+  16–512px. Every run ends with a per-platform smoke check.
+- `tidepool-client/scripts/render_app_icons.py` — deterministic PNGs and ICNS
+  from the pinned cell sprite, standard library only.
+- `tidepool-client/scripts/test-packaging.sh` and
+  `tidepool-client/tests/packaging.rs` — package a stub executable for all three
+  platforms and assert each archive's shape; runs under `cargo test` on Unix.
+- Tests for every palette's role colours, the complete component mapping, all
+  five surfaces rendering under every palette, the settings round-trip for the
+  new fields, and the corrupt-file set-aside path.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares `theme`, loads the settings store and
+  applies the saved palette before the first window opens. The template's
+  System/Light/Dark choice is replaced by the palette (the palette's own scheme
+  decides light or dark). `main_window.rs` and `popover_view.rs` call
+  `theme::follow_theme` when a window opens (outside the task's owned paths,
+  required to compile and ship the new code).
+- `tidepool-client/tests/tray.rs` mounts `settings` and `theme` so the
+  integration test compiles the settings window against them.
+- `tidepool-client/README.md` — documents the five palettes, the settings
+  fields, the atomic and set-aside behaviour, the packaging commands and
+  artifacts, the Zoid 9.0.0 pin and that `src/ui/` is generated.
+
+### Notes
+- The palette choice round-trips through the settings file and all five
+  surfaces render under every palette in a headless GPUI test. Watching a real
+  restart repaint the menu bar and popover is the owner's human check.
+
+## [Unreleased] — 2026-10-29 — Menu bar and tray surfaces (task 2.3.6)
+
+### Added
+- `tidepool-client/src/tray/mod.rs` — the always-present surface's model,
+  re-exported for the binary: the icon state, per-room unread, the popover
+  content, and `apply_state` which tints the platform status item from the
+  state so the icon and its colour can never disagree.
+- `tidepool-client/src/tray/icon.rs` — `TrayState` (pool reachability, running
+  agent count, unread rooms) and `StatusIcon` with a fixed, documented
+  precedence: unreachable pool, then agents running, then an unread room, then
+  idle. Every state has its own word and tint, and the tooltip carries the
+  facts the single icon had to drop.
+- `tidepool-client/src/tray/unread.rs` — unread counts per room id. An arrival
+  counts unless it is in the room that is open; clearing is explicit
+  (`clear` / `clear_all`) and never happens as a side effect of reading or
+  redrawing.
+- `tidepool-client/src/tray/popover.rs` — the popover's content: the current
+  host with whether its pool answers, one row per session that has not stopped
+  (terminal sessions are history and are dropped), and the last notice.
+- `tidepool-client/src/menu.rs` — `MenuAction` for Open Window, New Session, Go
+  to Room, Pause Dispatch and Quit, each with a menu id, a stable action name
+  and a keyboard twin. `MenuState` builds the native `(id, label)` entries,
+  lists direct room entries in a reserved id range (`ROOM_ID_BASE`), resolves a
+  chosen id back to an action or a room, and words Pause/Resume under the same
+  id. `MenuCommand` is the GPUI action the keyboard dispatches, and
+  `key_bindings` / `install` register one binding per action so a new menu row
+  cannot exist without a shortcut.
+- `tidepool-client/src/notify.rs` — `NotificationKind` (session finished,
+  session waiting, room message, run failed, pool unreachable) and
+  `NotificationPolicy`, which is empty by default and is the only path from an
+  event to a rendered notification: a switched-off kind returns `None`. Keys
+  are stable for settings persistence and an unknown key is ignored.
+- Tests for the icon precedence and colour/word distinctness, per-room unread
+  and explicit clearing, the popover's host/session filtering, menu ids,
+  labels, room resolution, Pause/Resume, key-binding coverage, action
+  round-tripping, and the opt-in notification rules. `tidepool-client/tests/tray.rs`
+  mounts `menu` and `notify` so the template's own integration test proves the
+  menu actions, their keyboard twins and the opt-in rule too.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `menu`, `notify` and `tray`
+  modules (outside the task's owned paths, required to compile and ship the new
+  code). The tray manager's local three-item menu is replaced by
+  `menu::MenuState`, so the native menu carries the task's five actions plus
+  Settings (kept from the template's menu) and direct room entries;
+  `menu::install` registers the keyboard twins and one handler dispatches both
+  paths. Pause Dispatch toggles the menu's state and rewrites the row as Resume
+  Dispatch.
+
+### Notes
+- New Session and Go to Room open the main window, which owns those panes; the
+  chat and session controllers are not yet hosted by the tray menu in this
+  binary, so the menu action is the way in rather than a second copy of the
+  surface.
+- The binary does not yet hold live pool, session or chat state (the controllers
+  from 2.3.4 and 2.3.5 are modules, not hosted surfaces), so `tray::apply_state`
+  and the popover model are the seams those controllers feed. The state mapping
+  and the notification rules are what is proved now; nothing in this task
+  fabricates a state it does not have.
+- The keyboard-twin criterion is proved in a GPUI test window: every action's
+  keystroke is simulated in turn and the dispatched `MenuCommand` is read back
+  in order, in addition to the binding-table test that the two lists cover the
+  same actions. What remains for the owner is appearance — the status item in a
+  real menu bar, and pressing the shortcuts by hand.
+
+## [Unreleased] — 2026-10-29 — Runs and activity in the client (task 2.3.5)
+
+### Added
+- `tidepool-client/src/runs/mod.rs` — `RunsController`, the headless runs and
+  activity loop over one `RunsClient`: the combined feed, the four filters, the
+  live run detail, the local-run mark and the manual dispatch. Filters combine
+  and every active filter must match; the page is filtered again on arrival and
+  the held rows are pruned when a filter changes, so a pool that ignored a
+  filter or a stale page cannot show another project's runs. A detail that is
+  pending or running is read again on an interval until the run and every step
+  are terminal, then polling stops cleanly. A run with a step on the host this
+  client enrolled is marked `This machine`; a run on another host keeps that
+  host's name. Manual dispatch validates the project, trigger, actor and
+  delivery key before it leaves, uses a delivery key that is stable for one
+  form, and opens the returned run.
+- `tidepool-client/src/runs/http.rs` — `HttpRuns` over the documented routes
+  (`GET /v1/activity`, `GET /v1/activity/runs/{run}`, `POST /v1/runs`), with run
+  ids path-checked and incomplete dispatches refused before a request.
+- `tidepool-client/src/runs_view.rs` — the runs pane: activity rows carrying
+  the kind, status words and project plus a `This machine` mark for the
+  machine's own work, the live run detail with each step's place and output
+  tail, the first failure as a sentence with its code beside it, and the
+  dispatch form's fields.
+- Tests for combined filtering (including a pool that ignores the query), the
+  live detail stopping when it ends, the local/remote distinction, the
+  `daemon_not_connected` failure reading as words with the code available, the
+  interval-driven tick, dispatch validation and deduplication, and rendering of
+  the run detail and the local-run highlight.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `runs` and `runs_view` modules
+  (outside the task's owned paths, required to compile the new code).
+
+### Notes
+- The two criteria that need a person looking at the running app remain for the
+  owner: that the combined filters show only the chosen project's runs on the
+  menu-bar surface, and that a named failure code reads as words with the code
+  visible. The logic behind both is covered by headless tests.
+
+## [Unreleased] — 2026-10-29 — Chatrooms and talking to a session (task 2.3.4)
+
+### Added
+- `tidepool-client/src/chat/model.rs` — the pool's chatroom wire shapes
+  (`ChatRoom`, `ChatMember`, `ChatMessage`, `ChatPage`), author descriptors and
+  the merge rules. A message is keyed by its immutable server id and ordered by
+  its server sequence, never by a timestamp, so a history page and a live frame
+  that carry the same message produce one row. `AuthorKind` gives a person and
+  an agent session different words (`Person` / `Agent session`), different
+  glyphs (`●` / `◆`) and different tags, so they are distinguishable with
+  colour off.
+- `tidepool-client/src/chat/mod.rs` — `ChatController`, the headless state over
+  one `ChatTransport`: room list, forward cursor backfill, a backward cursor
+  walk for older pages, live `chat.history` / `chat.message` / `chat.current` /
+  `chat.presence` frames, presence and posting. Currentness is `CatchingUp` on
+  open and after a dropped stream, and becomes `Current` only when a read
+  reaches the head or the server sends `chat.current`. A reconnect is labelled
+  `Reconnecting` (catch-up) until then. A listed session member can be bound to
+  the room and reply through `send_as_session`; a reply authored as a person is
+  refused rather than merged. A person's message authored as a session is
+  refused the same way.
+- `tidepool-client/src/chat/http.rs` — `HttpChat` over the documented routes
+  (`GET /v1/chatrooms`, members, cursor history, `POST .../messages`). Room ids
+  are path-checked and an empty or oversized body is refused before a request.
+  Session posting returns `SessionPostingUnavailable`: the v1 member route
+  cannot act as a session, and posting there would attribute the agent's words
+  to the person.
+- `tidepool-client/src/chat_view.rs` — the chat pane: transcript rows carrying
+  the author's word, glyph and tag, the catch-up/current/reconnecting banner,
+  the presence line (members, sessions, watchers) and the composer hint. The
+  rows and banners are pure functions so they are tested without a window.
+- Tests for paging merge and the backward cursor walk, author rendering,
+  session membership and session posting, refusal of misattributed authors,
+  presence never removing a message, live messages keeping server ids, and a
+  reconnect staying catch-up until `chat.current`.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `chat` and `chat_view` modules
+  (outside the task's owned paths, required to compile the new code).
+
+### Notes
+- The pool's chatroom service already supports a `session` principal, but its
+  HTTP route authenticates an operator and always authors as that person. The
+  client therefore refuses a session send instead of misattributing it; a
+  session-authenticated send route (or a host agent that posts for the session)
+  is the follow-up this client is ready for. The scripted end-to-end in the
+  tests exercises the client and a session in one room on both sides of that
+  seam.
+
+## [Unreleased] — 2026-10-29 — Sessions: list, start, follow, steer and abort (task 2.3.3)
+
+### Added
+- `tidepool-client/src/sessions/protocol.rs` — the local host session protocol,
+  v1: list, start in a project directory, read the timeline after an exclusive
+  cursor, deliver an input as a prompt/steer/queue, and abort. Event kinds and
+  statuses reuse the pool's vocabulary (`started`, `status`, `output`, `tool`,
+  `message`, `stopped`; `queued`, `running`, `waiting`, `succeeded`, `failed`,
+  `interrupted`), the credential travels in `X-Host-Credential` and is redacted,
+  and session ids are path-checked before a request. `SessionStatus::is_complete`
+  is true only for `succeeded`, so `interrupted` is terminal but never complete.
+- `tidepool-client/src/sessions/timeline.rs` — the four-kind timeline (`You`,
+  `Agent`, `Tool`, `Session`) mapped from host events, with the backfill/live
+  boundary marked. Rows merge idempotently by sequence, keep late events rather
+  than losing them, and a `message` with no author is the session's, never the
+  person's.
+- `tidepool-client/src/sessions/pool.rs` — best-effort publication of a
+  client-started session's lifecycle to the pool's documented relay routes
+  (`PUT /v1/sessions/{id}/relay`, `POST /v1/sessions/{id}/relay/events`).
+  Content (output, messages, tool results) is not published unless the person
+  enables it, and a pool that is away leaves a notice without undoing the local
+  start.
+- `tidepool-client/src/sessions/mod.rs` — `SessionController`, the loop around
+  the host and the relay: refresh, start, open/backfill, poll, submit, steer,
+  queue and abort. A busy session is steered or queued and is never offered a
+  second prompt; a host that answers with a different delivery mode is refused;
+  an abort converts an unexpected `succeeded` into `interrupted`.
+- `tidepool-client/src/session_view.rs` — the session pane: a header carrying
+  the status sentence, the session list, timeline rows labelled by kind, the
+  composer's mode and its hint, and the actions the open session offers.
+- Unit tests over the host protocol (real HTTP against a loopback host),
+  controller tests over scripted host and relay, and rendering tests for the
+  four entry kinds, steering-versus-prompt, queueing and the interrupted label.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `sessions` and `session_view`
+  modules (outside the task's owned paths, required to compile the new code).
+
+### Notes
+- The pool has no route that creates a standalone session: `PUT
+  /v1/sessions/{id}/relay` only accepts a `host_executions` row that the pool
+  itself created for a run. A session started directly on this machine is
+  therefore announced best-effort and can be refused until the pool grows a
+  session-create route; `/v1/activity` lists only run-joined executions. The
+  client reports the refusal as a notice and keeps the local session usable.
+
+## [Unreleased] — 2026-10-29 — Pool connection and this machine's enrollment (task 2.3.2)
+
+### Added
+- `tidepool-client/src/settings.rs` — the client's own settings store at
+  `$TIDEPOOL_CLIENT_HOME/settings.json` or the per-user configuration directory
+  under `com.clawffice.Tidepool`. It holds the pool URL, the operator JWT and the
+  host relationship credential; `save` refuses a path inside a git working tree
+  and writes atomically with `0600` on Unix, a corrupt file is reported and left
+  in place, and every `Debug` implementation redacts secrets. A missing file is
+  empty settings, which is what keeps an unconfigured client usable.
+- `tidepool-client/src/host/client.rs` — the pool's HTTP surface over the same
+  `ureq` the Rust SDK uses: operator sign-in, host registration, the
+  single-use enrollment token, the public enroll exchange, host listing and
+  grant/revoke. Pool URLs are validated before use, host ids are checked before
+  they enter a path, and the error type names `unreachable`, `unauthorized`,
+  `forbidden`, a pool problem (status and code) or a protocol failure without
+  carrying a credential. `Session`'s `Debug` redacts its token.
+- `tidepool-client/src/host/enroll.rs` — `Machine`, the enrollment state machine:
+  sign in, the CLI's two-step enrollment (register, mint, generate the
+  credential here, exchange), refresh the host's presence and execution state,
+  and grant/revoke `host.execute` explicitly. `ExecutionPermission` has no default
+  and `Machine::may_run_agents` is false unless the pool reports a grant; a pool
+  that stops answering downgrades a known grant to `unknown`. `status_lines`
+  renders the pool, this machine and the execution state with the grant's
+  consequence stated, and carries no secret.
+- Unit tests over a scripted `PoolApi` for enrollment, grant, revoke, a failed
+  exchange, an unreachable pool and a stale grant, plus an end-to-end that drives
+  the real HTTP client against a loopback pool speaking the documented routes.
+  An additional end-to-end for a running dev stack runs only when
+  `TIDEPOOL_E2E_POOL_URL`, `TIDEPOOL_E2E_EMAIL`, `TIDEPOOL_E2E_PASSWORD` and
+  `TIDEPOOL_E2E_HOSTNAME` are set.
+
+### Changed
+- `tidepool-client/Cargo.toml` — `serde`, `serde_json`, `thiserror` and `ureq`
+  (the SDK's HTTP client) for the pool surface; `Cargo.lock` follows.
+- `tidepool-client/src/main.rs` — declares the `host` and `settings` modules.
+
+### Notes
+- The credential's only destination is the settings store: the tests assert the
+  store is the only file written, that `Debug` output does not contain it, and
+  that a failed exchange leaves the store byte-for-byte unchanged.
+- Enrolling and revoking need a real pool for presence (`connected` comes from
+  the host WebSocket, which this task does not implement), so a person must
+  confirm the pool shows this machine connected in the running app.
+
+## [Unreleased] — 2026-10-29 — The reference client generated from Zoid's tray template (task 2.3.1)
+
+### Added
+- `tidepool-client/` — the reference human client, generated from Zoid **9.0.0**'s
+  `tray` template as a menu + popover + window app that starts icon-only
+  (`open_on_launch = false`, so no Dock/taskbar entry and no window at launch).
+  The menu's **Open App** opens the main window; a left-click on the icon toggles
+  the popover. `zoid-project.json` records the generator version, template id and
+  codegen paths, and `vendor/` holds the generated copy of `zoid-gpui` and
+  `zoid-core`.
+- `tidepool-client/assets/` — the clawffice-design tray identity: the 16x16 and
+  32x32 menu-bar PNGs are the 12x12 `pool` cell sprite rasterised one pixel per
+  cell with no antialiasing (and the 2x is exactly the 1x artwork at double
+  scale); the Windows `.ico` is the design system's own multi-image
+  `tidepool-icon.ico`. `cells.json`, `SOURCE.json` and `README.md` record the
+  design commit (`995b41606e65`) and hashes, and `render_tray_icons.py`
+  regenerates the PNGs with only the Python standard library.
+- `tidepool-client/ui/app.json` — the editable popover structure. `src/ui/` is
+  Zoid-generated from it and documented as not hand-edited; the export is
+  deterministic and the project is formatted after it.
+- `tidepool-client/tests/tray.rs` and the tests in `src/main.rs` — headless
+  coverage for the generated shape (icon-only start, menu, popover, window), the
+  template's own tray/popover/window tests, the icon assets (size, crispness,
+  palette, 1x/2x equality, ICO sizes) and the generated-source documentation.
+
+### Changed
+- `tidepool-client/Cargo.toml` — the client is its own Cargo workspace. It is
+  deliberately not a member of the root workspace, so the server's
+  `cargo test`/`clippy` gate does not build a GPUI app and its package name does
+  not collide with the Rust SDK crate `sdk/rust` (also named `tidepool-client`).
+- Zoid 9.0.0's CLI does not expose the tray app-shape flags (they are editor
+  wizard variables). The project was rendered with the same template request the
+  wizard makes; `tidepool-client/README.md` documents the command, the surface
+  choices and this limitation rather than claiming a CLI flag exists.
+
+### Human check still required
+- The running app: icon-only launch with no Dock entry, a popover on click and a
+  window from **Open App**.
+- Menu-bar legibility of the sprite on light and dark menubars.
+
+---
+
+## [Unreleased] — 2026-10-29 — Console identity: banner, cell sprite and Clawffice palette (task 2.2.6)
+
+### Added
+- `tidepool-console/assets/design/` — a pinned copy of the `clawffice-design`
+  files the console renders: the Tidepool ANSI banner and its plain-text twin,
+  `core.json`, `apps/tidepool.json`, `cells.json` and all five palettes.
+  `SOURCE.json` records the design commit and a sha256 per file, and
+  `assets/design/README.md` records how to regenerate it. Nothing is fetched at
+  build time, so an offline checkout still builds.
+- `tidepool-console/src/ui/banner.rs` — parses the design banner's true-colour
+  ANSI into styled spans, reads the 12×12 `pool` cell sprite from `cells.json`,
+  resolves every palette role from the design tokens, and draws the startup
+  splash and the about screen. `NO_COLOR` and `TERM=dumb` drop every style;
+  widths below 80 columns crop the art and below 40 columns fall back to the
+  design wordmark. `TIDEPOOL_PALETTE` selects any of the five palettes, with
+  `biolume` as the design default.
+- `tidepool-console/src/app.rs` — the theme, the startup splash and the about
+  screen are app state; `Action::About` and the `a` key open about, `Esc`/`a`
+  close it, and the first key dismisses the splash without being swallowed.
+  Settings also reports both versions.
+
+### Changed
+- `tidepool-console/src/ui/` — the shell, hosts, runs and rooms screens ask the
+  theme for a role (`StyleRole::Warning`, `Focus`, `Success`, …) instead of
+  using `Color::Yellow` and friends, so the palette reaches every screen and a
+  no-colour terminal has no second rendering path.
+- `tidepool-console/src/main.rs` — the interactive path shows the banner until
+  the first key; headless mode is unchanged.
+- `tidepool-console/README.md` — documents the palette variable, the about key,
+  the no-colour and narrow-terminal behaviour, and the design source.
+
+### Tests
+- The banner's parsed text equals the design's `.txt` source row for row; the
+  vendored files match the sha256 recorded in `SOURCE.json`, and equal a sibling
+  `clawffice-design` checkout when present.
+- Every palette resolves to its design file's role and status colours; focus is
+  the `tide` product hue, not the palette primary.
+- Splash and about render at 80, 60 and 30 columns, with and without colour,
+  asserting the banner/wordmark and both versions, and every tab draws with no
+  style at all on a no-colour theme.
+- A one-pixel area, and the sprite with and without colour, render without a
+  panic.
+
+---
+
+## [Unreleased] — 2026-10-29 — Console session, CLI parity and headless mode (task 2.2.5)
+
+### Added
+- `tidepool-console/src/auth.rs` — the console's session over the CLI's own
+  credential store, so one file (`$TIDEPOOL_HOME/credentials.json`, then XDG,
+  then `$HOME/.config`) serves both skins. The role is asked of the pool
+  (`GET /v1/pool/me`) rather than cached in the store: headless mode asks before
+  every mutating command, the TUI at each connection probe and reconnect. The
+  mapping restates the pool's `require_mutating` line exactly: `viewer` is
+  read-only, `member`/`admin`/`owner` may operate. An unknown wire role is read
+  as `viewer`, the least privilege. `AuthError` and `Session` are documented and
+  unit-tested, including that the CLI reads what the console wrote and vice
+  versa; no secret is printed (`Debug` reuses the CLI's redaction).
+- `tidepool-console/src/headless.rs` — `tidepool-console --headless <command>`.
+  It strips the marker, parses with `tidepool_cli::args`, checks the role before
+  a mutating command (one `GET /v1/pool/me`, then a refusal or the command) and
+  delegates to `tidepool_cli::run_with_path` with the same tokens, store and
+  printer. `--json` is therefore the CLI's bytes by construction; a viewer's
+  mutating command stops after the role read, with no mutating request sent.
+  `HeadlessError` names the role, the capability and the fix.
+- `tidepool-console/README.md` — how the shared store and both sign-in paths
+  work, the role line, every command that exists in both skins, the TUI keys,
+  and the boundary that neither skin holds logic the pool does not.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/main.rs` — `Identity` carries the role,
+  the shell gates the mutating keys (`e`/`g`/`x` on Hosts, `d` and a dispatch
+  form's Enter on Runs, `c` and `Ctrl-S` on Rooms) with a notice that names the
+  role and the fix, and the status line reports the role. `main` selects
+  headless mode when any argument is present and otherwise loads the shared
+  `Session`. Tests cover the viewer refusal at every mutating key, that a
+  viewer can still type filter letters, and that a member keeps every key.
+
+### Tests
+- Byte-for-byte parity between headless and the CLI for a read (`host list
+  --json`) and a mutation (`run dispatch --json`), a viewer refusal that
+  records only the role read, console-sign-in-visible-to-CLI and
+  CLI-sign-in-visible-to-console round trips, the role mapping, the shared
+  store in both directions, and README/CLI command-list equality. All hermetic
+  against a scripted HTTP server.
+
+## [Unreleased] — 2026-10-29 — Console rooms and relay follow (task 2.2.4)
+
+### Added
+- `tidepool-console/src/tabs/rooms.rs` — the rooms tab's state and client
+  surface: the member's rooms, a room's cursor-paged history, live messages,
+  the member list as presence, the multi-line composer and the session relay
+  follower. Opening a room reads forward from the beginning to the head, keeps
+  the newest 200 messages and marks the rest older; scrolling to the top reads
+  the page immediately below the oldest message by walking the forward cursor
+  back a page at a time, and every merge is keyed by the pool's message id, so
+  a page that overlaps the window cannot duplicate a message. New messages are
+  found by reading after the highest sequence held once a second, and keep the
+  server's id exactly as returned. The composer inserts a newline on Enter and
+  sends only on `Ctrl-S`; a failed send keeps the text. Following a published
+  session reads its relay state and pages its events through the cursor; events
+  read before a page reports no `next` are marked backfill, everything after is
+  marked live, and `live_from` names the joining point.
+- `tidepool-console/src/ui/rooms.rs` — the room list, the transcript with each
+  message's sequence, author, time and server id, the composer, the presence
+  pane and the relay pane. The relay pane labels every row `backfill` or
+  `live`, colours the backfilled rows grey and the live rows green, and draws
+  `──── backfill ends · live from here ────` at the joining point. Stacked
+  layout below 100 columns; the relay pane splits vertically from the room.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/ui/mod.rs` / `src/tabs/mod.rs` /
+  `src/main.rs` — the shell owns the rooms state, sets the member on it, routes
+  the tab's keys before the global bindings, ticks the tab from the event loop
+  and delegates the Rooms body to the new renderer. `PoolClient` extends
+  `RoomsClient`; the SDK-backed client implements the six rooms and relay calls.
+- Tests: scripted-client unit tests for message merge and server-id dedupe, the
+  forward-cursor older-page walk with gaps, the 200-message window, the live
+  append and its cursor, multi-line composing and `Ctrl-S`, blank and failed
+  sends, presence and room-list refreshes, and relay backfill-to-live marking
+  over several pages; `TestBackend` rendering tests for the room list, the
+  transcript with server ids, the multi-line composer, the follow prompt, both
+  transcript sizes and the relay pane's distinct backfill and live rows.
+
+## [Unreleased] — 2026-10-29 — Console triggers and runs screen (task 2.2.3)
+
+### Added
+- `tidepool-console/src/tabs/runs.rs` — the runs tab's state and client
+  surface: the combined activity feed narrowed by project, provider, trigger
+  and status, with every active filter sent to `GET /v1/activity` and applied
+  again to the page received. A run detail is read on open and re-read once a
+  second while the run or any step is pending or running; trailing output lines
+  follow without a key press and the poll stops once every step is terminal.
+  Manual dispatch collects project, trigger, actor, delivery key, input and an
+  optional revision, refuses an actor the trigger's `from_users` allowlist does
+  not name, and follows the run it creates or matches. The read-only trigger
+  list comes from the project's active configuration revision, parsing the
+  authored `triggers/` files as JSON or block YAML. Failure codes are mapped to
+  sentences (`daemon_not_connected`, `host_not_found`, `execution_failed`, …)
+  with the stable code kept beside them.
+- `tidepool-console/src/ui/runs.rs` — the activity table, the trigger pane
+  (event, filters, active or inactive), the run detail with each step's status,
+  output tail and failure sentence plus code, and the dispatch form. Side by
+  side above 100 columns, stacked below it.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/ui/mod.rs` / `src/tabs/mod.rs` /
+  `src/main.rs` — the shell owns the runs state, routes the tab's keys before
+  the global bindings, ticks the tab from the event loop and delegates the Runs
+  body to the new renderer. `PoolClient` extends `RunsClient`; the SDK-backed
+  client implements the five runs calls.
+- `tidepool-console/Cargo.toml` — `serde_json` for reading authored trigger
+  documents (already in the workspace lock). No new crate version is selected.
+- Tests: scripted-client unit tests for filter combination and client-side
+  matching, clock-driven feed refresh, live detail following and stopping, tail
+  truncation, dispatch input collection and actor refusal, delivery-key
+  stability, failure-code wording and trigger parsing; `TestBackend` rendering
+  tests for the feed, trigger pane, detail, failure code and dispatch form.
+
+## [Unreleased] — 2026-10-29 — Console hosts and presence screen (task 2.2.2)
+
+### Added
+- `tidepool-console/src/tabs/hosts.rs` — the hosts tab's state and client
+  surface: enrolled hosts with slug, status, the presence instant this console
+  observed and whether `host.execute` is granted. Sorting covers every column in
+  both directions, filtering cycles the reported statuses and the `/` search
+  matches every column. `HostsState::drive` performs one pending action and one
+  2-second presence read, so a host that goes offline shows offline on the next
+  frame without a key press. Enrolling registers the host, mints its single-use
+  token and renders the reference-agent command that consumes it; `g` and `x`
+  grant and revoke execution. Capability reports are cached per host, re-read on
+  selection and after a grant, and retried with `c`.
+- `tidepool-console/src/ui/hosts.rs` — the table (selection, sort arrows,
+  status colours), the detail pane with the host's ids, execution state, last
+  seen and capabilities exactly as reported, the enrol prompt and the one-time
+  enrollment offer with its token, expiry and command. Stacked layout below 70
+  columns, side by side above it.
+- `tidepool-console/src/tabs/mod.rs` — the tab-module root.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/ui/mod.rs` / `src/main.rs` — the shell
+  now owns the hosts state, routes the tab's keys before the global bindings,
+  ticks the tab from the event loop (no input needed for a presence change) and
+  delegates the Hosts body to the new renderer. `PoolClient` extends
+  `HostsClient`; the SDK-backed client implements the five host calls.
+- Tests: scripted-client unit tests for sorting, filtering, live status,
+  enrollment, grant/revoke and failure paths; `TestBackend` rendering tests for
+  the table, the detail pane, the empty state, the enrollment offer and a
+  headless presence change.
+
+## [Unreleased] — 2026-10-29 — Console scaffold and connection handling (task 2.2.1)
+
+### Added
+- `tidepool-console/` — the operator's terminal: a `ratatui` + `crossterm` binary
+  over the Rust SDK with a tabbed shell (Hosts, Runs, Rooms, Settings), a status
+  line that always carries the pool, the signed-in member and the connection
+  state, keyboard navigation and a command palette built from the same `Action`
+  list the keys dispatch. Every action in `Action::ALL` is a palette entry, so a
+  palette-less action cannot exist without a failing test.
+- `tidepool-console/src/app.rs` — the credential-backed startup path reuses
+  `tidepool_cli::credentials`, so one `tidepool login` serves the CLI and the
+  console. No network call happens at startup unless the store names a pool and
+  a token; an unreachable (or unusable) pool becomes one notice plus
+  `UNREACHABLE` and the console keeps taking keys. Unit tests script the
+  `PoolClient` trait and cover the no-pool, signed-out, online, unreachable,
+  reconnect, quit and palette paths.
+- `tidepool-console/src/ui/` — the renderer and per-tab rendering tests at
+  40×10 and 140×40 against `TestBackend`, including every connection state, the
+  single unreachable notice and the palette.
+- `Cargo.toml` (workspace) — `tidepool-console` joined `members` and
+  `default-members`, so the existing gate builds and tests it.
+
+## [Unreleased] — 2026-10-29 — Control plane settings, palettes and pool-served hosting (task 2.1.10)
+
+### Added
+- `tidepool-control-plane/src/routes/settings/preferences.ts` — the settings
+  model, kept out of Svelte so every rule is testable without a browser:
+  - the pool URL, palette, 12/24-hour clock, local/UTC and comfortable/compact
+    density, all read from and written to browser storage;
+  - `readPreferences` / `savePreferences` restore the palette from the same key
+    the theme store uses, so a reload and the shell never disagree; an unknown
+    value falls back to Biolume and a blocked storage never leaves the app
+    unstyled or unconfigured;
+  - `applyPoolUrl` accepts an absolute `http`/`https` URL, refuses anything else
+    in words, and treats an empty value as "use the deployment's own value";
+  - `resolvePoolConfig` decides the base URL: a build-time `VITE_POOL_URL`
+    first, then the saved URL, then — only when the page carries the pool's
+    marker — the origin the page was opened from;
+  - `densityStyle` turns compact spacing into `--tp-space-*` overrides so the
+    shell applies it on every page without a stylesheet change, and
+    `formatTime` renders instants for the saved clock;
+  - the control plane version from `package.json` and the hub contract version
+    for the About block.
+- `tidepool-control-plane/src/routes/settings/PreferencesPanel.svelte` — the
+  pool URL form, the five-palette picker (Biolume default, marked), clock, time
+  zone, density, and About with both versions and whether the page was served
+  by the pool or a standalone deployment. It renders even with no pool, because
+  setting the URL is the first thing a fresh control plane needs.
+- `src/main.rs` — `TIDEPOOL_CONTROL_PLANE_DIR` serves a built control plane from
+  the pool's own origin as the default route: `index.html` for `/` and unknown
+  pages, assets byte for byte with their content type and immutable caching, a
+  `tidepool-pool-origin` marker injected before `</head>`, and no shadowing of
+  `/v1`, `/ws`, `/healthz`, `/metrics` or `/openapi`. Paths are resolved inside
+  the canonical bundle: `..`, empty segments and escaping symlinks are 404. A
+  directory without `index.html` refuses startup. Unset means API-only, exactly
+  as before.
+- `docs/SELF_HOSTING.md` — how to build and serve the control plane from the
+  pool, what each path answers, the compose override, and how the marker keeps
+  the standalone deployment unchanged.
+- Tests:
+  - preferences: defaults, all five palettes persisted and restored across a
+    fresh store (a reload), every route rendered in the restored palette, pool
+    URL save/refusal/clear, build-time and saved URL precedence, clock and
+    density round-trips, `formatTime`, and the panel's versions and states;
+  - `self-host.test.ts`: a loopback HTTP server serves a built bundle the way the
+    pool does, the test reads the marker and resolves the pool from the page
+    origin, then calls `/healthz` through the real TypeScript SDK on that
+    origin with no preflight; a standalone origin serving the same files is
+    byte-identical apart from the marker and stays unconfigured; a saved URL
+    moves the app to another pool at run time;
+  - `src/main.rs`: unit and service tests for index at `/`, asset bytes and
+    content types, SPA fallback, 404 for a missing asset, traversal refusal,
+    reserved API paths, marker injection (and no double injection), bundle
+    validation and path resolution. When `tidepool-control-plane/dist` has been
+    built, the suite also serves that real bundle through the handler and
+    compares the entry asset byte for byte with the file on disk.
+
+### Changed
+- `tidepool-control-plane/src/App.svelte`, `src/Root.svelte`, `src/main.ts` and
+  `src/routes/Settings.svelte` pass the preferences and palette handler through
+  the shell, apply density as inline token overrides, rebuild the auth
+  controller when the pool URL changes, and read the served-by-pool marker at
+  boot. These are outside the task's owned paths; without them the settings
+  page cannot change what the shell renders.
+
+### Notes
+- The palette choice is proven by tests as storage round-trip plus a render of
+  every route in that palette. Watching an actual browser reload repaint is the
+  one part left to a human.
+
+## [Unreleased] — 2026-10-29 — Control plane chatrooms (task 2.1.9)
+
+### Added
+- `tidepool-control-plane/src/lib/rooms.ts` — the chatroom page's model, kept
+  out of Svelte so every rule is testable without a DOM, a socket or a pool:
+  - `mergeMessages`: one row per server message id, ordered by the pool's
+    `sequence`; a page, a live frame and a reconnect replay that repeat a
+    message collapse to one row and keep the id the pool minted;
+  - `olderMessagesPage`: the backward cursor walk. The contract only reads
+    forward from `after`, so an older page is read by stepping the cursor back
+    one page at a time, discarding everything at or above the oldest held
+    sequence, and stepping again when sequence gaps make a short read. The
+    returned page is the newest `pageSize` messages below the window, so it
+    cannot overlap what the reader already has;
+  - `currentnessBanner` / `isCurrent`: "Current" is only ever returned when a
+    fetch (and, with a socket, the server's `chat.current`) has confirmed it;
+    a cached first render, an in-flight fetch, `chat.catchUp` and a dropped
+    socket all say catching up or reconnecting;
+  - `describeAuthor`: a person is a filled circle and the word "Person", an
+    agent session a diamond and "Agent session", each with its own accessible
+    label and `data-author-kind` — colour is never the only signal;
+  - `roomRoleFor` / `canPostInRoom`: a viewer's composer is withdrawn with a
+    sentence instead of accepting a message the pool would refuse;
+  - `RoomsController`: loads the member's rooms, opens a room with cached
+    history visible immediately, reads members and history in parallel, opens
+    the live stream after the catch-up cursor, merges `chat.history`,
+    `chat.message` and `chat.presence` frames, reconnects from the last cursor
+    (staying in catch-up until `chat.current`), reads older pages, posts, and
+    reports every state change through `onChange` so the page renders live
+    updates rather than only the state after an await.
+- `tidepool-control-plane/src/routes/rooms/` — the page:
+  - `RoomsPage.svelte` renders the member's rooms, the selected room's
+    currentness banner, presence, history, composer and members;
+  - `CatchUpBanner.svelte` prints the one decision from `currentnessBanner`;
+  - `MessageList.svelte` renders the history keyed by server id and asks for an
+    older page when the reader scrolls to the top (a button does the same for
+    keyboard and screen-reader readers);
+  - `MessageComposer.svelte` withdraws a viewer's composer with the reason and
+    keeps a failed draft in place;
+  - `AuthorBadge.svelte` + `RoomMembers.svelte` show kind word, distinct glyph,
+    id, role and watching state;
+  - component tests for the merge, the backward cursor walk, catch-up
+    labelling, the person/agent distinction, the viewer gate and presence; an
+    SDK-driven end-to-end with two controllers in one room, sharing a fake
+    WebSocket hub: both read 120 messages, one sends, the other receives the
+    same server id live, both see both watchers, and the client that starts
+    from a cached tail pages back to sequence 1 without duplicates.
+
+### Changed
+- `src/lib/router.ts`, `src/App.svelte` and `src/lib/router.test.ts` add the
+  `/rooms` route and pass the pool, token and signed-in member id to the page.
+  These are outside the task's owned paths; without them the page cannot be
+  reached or authenticated.
+
+### Notes
+- The hub's history route is forward-only (`after`), so "scroll up loads
+  older" is implemented by walking the cursor backwards from the oldest held
+  message. That costs one history read per older page in the common case and
+  a few more when sequence gaps leave a page short; it never duplicates and
+  never changes the server contract.
+
+## [Unreleased] — 2026-10-29 — Control plane members and API keys (task 2.1.8)
+
+### Added
+- `tidepool-control-plane/src/lib/keys.ts` — the settings page's model, kept
+  out of Svelte so every rule is testable without a DOM or a pool:
+  - the API key scope catalog (`projects:read`, `configuration:validate`,
+    `configuration:install`, `runs:dispatch`, `daemons:enroll`) with labels and
+    sentences, cross-checked against the SDK's contract table;
+  - `removalRule` / `roleChangeRule` / `LAST_OWNER_REASON`: the last owner
+    cannot be removed or demoted even before a request, and the reason is a
+    full sentence; a stale local count still surfaces the pool's own 409 in the
+    same place;
+  - `invitationRow` and `expiryView`: an invitation keeps both a relative
+    sentence ("Expires in 7 days") and the absolute instant, and a lapsed one
+    says how long ago;
+  - `apiKeyRow` and `sortApiKeyRows`: prefix, labelled scopes (unknown scopes
+    kept, never hidden), creation time, last-used, and active-before-revoked
+    order — a revoked key stays in the list, marked revoked;
+  - `createdApiKey` / `API_KEY_SECRET_WARNING` / `copySecret`: the
+    `<prefix>.<secret>` value is held once, the warning says it will not be
+    shown again, and copying is tested with an injected clipboard;
+  - `MembersKeysController`: loads members plus, for owners only, invitations
+    and keys; invites, changes roles, removes members, revokes invitations,
+    creates keys and revokes them; every rule failure is presented as problem
+    details rather than thrown; a reload drops any one-time value.
+- `tidepool-control-plane/src/routes/settings/` — the page:
+  - `SettingsPage.svelte` renders both panels from a `MembersKeysState` and
+    loads itself on mount when it has a pool and a session;
+  - `MembersPanel.svelte` + `InviteMemberForm.svelte` + `MemberRow.svelte`
+    invite by email with a chosen role, show pending invitations with their
+    expiry, and disable the last owner's controls with the reason beside them;
+  - `CreatedInvitationPanel.svelte` shows the one-time acceptance token with
+    its warning and expiry, because v1 has no mail transport;
+  - `ApiKeysPanel.svelte` + `CreateKeyForm.svelte` + `ApiKeyCard.svelte` create
+    keys with an explicit scope set, show prefix, scopes, creation and last
+    used, and offer a two-step revoke that leaves the row marked revoked;
+  - `ApiKeySecretPanel.svelte` shows the secret once in a copyable block with
+    **Copy secret** as the primary action and the dismiss control secondary;
+  - component tests for the last-owner and one-time-secret rules, the
+    invitation expiry, revoked-key persistence and role gating; an SDK-driven
+    end-to-end that invites a member, creates a key, dismisses the secret,
+    revokes the key and confirms it stays marked revoked, plus the pool's 409
+    when the local owner count is stale.
+
+### Changed
+- `src/routes/Settings.svelte` is now the thin wrapper over
+  `./settings/SettingsPage.svelte`, and `src/App.svelte` passes the pool,
+  session token and role to it. Both are outside the task's owned paths; the
+  page cannot be reached or authenticated without them. The pool URL and
+  preference settings remain task 2.1.10's placeholder.
+
+### Notes
+- `GET /v1/pool/invitations` and `GET /v1/api-keys` are owner-only, so the
+  controller loads them only for an owner; a viewer sees the member list
+  read-only and one sentence saying why the rest is unavailable, never a 403
+  caused by opening the page.
+
+## [Unreleased] — 2026-10-29 — Control plane runs and activity (task 2.1.7)
+
+### Added
+- `tidepool-control-plane/src/lib/runs.ts` — the activity page's model, kept
+  out of Svelte so every rule is testable without a DOM or a pool:
+  - `ActivityFilters` (`project`, `provider`, `trigger`, `status`, `kind`) and
+    `activityQuery`: only non-empty filters are sent, so "any" and "empty" never
+    become the same request;
+  - `filterActivityEntries` / `entryMatchesFilters`: the page's own guard on
+    every returned page. A missing project or provider never matches a filter,
+    so a union row the pool cannot attribute cannot appear under the chosen
+    project — even when the pool ignores the filter or a stale page arrives;
+  - `failureExplanation` and `FAILURE_SENTENCES`: stable codes become sentences
+    a person understands (`daemon_not_connected` says the host went offline),
+    while the code and the pool's remaining detail stay available; an unknown
+    code is kept, never hidden;
+  - `arrivalSentence`: created, continued (and steered), or restored, in words;
+  - `RunsController`: load projects and the feed, combine filters with a request
+    token that discards stale answers, page with `nextCursor`, dispatch a manual
+    run and select it, and follow a live detail on an injected timer until the
+    run is terminal; `runIsLive` also follows a succeeded run whose last step is
+    still running;
+  - `copyOutput`: copies a step's output exactly as the agent wrote it, with an
+    injectable clipboard writer and a false return (not a page failure) when the
+    browser refuses.
+- `tidepool-control-plane/src/routes/runs/` — the page:
+  - `RunsPage.svelte` renders the manual dispatch form, the combined filters,
+    the feed and the detail side by side, and applies the filter guard again at
+    render time;
+  - `ActivityFilters.svelte` offers project, provider, trigger, status and kind
+    and describes the active combination;
+  - `ActivityList.svelte` says what each receipt, run, step or execution is and
+    opens the run it belongs to;
+  - `RunDetail.svelte` shows the arrival sentence, the run facts, the first
+    step failure as a run-level sentence, and every step in order;
+  - `RunStep.svelte` shows a step's status, host, environment and timestamps,
+    its named failure as a sentence with the code beside it, and its output in
+    a `<pre>` with a copy control;
+  - component tests for the filter combination and project isolation, the
+    code-to-sentence mapping, verbatim output and copy, the live timer, the
+    arrival modes and the manual-input checks; an SDK-driven end-to-end that
+    dispatches a manual run and follows pending → running → succeeded, and
+    checks the filter reaches the request URL.
+
+### Changed
+- `src/routes/Runs.svelte` is now the thin wrapper over `./runs/RunsPage.svelte`,
+  and `src/App.svelte` passes the pool, session token and role to it. Both are
+  outside the task's owned paths; the page cannot be reached or authenticated
+  without them.
+
+### Notes
+- The activity API has no push channel for this view, so "live" is a bounded
+  poll of `GET /v1/activity/runs/{run}` while the run or any step is pending or
+  running. The timer is injected, which is what makes the behaviour testable
+  without a browser or a server.
+
+## [Unreleased] — 2026-10-29 — Control plane trigger editor (task 2.1.6)
+
+### Added
+- `tidepool-control-plane/src/lib/triggers.ts` — the trigger editor's model,
+  kept out of Svelte so every rule is testable without a DOM or a pool:
+  - one canonical `TriggerDocument` with typed `TriggerEdit`s and
+    `applyTriggerEdit`, plus `triggerYaml` / `documentFromYaml`: a small
+    block-YAML reader and writer for exactly this document shape, with clear
+    line-numbered syntax errors and a refusal of unknown keys (the pool denies
+    unknown fields, so accepting them would make the two views describe
+    different documents);
+  - `agentOptionsFromReport`, `selectionAvailability` and
+    `unavailableAgentIssues`: the cascade narrows a host's report to the pool's
+    `offered_providers`, and an authored value the host no longer reports is
+    marked `unavailable` at its contract field (`run.agent.model`) and **kept**,
+    never silently replaced;
+  - `preflightIssues`: the local half of save validation, with the pool's own
+    field names and messages (shape, `from_users` allowlist, host execution
+    grant, and the agent check), so a host that cannot run the agent is refused
+    before a request leaves the browser;
+  - `TriggersController`: load projects and hosts, choose a host and working
+    directory (each reloads the capability report, with a request token so a
+    stale answer cannot overwrite a newer one), edit the form or YAML, retry an
+    offline host, then validate with `POST /v1/triggers/validate` and install
+    only a valid document with `POST /v1/triggers/install`; a refusal or call
+    failure installs nothing and keeps the draft.
+- `tidepool-control-plane/src/routes/triggers/` — the page:
+  - `TriggersPage.svelte` renders the project chooser, host source, form/YAML
+    switch, named issues, save state and the installed revision;
+  - `TriggerForm.svelte` renders the document, the host and directory, and the
+    provider → model → mode → thinking cascade; an authored unavailable value
+    stays in its select, labelled unavailable;
+  - `AgentSourcePanel.svelte` says whether the host is being asked, what it
+    reported, or why it could not answer — with a retry when it is offline;
+  - `YamlTriggerEditor.svelte` keeps the YAML text and states a parse failure
+    without letting the form claim the unparsed text;
+  - component tests for the availability rules, the no-silent-rewrite rule,
+    the named save refusal, the offline/retry state and form/YAML agreement,
+    and an SDK-driven end-to-end against a connected host (host and directory
+    reloads, install order, pool refusal) and an offline one (503, retry,
+    recovery, and a host already listed offline).
+
+### Changed
+- `src/lib/router.ts`, `src/lib/router.test.ts`, `src/App.svelte` and
+  `src/routes/Triggers.svelte` — route the page at `#/triggers`. Outside the
+  task's owned paths; the page cannot be reached without them.
+
+### Notes
+- The trigger contract (`TriggerRun`) stores a host and an agent, not a working
+  directory. The editor still chooses one because the goal asks for it and it
+  reloads the agent choices, but it is deliberately not written into the YAML
+  or the installed document, so both views remain the same trigger document.
+
+## [Unreleased] — 2026-10-29 — Control plane projects and configuration editor (task 2.1.5)
+
+### Added
+- `tidepool-control-plane/src/lib/configuration.ts` — the authored bundle model:
+  - `Bundle`/`AuthoredFile` and the edit operations (`editBundleFile`,
+    `addBundleFile`, `removeBundleFile`) that replace or add exactly one path,
+    keep authored order, and share untouched file objects so nothing can be
+    reordered or reformatted behind the author's back;
+  - `requestFromBundle` — the validate/install body, sent with exact authored
+    content and no normalisation;
+  - `locateField` / `locateIssues` — an offset-preserving JSON parse of the
+    manifest that maps the pool's field paths (`hosts.studio-mac`,
+    `environments.nightly.directory`, `workflows.build.steps[2].agent`) to the
+    offending line and column, falling back to the nearest authored object for a
+    missing property and to `located: false` line 1 when it cannot resolve;
+  - `diffBundles` / `alignLines` — a file-by-file, line-level diff over the
+    authored files, with whole-file added/removed lines and a bounded alignment;
+  - `resolveActiveRevision` — exactly one active revision or an explicit problem
+    (zero with a history, several, or a served active that the history disagrees
+    with); the page never guesses;
+  - `ProjectsController` — list/open projects, edit files, validate-then-install
+    through the pool, compare any two revisions, and keep the active revision
+    and the author's draft intact on refusal or call failure.
+- `tidepool-control-plane/src/routes/projects/` — the page:
+  - `ProjectsPage.svelte` lists projects, shows the active revision, hosts the
+    editor, save controls, field errors, the diff and the history, and loads
+    itself from the shell's pool and token;
+  - `FileEditor.svelte` is the text editor over the exact files, with add and
+    remove for paths;
+  - `IssueList.svelte` puts each pool field error against its file and line and
+    quotes the line;
+  - `RevisionHistory.svelte` marks the active revision and offers a comparison;
+  - `RevisionDiff.svelte` renders authored files with both line numbers and
+    added/removed markers;
+  - component tests for the error-to-line mapping and the rendered states, and
+    an SDK-driven end-to-end that installs, breaks, refuses and fixes a bundle.
+
+### Changed
+- `src/lib/router.ts`, `src/lib/router.test.ts`, `src/App.svelte` and
+  `src/App.test.ts` — route the page at `#/projects`. Outside the task's owned
+  paths; the page cannot be reached without them.
+
+## [Unreleased] — 2026-10-29 — Control plane connections view (task 2.1.4)
+
+### Added
+- `tidepool-control-plane/src/lib/connections.ts` — the provider model, kept
+  out of Svelte so every word and branch is testable without a DOM or a pool:
+  - the catalogue: GitHub over a webhook, Slack over a webhook **or socket
+    mode**, Discord over the bot gateway, each with the credential fields and
+    resource kinds the pool's provider implementations read;
+  - the exact callback URL for the pool's current origin
+    (`/v1/webhooks/github/{slug}`, `/v1/webhooks/slack/{slug}`), the outbound
+    explanation for socket mode and the gateway, and the inability to build a
+    webhook URL when the pool has no public origin;
+  - `callbackChanges`: the old and new callback URL for every webhook
+    connection across a pool-origin move, with outbound connections correctly
+    absent;
+  - `secretFieldView`: a write-only credential field with no slot for a value.
+    A configured credential reads **Credential set** and offers **Replace
+    credential**; it is never read back;
+  - `verificationChecks`: five named checks — the pool answered, the
+    connection is active, the credential is configured, the resource scope is
+    registered, the transport is ready — each carrying the provider's own words
+    when it fails;
+  - `ConnectionsController`: list, create (then verify), verify, rename,
+    enable/disable and delete, plus a replacement path that reports the
+    contract gap rather than faking a write;
+  - transport preferences and the last-seen pool origin, both browser
+    preferences because this contract revision carries neither.
+- `tidepool-control-plane/src/routes/connections/` — the page:
+  - `ConnectionsPage.svelte` renders the summary, the create form, every
+    connection and the origin-change notice, and loads itself from the shell's
+    pool and token;
+  - `ConnectionCard.svelte` renders one connection, its transport, its
+    write-only credential field, its callback block, resources, verification
+    report and labelled actions (delete has a second, connection-named step);
+  - `SecretField.svelte` is the set/not-set + replace-only control;
+    `ConnectionCallback.svelte` prints the exact URL or explains the outbound
+    transport;
+  - `VerificationReport.svelte` lists every check and names the failing one;
+  - `OriginChangeNotice.svelte` lists each callback URL that must change, old
+    beside new;
+  - `ConnectionForm.svelte` creates GitHub, Slack (webhook or socket mode) and
+    Discord (bot gateway) connections.
+
+### Changed
+- `src/lib/router.ts`, `src/lib/router.test.ts`, `src/App.svelte`,
+  `src/App.test.ts` and `src/routes/Connections.svelte` — route the page at
+  `#/connections`. Outside the task's owned paths; the view cannot be reached
+  without them.
+
+### Notes
+- **The contract has no transport field.** `ConnectionView` does not say
+  whether a Slack connection uses the webhook or socket mode, so the page
+  remembers the choice per connection id in the browser and defaults to the
+  webhook otherwise. The card says so; it never pretends the pool reported it.
+- **The contract has no credential-rotation operation.**
+  `PATCH /v1/connections/{id}` accepts a display name, slug and status only.
+  The credential field still offers replacement, and the replacement path says
+  plainly that the secret must be rotated in the pool environment and then
+  verified again. It never echoes the value.
+- Tests: model and controller unit tests; component tests for the
+  secret-set-and-replace pattern, the exact callback URLs, the origin-change
+  list, the socket-mode and gateway choices, and failed verification naming its
+  check; an end-to-end that configures a Slack socket-mode connection through
+  the real SDK against an in-memory pool, walks create → verify → rename →
+  disable → delete, and asserts no response or view state carries the stored
+  secret. Control-plane suite: 245 tests, 23 files. Rust gates unchanged:
+  `cargo fmt --check`, `cargo clippy --all-targets --all-features -D warnings`
+  and `cargo test` pass.
+- Needs a human look: moving the pool's public origin in Settings in the
+  running app and confirming the callback-change list appears. The logic and
+  rendering are covered by tests with an injected previous origin; the
+  click-through is not.
+
+## [Unreleased] — 2026-10-29 — Control plane hosts view (task 2.1.3)
+
+### Added
+- `tidepool-control-plane/src/lib/hosts.ts` — the hosts model, kept out of
+  Svelte so every word and every branch is testable without a DOM:
+  - the four host statuses (`pending_approval`, `connected`, `offline`,
+    `revoked`) each with its own word, icon, description and colour role, plus a
+    readable `Unknown` fallback;
+  - `executionState`: granted hosts "may run agents", a connected host without
+    the grant is labelled **connected only**, and a pending/offline/revoked host
+    is not mislabelled as connected-only;
+  - the last-seen field, which reads `last_seen_at` when a pool sends one and
+    says plainly that the contract revision does not report it when it does not;
+  - `executionAction`: grant and revoke actions, each naming the contract
+    operation and restating its consequence at the confirm step;
+  - the enrolment command builder: the pool's HTTP and WebSocket URLs derived
+    from the pool URL, a host-generated credential kept in a file, the
+    single-use token shell-quoted, and the reference agent invocation —
+    the exact command, not a description of one;
+  - `HostsController`, which lists, enrols (create then mint), grants and
+    revokes execution, holds the one-time token until dismissed, and turns every
+    failure into readable problem details.
+- `tidepool-control-plane/src/routes/hosts/` — the page:
+  - `HostsPage.svelte` renders the summary, the enrolment panel and the host
+    list, loads itself from the shell's pool and token, and handles empty,
+    loading, unconfigured and failed states;
+  - `HostCard.svelte` renders slug, display name, hostname, status, last seen
+    and the execution grant for one host;
+  - `HostStatusBadge.svelte` and `ExecutionChip.svelte` keep status and
+    permission apart: status is a lifecycle state, execution is a grant;
+  - `HostActionControl.svelte` is the labelled grant/revoke action with its
+    consequence printed before confirmation and a second, host-named confirm
+    step;
+  - `EnrollHostPanel.svelte` registers a host and shows the token once with the
+    command to run, replacing the form so it cannot be minted twice by accident.
+
+### Changed
+- `src/routes/Hosts.svelte` — now a thin route that renders `hosts/HostsPage`
+  and passes pool, token and role through. The page itself lives in the task's
+  owned directory.
+- `src/App.svelte` — passes the configured pool and the signed-in token/role to
+  the hosts route so the page can load real hosts. Two lines, outside the
+  task's owned paths, without which the view could not reach the pool.
+
+### Notes
+- The contract (`HostView`) has no last-seen timestamp. The page always renders
+  a Last seen field and, against a pool that does not send `last_seen_at`, says
+  so rather than deriving a time from `created_at`. A future pool field is read
+  as soon as it appears.
+- Tests: status descriptor and view-model unit tests, a component test for each
+  of the four statuses plus both action states and the enrolment result, and an
+  end-to-end test that walks enrolment → token exchange → connected → grant →
+  revoke through the real SDK against an in-memory pool transport. Suite: 173
+  tests, 20 files, no DOM and no network.
+
+### Fixed
+- `cli/tests/support/mod.rs` and `sdk/rust/tests/support/mod.rs` — the recorded
+  HTTP server now clears the non-blocking flag on each accepted connection. A
+  non-blocking listener hands its flag to the accepted socket on macOS and BSD,
+  so a request that had not arrived yet read as `WouldBlock` and the fixture
+  dropped the connection under the client; the CLI's `run watch` poll loop
+  surfaced that as a rare `Connection reset by peer` gate failure. The new
+  `cli/tests/recording_server.rs` pins the wait with a request sent after the
+  accept.
+
+## [Unreleased] — 2026-10-29 — Control plane sign-in, setup and sessions (task 2.1.2)
+
+### Added
+- `tidepool-control-plane/src/auth/` — the browser session layer, kept out of
+  Svelte so the whole lifecycle is testable without a DOM:
+  - `gateway.ts` calls `GET /v1/setup/status`, `POST /v1/setup`,
+    `POST /v1/pool/login`, `GET /v1/pool/me`, and the sign-out route, with
+    problem-details errors normalised for the shell.
+  - `session.ts` remembers the token, operator and lifetime in web storage,
+    rejects an expired or malformed record, and never throws because storage is
+    blocked or full.
+  - `controller.ts` walks first run (setup, then sign-in), restores and verifies
+    a session on reload, returns an expired or rejected session to sign-in, and
+    signs out through the pool before forgetting the token locally.
+  - `roles.ts` maps each control to the contract operation behind it. Allowed
+    controls are offered; a control the role cannot use is absent and listed
+    with its reason. A test cross-checks every mapping against the generated
+    SDK route table.
+- `src/routes/SignIn.svelte`, `Setup.svelte`, `AuthLoading.svelte` — the gate
+  pages. Setup validates the same twelve-character floor the pool applies and
+  ends signed in; failures render `ProblemDetails` with their request id.
+- `src/auth/SessionBar.svelte` — the signed-in person, role and organization,
+  and the sign-out control.
+- `src/auth/RolePanel.svelte` — "what this role can do", with prohibited
+  controls hidden behind a reason rather than rendered as buttons.
+- Tests: unit tests for the role mapping and session storage, controller tests
+  for setup, reload, expiry, revocation and sign-out, and an end-to-end test
+  that runs setup → sign-in → reload → sign-out over a local HTTP pool and
+  proves the old token is rejected afterwards.
+
+### Changed
+- `src/App.svelte` — the shell owns the auth gate when an `auth` state is
+  supplied; signed-in sessions add the session bar and pass the role to the
+  overview. With no auth state the 2.1.1 behaviour is unchanged.
+- `src/Root.svelte` — owns the `AuthController`, restores the session on mount,
+  and routes the sign-in, setup and sign-out actions to it.
+- `src/routes/Overview.svelte` — renders the role panel for a signed-in person.
+- `src/main.ts` — passes the same web storage to the session layer.
+- `src/app.css` — two layout classes for the header tools and a gated (no-nav)
+  shell.
+
+### Notes
+- The hub contract has no logout route. The control plane calls
+  `POST /v1/pool/logout` (the companion of `/v1/pool/login`) and reports a
+  missing route as `session_revocation_unavailable`; it still drops the local
+  token. Sign-out is server-side once the pool implements that route. This is
+  the one success criterion that needs the pool side, and it is recorded in
+  `docs/memory.md`.
+
+## [Unreleased] — 2026-10-29 — Control plane scaffold and design tokens (task 2.1.1)
+
+### Added
+- `tidepool-control-plane/` — the control plane as a Svelte 5, Vite and
+  TypeScript app. `npm run build` produces `dist/`; `npm test` runs 79 tests in
+  the `node` environment with no DOM, no network and no live pool.
+- `tidepool-control-plane/src/lib/design/` — the Clawffice design tokens as
+  code. `clawffice-design.snapshot.json` is a pinned snapshot of
+  `tokens/core.json`, `tokens/apps/tidepool.json`, `tokens/cells.json` and the
+  five palette files, generated from a sibling `clawffice-design` checkout by
+  `src/lib/design/snapshot.mjs`; `design.drift.test.ts` fails when the checkout
+  and the snapshot disagree, and skips when no checkout is present. Tokens are
+  never fetched from a registry and never installed.
+- `tokens.ts` turns a palette into `--tp-*` custom properties: every colour,
+  radius, space and font size the app uses. All five palettes render, Biolume
+  is the default, and the `tide` product hue (`#4A9FE0` dark, `#1864AB` light)
+  drives focus and selection regardless of the palette's primary. Light and
+  dark follow the palette's own scheme (Sea Glass is the light one).
+- `src/lib/status.ts` + `StatusBadge.svelte` — status is colour, **icon and
+  word**: every state in the table has a word and a 24x24 glyph, the glyph is
+  `aria-hidden`, and the word is what is read. A test fails if a status loses
+  either.
+- `src/lib/router.ts` — a hash route table (Overview, Hosts, Runs, Settings)
+  that resolves a path, strips query strings and trailing slashes, and reports
+  an unknown path as not found. A built app is servable from any origin with no
+  rewrite rules, including the pool's own.
+- `src/lib/api/pool.ts` — "no pool configured" as an explicit state rather than
+  an error: the shell says so, makes no request, and the typed SDK client is
+  only built once there is an absolute pool URL. Build-time `VITE_POOL_URL`
+  wins over the saved value.
+- `src/lib/api/problem.ts` — any thrown value becomes a readable title,
+  sentence, status, code and request id, using the SDK's `ProblemError`.
+- `src/App.svelte` — the shell: brand mark and pool cell sprite, palette
+  switch, navigation, the no-pool notice, and a `svelte:boundary` whose failed
+  snippet renders `ProblemDetails` (request id always shown, "none" when the
+  request never reached the pool).
+- `public/` — the Tidepool mark and icon from
+  `clawffice-design/logos/tidepool`, the 12x12 "pool" cell sprite as
+  `tidepool-cell.svg` (favicon), the icon as the app icon, and a web app
+  manifest. Light and dark both supported through `color-scheme`.
+
+### Notes
+- The TypeScript SDK is aliased to `sdk/ts/src/browser.js` in `vite.config.ts`
+  and declared as `file:../sdk/ts`, so a checkout builds without a package
+  install and `npm install` resolves to the same source.
+- Human check outstanding: the rendered look of the five palettes and the
+  shell's failure view are asserted in markup, not looked at in a browser.
+
+## [Unreleased] — 2026-10-29 — tidepool CLI (task 2.0.6)
+
+### Added
+- `cli/` — the `tidepool` binary and its library, a thin command line over
+  `tidepool-client`: `login`, `pool status`, `host list`, `host enroll`,
+  `host grant`, `trigger list`, `trigger validate`, `trigger install`,
+  `run dispatch`, `run watch`, `room list`, `room send` and `relay follow`.
+  Each command maps to the SDK call the contract declares and prints the type
+  the SDK decoded; `--json` prints that type as JSON for scripting.
+- `cli/src/args.rs` — the whole grammar in one flag table, so an unknown or
+  inapplicable flag is refused rather than ignored. No argument-parsing
+  dependency is added.
+- `cli/src/credentials.rs` — the store the CLI owns: `$TIDEPOOL_HOME`, then
+  `$XDG_CONFIG_HOME/tidepool`, then `$HOME/.config/tidepool`, written
+  atomically with mode `0600` and refused if the path's ancestors contain
+  `.git`. Redaction keeps four leading characters and the length, never the
+  secret.
+- `cli/src/commands.rs` — one function per command. `relay follow` iterates the
+  SDK's `paging::relay_events`; `run watch` polls the contract's run detail
+  (v1 has no run stream); `trigger list` reads the project's active
+  configuration revision (v1 has no trigger-list route). Two-step enrollment
+  (mint, then exchange) runs end to end without a browser.
+- `cli/tests/` — a recorded server per command, plus an end-to-end test that
+  signs in, enrols a host, installs a trigger, dispatches a run and follows it
+  to completion, asserting the exact call sequence and that no token or
+  credential reached the terminal.
+- `cli/README.md` — the command table, the store location and shape (shared
+  with the console), the `--json` contract and the redaction rules.
+- `Cargo.toml` — `cli` added to the workspace and to `default-members`, so the
+  default `cargo build`/`test`/`clippy` gate covers the CLI rather than only an
+  explicit `-p tidepool-cli`.
+
+### Changed
+- Nothing outside `cli/` and the workspace member list; the SDK, the server and
+  the contract are untouched. The CLI adds no `clap`-style dependency: it links
+  the SDK and `serde_json` only.
+
+## [Unreleased] — 2026-10-29 — SDK conformance suite (task 2.0.5)
+
+### Added
+- `sdk/conformance/` — one scenario list run against all three bindings
+  (Python, TypeScript, Rust), so a divergence in a problem code, a paging
+  cursor or a frame classification fails the build. The harness knows nothing
+  about any one SDK: a binding is a process that answers six generic commands
+  (`contract`, `describe`, `call`, `page`, `stream`, `frames`) over
+  newline-delimited JSON.
+- `sdk/conformance/scenarios/` — fifteen scenarios across eight files covering
+  authentication and scopes, host enrollment and one-time-token replay,
+  capability validation refusals, trigger validation and install revisions,
+  dispatch and offline-host failure, cursor paging and stream resume, and every
+  problem-details shape. Adding a scenario is a data change; no per-binding
+  test code is involved.
+- `sdk/conformance/adapters/` — the three adapters plus `manifest.json`. The
+  Rust adapter is its own workspace so the main gates are unchanged.
+- `sdk/conformance/provision.py` — creates the pool state a run needs over the
+  public API (operator, project, keys, connection, hosts, reference agent,
+  configuration revision, triggers) and writes the `--vars` file.
+- `sdk/conformance/selftest.py` — checks the harness itself: a binding that
+  answers a different error code or cursor fails, captures are per binding, a
+  subset run is never a clean pass, and every shipped scenario loads.
+- `tests/conformance_suite.rs` — runs the selftest and the scenario listing
+  under `cargo test`, so a broken scenario fails the normal gate.
+- `.github/workflows/ci.yml` — a `conformance` job with MySQL and Redis
+  services: migrations, the pool, the reference host agent and the full suite
+  against a real pool, not a mock.
+
+### Changed
+- `docs/api/openapi-v1.json` — `POST /v1/hosts/enroll` now declares `410 Gone`,
+  which the handler already returned for an expired token and for a token whose
+  minting key was revoked. The generated SDK route tables follow; the
+  conformance suite pins `gone` rather than letting the contract drift.
+- `sdk/rust/src/stream.rs` — `ChatFrame::cursor()` now returns the catch-up
+  cursor the envelope carries (`chat.current`) and `None` for a live message;
+  the message sequence stays on `MessageView::sequence`, and the socket driver
+  still advances its resume point from it. Python and TypeScript already
+  behaved this way, and the conformance suite caught the divergence.
+
+## [Unreleased] — 2026-10-29 — Python SDK (task 2.0.4)
+
+### Added
+- `sdk/python/tidepool_client/` — `tidepool-client`, the Python binding of
+  `docs/api/openapi-v1.json` (API v1, contract 1.0.0): a synchronous client and
+  an asynchronous client over one route table, typed models for all 90 schemas,
+  ambient credentials (`Bearer`, `x-api-key`, `X-Host-Credential`),
+  refresh-once, bounded 429 retries that honour `Retry-After`, and
+  problem-details errors that preserve unknown codes.
+- `sdk/python/tidepool_client/_generated/{models,routes,resources}.py` —
+  generated artifacts: one dataclass per contract schema, the route table with
+  auth model, required scope and role, and one resource method per route for
+  each facade (83 operations).
+- `sdk/python/scripts/generate.py` — the generator. The committed contract is
+  its only input; the explicit `operationId → namespace.method` map fails on an
+  unmapped route, and `--check` compares the committed artifacts byte for byte.
+- `sdk/python/tidepool_client/{paging,stream,transport,problem,retry,model}.py` —
+  cursor iterators (sync and async) over `next`/`nextCursor`, the typed chatroom
+  stream handle with frame parsing, the stdlib HTTP/1.1 transports, and the
+  typed error and retry policies shared by both facades.
+- `sdk/python/examples/enroll_and_activity.py` — creates a host, mints an
+  enrolment token, enrols the host and reads the first activity page.
+- `sdk/python/tests/` — contract parity, model round-trips, every-route coverage
+  on both clients against a recorded HTTP server, retry/refresh/problem cases,
+  paging, stream frames, packaging and the example. The dev-stack checks are
+  opt-in via `TIDEPOOL_BASE_URL`.
+- `pyproject.toml` — PEP 621 metadata for `tidepool-client`; no runtime or
+  optional dependency, source under `sdk/python/`, wheel-importable.
+
+### Changed
+- Nothing outside the Python SDK and the root packaging file; the Rust and
+  TypeScript SDKs are untouched.
+
+## [Unreleased] — 2026-10-29 — Rust SDK (task 2.0.3)
+
+### Added
+- `sdk/rust/` — `tidepool-client`, the Rust binding of
+  `docs/api/openapi-v1.json` (API v1, contract 1.0.0). One typed request per
+  contract route (83 operations), the route table with auth model, required
+  scope and role, the generated namespace wrappers, typed success and request
+  bodies, and a generic `request_json` path keyed by operation id.
+- `sdk/rust/src/generated/{types,routes,endpoints,resources}.rs` — generated
+  artifacts, rustfmt-clean, checked against the contract by the crate tests.
+- `sdk/rust/scripts/generate.mjs` — the generator: the only input is the
+  committed contract, the `operationId → namespace.method` map fails on an
+  unmapped route, and `--check` compares the committed artifacts byte for byte.
+- `sdk/rust/src/blocking.rs` — the default blocking facade over `ureq`: ambient
+  credentials, refresh-once, bounded 429 retries that honour `Retry-After`,
+  problem-details errors, and a typed chatroom socket over `tungstenite`.
+  No caller-written runtime.
+- `sdk/rust/src/asynchronous.rs` — the opt-in async facade over `reqwest` with
+  the same surface and an async refresh hook.
+- `sdk/rust/src/paging.rs` — `chat_messages`, `relay_events` and `activity`
+  iterators following `next`/`nextCursor`.
+- `sdk/rust/tests/` — contract-parity, types, blocking, async, paging and
+  streaming tests over scripted local servers; the dev-stack test is opt-in and
+  ignored.
+- `Cargo.toml` — `sdk/rust` added to the workspace.
+
+### Changed
+- `sdk/rust/Cargo.toml` — default features are a blocking build with no async
+  runtime; `--no-default-features` is the contract-only core and `async` is
+  opt-in.
+
+## [Unreleased] — 2026-10-29 — TypeScript SDK (task 2.0.2)
+
+### Added
+- `sdk/ts/` — `@clawffice/tidepool-sdk`, a dependency-free typed client for
+  the whole committed contract (83 operations): pool identity and API keys,
+  hosts and enrolment, presence and capabilities, connections, projects and
+  configuration revisions, triggers and validation, dispatch and manual runs,
+  activity, chatrooms with cursor paging plus the live socket, the session
+  relay, webhooks, and the Talo game surface.
+- `sdk/ts/scripts/lib/contract.mjs` — the generator. It renders the schema
+  interfaces, the route table, one delegating method per route, the typed
+  namespace surface and a typecheck-only conformance file from
+  `docs/api/openapi-v1.json`, with an explicit `operationId → namespace.method`
+  map that fails on an unmapped route.
+- `sdk/ts/src/client.js` — fetch-only transport: ambient credentials
+  (`Bearer`, `x-api-key`, `X-Host-Credential`), refresh-once token handling,
+  bounded 429 retries with exponential backoff that honour `Retry-After`, and
+  `ProblemError` carrying `status`, `code`, `detail`, `requestId` (body or
+  `x-request-id`), `attempts` and `retryAfterMs`. Unknown codes stay opaque.
+- `sdk/ts/src/stream.js` — `ChatStream` over the room WebSocket, with frame
+  parsing, `frames()` iteration and a resume cursor.
+- `sdk/ts/src/paging.js` — `iterateChatMessages`, `iterateRelayEvents` and
+  `iterateActivity` follow the contract's `next`/`nextCursor` cursors.
+- `sdk/ts/src/browser.js` / `sdk/ts/src/node.js` — conditional exports: the
+  browser entry reaches no Node-only module, the Node entry adds token-file
+  loading; `publishConfig.access` publishes under the Clawffice scope.
+- `sdk/ts/test/` — 43 `node:test` cases over a recorded HTTP transport
+  (contract drift and coverage, credentials, problem mapping, refresh, 429
+  backoff and bounds, paging, stream, browser import graph).
+- `sdk/ts/scripts/smoke.mjs` — `npm pack`, a fresh install of the tarball, and
+  the installed package minting an enrolment token, enrolling a host and
+  dispatching a run; `--live` runs the same against a dev stack.
+- `docs/API_CONTRACT.md` §5.1 — what the SDK generates, how drift is checked,
+  and the query-parameter gap (handlers read `after`/`limit`/`cursor`/…, the
+  document does not publish them yet).
+
+### Notes
+- No runtime dependencies; `typescript` is a dev dependency used only by
+  `npm run typecheck`. `npm run smoke` performs an offline `npm install` of the
+  local tarball into a temporary directory.
+
+## [Unreleased] — 2026-10-29 — Machine-readable hub API contract (task 2.0.1)
+
+### Added
+- The OpenAPI 3.1 document now covers the whole hub surface: 60 operations
+  across setup, identity, API keys, hosts, connections, projects, triggers,
+  runs, activity, chatrooms, session relay and webhooks, each with its request
+  body, response body, access model, required scope and required role.
+- `docs/API_CONTRACT.md` states what is stable within `v1`, what may change
+  additively, what counts as breaking, and how a breaking change is announced
+  (major bump, both documents served, `Deprecation`/`Sunset`, changelog).
+  It also records the resource-versus-command decision and its reasoning.
+- `docs/API_REFERENCE.md` is generated from the same route and schema tables.
+- `docs/api/openapi-v1.json` is the committed, pinnable release copy; the
+  document is served at `/openapi.json` and at the stable major-version path
+  `/openapi/v1.json`.
+- CI publishes the contract as an `openapi-v1` workflow artifact and validates
+  the served document against the OpenAPI 3.1 meta-schema.
+
+### Changed
+- Hub operations now carry `x-surface`, `x-auth`, `x-required-scope`,
+  `x-required-role` and `x-contract-version`; `x-auth` gained
+  `member_or_api_key` and `signature`. Operation ids are now codegen-safe
+  (`get_v1_players_id` instead of `get_/v1/players/{id}`).
+- The drift gate is now three-way: hub route registrations must match the
+  route table, and the served document and human-readable reference must
+  match their committed copies byte for byte. An undocumented or regenerated-
+  less route change fails `cargo test openapi` and CI.
+- The OpenAPI CI job validates the pinned path, diffs it against the committed
+  artifact and validates both against the 3.1 meta-schema instead of only
+  checking a prefix list of paths.
+
 ## [Unreleased] — 2026-10-22 — Makefile and per-proxy deploy layers
 
 ### Added

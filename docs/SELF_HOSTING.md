@@ -68,6 +68,67 @@ Consequences when it changes:
 Nothing else needs editing: the database URL and Redis URL are relative to the
 compose network and unchanged by a public address move.
 
+## Serving the control plane from the pool
+
+The pool can serve the built control plane from its own origin. That makes a
+self-hosted install one deployment: the app and the API share an origin, so
+there is no CORS configuration and no second host to keep in step. It is the
+same built bundle a standalone deployment serves — only the origin differs.
+
+Build the app and point the pool at the result:
+
+```sh
+cd tidepool-control-plane
+npm ci
+npm run build                     # writes ./dist
+```
+
+```sh
+# beside the pool's other settings
+TIDEPOOL_CONTROL_PLANE_DIR=/absolute/path/to/tidepool-control-plane/dist
+```
+
+The directory must contain an `index.html`; if it does not, the pool refuses to
+start rather than serving an empty bundle. On boot the log says
+`Serving the control plane from the pool's own origin`.
+
+What the pool serves:
+
+| request | answer |
+|---|---|
+| `/` and any path with no file extension | `index.html`, so a reload of `#/hosts` still opens the app |
+| `/assets/...`, icons, manifest | the file, byte for byte, immutable-cached |
+| `/v1/...`, `/ws`, `/healthz`, `/metrics`, `/openapi.json` | the pool's own route or its own 404 — never the app's HTML |
+| anything outside the directory (`..`, escaping symlink) | 404 |
+
+Inside a container, mount the built directory and set the same variable. A
+compose override is enough, since the stock file stays as it is:
+
+```yaml
+services:
+  pool:
+    environment:
+      TIDEPOOL_CONTROL_PLANE_DIR: /srv/control-plane
+    volumes:
+      - ../tidepool-control-plane/dist:/srv/control-plane:ro
+```
+
+With the variable unset the pool answers only its API. That is the standalone
+deployment: build the app, host `dist/` on any static origin, and set
+`VITE_POOL_URL` at build time or use Settings → Pool URL at run time.
+
+### One origin, one URL
+
+The served page carries a `tidepool-pool-origin` marker. The app reads it and
+uses the origin it was opened from as the pool URL, so the same build works on
+`https://pool.example.com` without baking that value in. The marker is the only
+difference between the pool-served page and the standalone one; both load the
+same `index.html` and the same hashed assets.
+
+A URL saved in Settings (or a `VITE_POOL_URL`) takes precedence over the marker,
+so an operator can point the app at a different pool on the same origin without
+rebuilding anything.
+
 ## Unattended install (no browser)
 
 Set all four `TIDEBOOT_*` variables before the first start:

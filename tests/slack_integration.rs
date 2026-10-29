@@ -278,6 +278,16 @@ async fn recorded_deliveries_are_deduplicated() {
     let pool = MySqlPool::connect(&db_url)
         .await
         .expect("DB connection failed — is the dev stack up?");
+    // Organizations are singleton, so this creates one only when the pool has
+    // none. Other suites clear the table, so the test cannot assume a row.
+    sqlx::query(
+        "INSERT IGNORE INTO organizations (public_id, name, singleton) \
+         VALUES (?, 'Slack delivery test', 1)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .execute(&pool)
+    .await
+    .expect("ensure an organization exists");
     let organization_id: u64 =
         sqlx::query_scalar("SELECT id FROM organizations ORDER BY id LIMIT 1")
             .fetch_one(&pool)

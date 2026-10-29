@@ -8,6 +8,7 @@
 //! Override with `DATABASE_URL`.
 
 use actix_web::{App, http::StatusCode, test, web};
+use redis::aio::ConnectionManager;
 use serde_json::{Value, json};
 use sqlx::MySqlPool;
 use tidepool::{
@@ -24,6 +25,19 @@ const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_
 const JWT_SECRET: &str = "integration-test-triggers-jwt-secret-32chars";
 
 static DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+// The dev stack publishes Redis on 6380 (see config/docker-compose.dev.override.yml).
+const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6380";
+
+/// The session store operator routes require: they fail closed without one.
+async fn sessions() -> web::Data<ConnectionManager> {
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| DEFAULT_REDIS_URL.into());
+    web::Data::new(
+        tidepool::services::redis::connect(&url)
+            .await
+            .expect("Redis unavailable; start the dev stack or set REDIS_URL"),
+    )
+}
 
 async fn pool() -> MySqlPool {
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB_URL.into());
@@ -209,6 +223,7 @@ async fn validate_against_a_connected_host_succeeds() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -238,6 +253,7 @@ async fn validate_against_an_offline_host_still_resolves() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -265,6 +281,7 @@ async fn validate_rejects_a_trigger_without_from_users() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -314,6 +331,7 @@ async fn validate_rejects_unknown_references_naming_fields() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -364,6 +382,7 @@ async fn validate_rejects_an_agent_the_host_cannot_run_naming_the_field() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -391,6 +410,7 @@ async fn validate_writes_nothing() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -514,6 +534,7 @@ async fn install_creates_then_replaces_keeping_identity() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -591,6 +612,7 @@ async fn a_later_failed_install_does_not_undo_an_earlier_success() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -656,6 +678,7 @@ async fn install_requires_the_project_to_exist_in_the_organization() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -692,6 +715,7 @@ async fn two_projects_may_each_have_a_trigger_of_the_same_name() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -756,6 +780,7 @@ async fn install_needs_configuration_install_not_just_validate() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;
@@ -861,6 +886,7 @@ async fn a_name_that_differs_only_in_case_replaces_the_same_trigger() {
         App::new()
             .app_data(web::Data::new(config()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::triggers::config),
     )
     .await;

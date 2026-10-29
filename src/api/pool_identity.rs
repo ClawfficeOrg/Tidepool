@@ -8,6 +8,7 @@
 //! - `POST /v1/pool/login`   — operator sign-in; returns a JWT.
 //! - `GET  /v1/pool/me`      — the signed-in operator and organization.
 //! - `POST /v1/pool/password`— replace the bootstrap/temporary password.
+//! - `POST /v1/pool/logout`  — sign out: revokes the presented token.
 //!
 //! These are hub routes, distinct from the player `/v1/auth` surface. An
 //! operator token is a normal JWT whose subject is a `pool_users.public_id`;
@@ -27,7 +28,9 @@ use crate::services::auth as auth_svc;
 use crate::services::pool_identity::{
     self as identity_svc, INVITATION_TTL_SECS, NewOrganization, PoolIdentityError,
 };
+use crate::services::token_revocation;
 use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
+use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 use validator::Validate;
@@ -44,6 +47,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/login", web::post().to(login))
             .route("/me", web::get().to(me))
             .route("/password", web::post().to(change_password))
+            .route("/logout", web::post().to(logout))
             .route("/members", web::get().to(list_members))
             .route("/members/{id}", web::delete().to(remove_member))
             .route("/members/{id}", web::patch().to(change_member_role))
@@ -243,6 +247,30 @@ async fn me(
         Err(e) => map_error(e, &req),
     }
 }
+/// Sign out: records this token's `jti` as revoked until its own expiry, so
+/// every later request with it is refused.
+#[tracing::instrument(skip(auth, sessions))]
+async fn logout(
+    sessions: web::Data<ConnectionManager>,
+    auth: OperatorAuth,
+    req: HttpRequest,
+) -> HttpResponse {
+    let Some(jti) = auth.claims.jti.as_deref() else {
+        return validation_error(
+            &req,
+            "this session predates sign-out; sign in again to get one that can be revoked",
+        );
+    };
+    let now = chrono::Utc::now().timestamp();
+    match token_revocation::revoke(sessions.get_ref(), jti, auth.claims.exp, now).await {
+        Ok(()) => HttpResponse::NoContent().finish(),
+        Err(error) => {
+            tracing::error!(error = %error, "failed to revoke operator token");
+            internal_error(&req)
+        }
+    }
+}
+
 #[tracing::instrument(skip(pool, auth, body))]
 async fn change_password(
     pool: Option<web::Data<MySqlPool>>,

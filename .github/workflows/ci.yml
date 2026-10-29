@@ -112,10 +112,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-openapi-
 
+      - name: Install OpenAPI 3.1 meta-schema validator
+        run: python3 -m pip install --quiet 'openapi-spec-validator>=0.7,<0.8'
+
       - name: Build
         run: cargo build
 
-      - name: Boot server (degraded) and validate served spec
+      - name: Contract drift tests
+        # The route table, the committed artifact and the generated reference
+        # must agree. A route added without documenting it fails here.
+        run: cargo test --lib openapi
+
+      - name: Boot server (degraded) and validate the served contract
         run: |
           ./target/debug/tidepool &
           PID=$!
@@ -126,39 +134,80 @@ jobs:
             echo "waiting for server ($i)"; sleep 1
           done
           [ "$ok" = "1" ] || { echo "server never served /openapi.json"; exit 1; }
+          curl -fsS http://127.0.0.1:8090/openapi/v1.json > /tmp/openapi-v1.json
+          cmp /tmp/openapi.json /tmp/openapi-v1.json || {
+            echo "drift: /openapi.json and the pinned /openapi/v1.json differ"; exit 1; }
+          diff -u docs/api/openapi-v1.json /tmp/openapi-v1.json || {
+            echo "drift: the served contract differs from docs/api/openapi-v1.json"
+            echo "run: cargo test --lib regenerate_published_contract -- --ignored"
+            exit 1; }
           python3 - <<'PY'
           import json
-          doc = json.load(open("/tmp/openapi.json"))
-          assert doc["openapi"].startswith("3.1"), doc["openapi"]
-          for p in ["/v1/auth/register", "/v1/auth/login", "/v1/players/{id}",
-                    "/v1/leaderboards/{game_id}", "/v1/saves/{player_id}",
-                    "/v1/games/{game_id}/settings", "/v1/events", "/v1/feedback",
-                    "/v1/socket-tickets", "/healthz", "/metrics", "/openapi.json"]:
-              assert p in doc["paths"], f"drift: route {p} not documented"
 
-          # Hub routes must document how they are authorized; API-key routes
-          # must also list the scope they need.
-          hub_prefixes = ("/v1/setup", "/v1/pool", "/v1/api-keys", "/v1/hosts")
+          document = json.load(open("/tmp/openapi.json"))
+          pinned = json.load(open("/tmp/openapi-v1.json"))
+          assert document == pinned, "the pinned document must be identical"
+          assert document["openapi"].startswith("3.1"), document["openapi"]
+          assert document["info"]["version"].startswith("1."), document["info"]["version"]
+
+          paths = document["paths"]
+
           methods = {"get", "post", "put", "patch", "delete", "head", "options"}
+          total_ops = 0
           hub_ops = 0
-          for path, item in doc["paths"].items():
-              if not any(path == p or path.startswith(p + "/") for p in hub_prefixes):
-                  continue
+          missing_scope = []
+          missing_body = []
+          missing_success = []
+          for path, item in paths.items():
               for method, op in item.items():
                   if method not in methods:
                       continue
-                  hub_ops += 1
+                  total_ops += 1
                   assert "x-auth" in op, f"drift: {method.upper()} {path} has no x-auth"
-                  assert op["x-auth"] in ("public", "member", "api_key", "host"), \
-                      f"drift: {method.upper()} {path} bad x-auth {op['x-auth']}"
-                  if op["x-auth"] == "api_key":
-                      assert op.get("x-required-scope"), \
-                          f"drift: {method.upper()} {path} has no x-required-scope"
-          assert hub_ops >= 34, f"drift: only {hub_ops} hub operations documented"
-          whoami = doc["paths"]["/v1/api-keys/whoami"]["get"]
+                  assert "x-surface" in op, f"drift: {method.upper()} {path} has no x-surface"
+                  assert "x-contract-version" in op, f"drift: {method.upper()} {path} has no contract version"
+                  if op["x-surface"] != "hub":
+                      continue
+                  hub_ops += 1
+                  auth = op["x-auth"]
+                  assert auth in ("public", "member", "member_or_api_key", "api_key", "host", "signature"), \
+                      f"drift: {method.upper()} {path} bad x-auth {auth}"
+                  if auth in ("member_or_api_key", "api_key"):
+                      if not op.get("x-required-scope"):
+                          missing_scope.append(f"{method.upper()} {path}")
+                  if op.get("requestBody") and not op["requestBody"].get("content"):
+                      missing_body.append(f"{method.upper()} {path}")
+                  responses = op["responses"]
+                  success = [code for code in responses if code.startswith("2") or code == "101"]
+                  assert success, f"drift: {method.upper()} {path} has no success response"
+                  for code in success:
+                      if code in ("204", "101"):
+                          continue
+                      content = responses[code].get("content") or {}
+                      if not content:
+                          missing_success.append(f"{method.upper()} {path} {code}")
+          assert not missing_scope, f"drift: hub operations without a scope: {missing_scope}"
+          assert not missing_body, f"drift: hub request bodies without content: {missing_body}"
+          assert not missing_success, f"drift: hub success bodies undocumented: {missing_success}"
+          assert total_ops == 83, f"drift: expected 83 operations, found {total_ops}"
+          assert hub_ops == 60, f"drift: expected 60 hub operations, found {hub_ops}"
+
+          whoami = paths["/v1/api-keys/whoami"]["get"]
           assert whoami.get("x-required-scope") == "projects:read", whoami
-          print(f"OK: {len(doc['paths'])} paths documented, {hub_ops} hub ops, spec {doc['openapi']}")
+          assert paths["/v1/pool/members"]["get"]["x-auth"] == "member"
+          assert paths["/v1/setup/status"]["get"]["x-auth"] == "public"
+          assert paths["/v1/runs"]["post"]["x-required-scope"] == "runs:dispatch"
+          print(f"OK: {total_ops} operations in {len(paths)} paths, {hub_ops} hub ops, spec {document['openapi']}")
           PY
+          openapi-spec-validator /tmp/openapi.json
+          openapi-spec-validator docs/api/openapi-v1.json
+
+      - name: Publish the versioned contract artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-v1
+          path: docs/api/openapi-v1.json
+          if-no-files-found: error
 
   sqlx-migrate:
     name: sqlx migrate (mysql)
@@ -213,6 +262,104 @@ jobs:
 
       - name: Revert migrations (down)
         run: sqlx migrate revert --source migrations
+
+  conformance:
+    name: SDK conformance (real pool)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: tidepool
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/tidepool
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: ci-conformance-secret-ci-conformance-0000
+      HOST: 127.0.0.1
+      PORT: 8090
+      RUST_LOG: info
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            sdk/conformance/adapters/rust/target
+          key: ${{ runner.os }}-cargo-conformance-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-conformance-
+            ${{ runner.os }}-cargo-
+
+      - name: Build the pool, the reference agent and the Rust adapter
+        run: |
+          cargo build -p tidepool -p tidepool-host-agent
+          cargo build --manifest-path sdk/conformance/adapters/rust/Cargo.toml
+
+      - name: Run the suite against a real pool
+        run: |
+          set -euo pipefail
+          ./target/debug/tidepool > /tmp/tidepool.log 2>&1 &
+          POOL=$!
+          trap 'kill $POOL 2>/dev/null || true; if [ -f /tmp/conformance-vars.json.agent.pid ]; then kill "$(cat /tmp/conformance-vars.json.agent.pid)" 2>/dev/null || true; fi' EXIT
+
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8090/healthz >/dev/null 2>&1; then ok=1; break; fi
+            echo "waiting for the pool ($i)"; sleep 1
+          done
+          if [ "$ok" != "1" ]; then
+            echo "the pool never became healthy"
+            tail -80 /tmp/tidepool.log
+            exit 1
+          fi
+
+          python3 sdk/conformance/provision.py \
+            --base-url http://127.0.0.1:8090 \
+            --out /tmp/conformance-vars.json \
+            --agent-bin target/debug/tidepool-host-agent
+
+          python3 sdk/conformance/run_conformance.py \
+            --base-url http://127.0.0.1:8090 \
+            --vars /tmp/conformance-vars.json \
+            --json /tmp/conformance-report.json || {
+              echo "conformance suite failed; pool log follows"
+              tail -120 /tmp/tidepool.log
+              exit 1
+            }
 
   docker-smoke:
     name: Docker build smoke
