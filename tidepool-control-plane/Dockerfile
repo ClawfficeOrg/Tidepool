@@ -3,7 +3,8 @@
 # Build from the REPOSITORY ROOT (the app aliases ../sdk/ts at build time):
 #   docker build -f tidepool-control-plane/Dockerfile -t tidepool-control-plane:local .
 #
-# No secrets and no pool URL are baked in; the pool URL is entered in the app.
+# No secrets are baked in. The pool URL is optional: pass VITE_POOL_URL as a
+# build argument, or leave it empty and enter the URL in the app.
 
 # Node 24 LTS ships npm 11; npm 10.x crashes resolving this package.json.
 FROM node:24.11.0-alpine3.22 AS build
@@ -21,6 +22,10 @@ COPY tidepool-control-plane/package.json ./
 RUN npm install --no-audit --no-fund
 
 COPY tidepool-control-plane/ ./
+# The pool URL is public, so it may be baked in at build time. Empty means the
+# app asks for it in Settings instead.
+ARG VITE_POOL_URL=
+ENV VITE_POOL_URL=$VITE_POOL_URL
 RUN npm run build
 
 FROM nginx:1.27.3-alpine3.20
