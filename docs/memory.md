@@ -2365,6 +2365,57 @@ routing, tick and SDK calls, and `tidepool-console/Cargo.toml` added
 
 ---
 
+## 2026-10-29 — The rooms page walks one forward cursor in both directions (task 2.2.4)
+
+**Decision: older history is the same forward cursor, stepped backwards.** The
+chatroom contract only reads `?after=<sequence>` forward. Opening a room pages
+forward from the beginning to the head and keeps the newest 200 messages; the
+discarded prefix is what `has_older` means. Scrolling to the top asks for the
+page immediately below the oldest held sequence by stepping the cursor back a
+page at a time and discarding everything at or above the cursor, which is the
+control plane's `olderMessagesPage` algorithm ported to Rust. A short read is not
+proof of the start (sequences can have gaps), so the walk continues until a full
+page is collected or `after=0` is read. Merges are keyed by the server's message
+id and ordered by sequence then id, never by timestamp, so an overlapping page
+cannot duplicate or reorder anything.
+
+**Decision: live messages are a bounded poll of the same history route.** The
+console's blocking client has no WebSocket dependency and the task must not add
+one, so an open room reads forward from its highest sequence once a second. The
+pool's stored `MessageView` is appended as returned, which is what keeps the
+server id and sequence. A send's returned view is merged the same way, so a
+message can be on screen before the next poll and still appear once.
+
+**Decision: the relay's joining point is an explicit origin on every event.**
+Following a session reads the publication state, then pages events from the
+first sequence. Every event read while a page still reports `next` is
+`Origin::Backfill`; the first read after the head is reached marks the phase
+live, and every later event is `Origin::Live`. Rows of both origins stay in one
+sequence-ordered list, `live_from` names the first live row, and the pane prints
+`backfill`/`live` labels plus grey/green colours and a divider. That is the
+distinction the criterion asks for, and it is asserted against the rendered
+buffer, not just the state.
+
+**Decision: Enter composes, Ctrl-S sends.** A chat message is usually more than
+one line, so Enter inserts a newline and the deliberate key is `Ctrl-S`. A blank
+composer sends nothing; a failed send leaves the text in place with the error in
+the notice. The composer and the session prompt own every key while open, so `q`
+types rather than quitting.
+
+**Decision: presence is the room's member list, polled.** The contract exposes
+membership but no watcher channel through this client; the pane says so and the
+tab re-reads the member list every three seconds. Room-list refresh is fifteen
+seconds, live messages one second, and the relay one second after the backfill
+ends. Every interval is driven by `drive(client, now)`, so tests advance an
+`Instant` instead of sleeping.
+
+**Consequence: shell wiring is outside the owned paths.** `app.rs`,
+`ui/mod.rs`, `tabs/mod.rs` and `main.rs` gained the state field, member
+propagation, key routing, tick, renderer delegation and the six SDK calls;
+`docs/CHANGES.md` carries the task entry.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

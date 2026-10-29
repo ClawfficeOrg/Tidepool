@@ -2,6 +2,44 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Console rooms and relay follow (task 2.2.4)
+
+### Added
+- `tidepool-console/src/tabs/rooms.rs` — the rooms tab's state and client
+  surface: the member's rooms, a room's cursor-paged history, live messages,
+  the member list as presence, the multi-line composer and the session relay
+  follower. Opening a room reads forward from the beginning to the head, keeps
+  the newest 200 messages and marks the rest older; scrolling to the top reads
+  the page immediately below the oldest message by walking the forward cursor
+  back a page at a time, and every merge is keyed by the pool's message id, so
+  a page that overlaps the window cannot duplicate a message. New messages are
+  found by reading after the highest sequence held once a second, and keep the
+  server's id exactly as returned. The composer inserts a newline on Enter and
+  sends only on `Ctrl-S`; a failed send keeps the text. Following a published
+  session reads its relay state and pages its events through the cursor; events
+  read before a page reports no `next` are marked backfill, everything after is
+  marked live, and `live_from` names the joining point.
+- `tidepool-console/src/ui/rooms.rs` — the room list, the transcript with each
+  message's sequence, author, time and server id, the composer, the presence
+  pane and the relay pane. The relay pane labels every row `backfill` or
+  `live`, colours the backfilled rows grey and the live rows green, and draws
+  `──── backfill ends · live from here ────` at the joining point. Stacked
+  layout below 100 columns; the relay pane splits vertically from the room.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/ui/mod.rs` / `src/tabs/mod.rs` /
+  `src/main.rs` — the shell owns the rooms state, sets the member on it, routes
+  the tab's keys before the global bindings, ticks the tab from the event loop
+  and delegates the Rooms body to the new renderer. `PoolClient` extends
+  `RoomsClient`; the SDK-backed client implements the six rooms and relay calls.
+- Tests: scripted-client unit tests for message merge and server-id dedupe, the
+  forward-cursor older-page walk with gaps, the 200-message window, the live
+  append and its cursor, multi-line composing and `Ctrl-S`, blank and failed
+  sends, presence and room-list refreshes, and relay backfill-to-live marking
+  over several pages; `TestBackend` rendering tests for the room list, the
+  transcript with server ids, the multi-line composer, the follow prompt, both
+  transcript sizes and the relay pane's distinct backfill and live rows.
+
 ## [Unreleased] — 2026-10-29 — Console triggers and runs screen (task 2.2.3)
 
 ### Added

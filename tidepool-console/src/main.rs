@@ -33,16 +33,23 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tidepool_client::blocking::Client as SdkClient;
 use tidepool_client::endpoints::{
-    DeleteV1HostsIdExecution, GetV1Activity, GetV1ActivityQuery, GetV1ActivityRunsRun, GetV1Hosts,
-    GetV1HostsIdCapabilities, GetV1PoolMe, GetV1Projects, GetV1ProjectsIdConfiguration,
-    PostV1Hosts, PostV1HostsEnrollmentTokens, PostV1HostsIdExecution, PostV1Runs,
+    DeleteV1HostsIdExecution, GetV1Activity, GetV1ActivityQuery, GetV1ActivityRunsRun,
+    GetV1Chatrooms, GetV1ChatroomsRoomMembers, GetV1ChatroomsRoomMessages,
+    GetV1ChatroomsRoomMessagesQuery, GetV1Hosts, GetV1HostsIdCapabilities, GetV1PoolMe,
+    GetV1Projects, GetV1ProjectsIdConfiguration, GetV1SessionsSessionRelay,
+    GetV1SessionsSessionRelayEvents, GetV1SessionsSessionRelayEventsQuery,
+    PostV1ChatroomsRoomMessages, PostV1Hosts, PostV1HostsEnrollmentTokens, PostV1HostsIdExecution,
+    PostV1Runs,
 };
 use tidepool_client::types::{
-    ActivityPage, ActivityRunDetail, CreateHostRequest, HostCapabilityReport, HostView, JsonValue,
-    ManualDispatchRequest, ManualDispatchResponse, MintEnrollmentTokenRequest, ProjectView,
+    ActivityPage, ActivityRunDetail, CreateHostRequest, HistoryResponse, HostCapabilityReport,
+    HostView, JsonValue, ManualDispatchRequest, ManualDispatchResponse, MessageView,
+    MintEnrollmentTokenRequest, ProjectView, RelayPage, RelayState, RoomMemberView, RoomView,
+    SendMessageBody,
 };
 
 use crate::tabs::hosts::Enrollment;
+use crate::tabs::rooms::RoomsClient;
 use crate::tabs::runs::{RunsClient, TriggerSummary, triggers_from_revision};
 
 fn main() -> ExitCode {
@@ -163,6 +170,46 @@ impl RunsClient for SdkPoolClient {
             .client
             .call(&GetV1ProjectsIdConfiguration::new(project))?;
         Ok(triggers_from_revision(&revision))
+    }
+}
+
+impl RoomsClient for SdkPoolClient {
+    fn list_rooms(&mut self) -> app::Result<Vec<RoomView>> {
+        Ok(self.client.call(&GetV1Chatrooms::new())?)
+    }
+
+    fn room_members(&mut self, room: &str) -> app::Result<Vec<RoomMemberView>> {
+        Ok(self.client.call(&GetV1ChatroomsRoomMembers::new(room))?)
+    }
+
+    fn room_history(
+        &mut self,
+        room: &str,
+        query: GetV1ChatroomsRoomMessagesQuery,
+    ) -> app::Result<HistoryResponse> {
+        Ok(self
+            .client
+            .call(&GetV1ChatroomsRoomMessages::new(room).with_query(query))?)
+    }
+
+    fn send_message(&mut self, room: &str, body: SendMessageBody) -> app::Result<MessageView> {
+        Ok(self
+            .client
+            .call(&PostV1ChatroomsRoomMessages::new(room, body))?)
+    }
+
+    fn relay_events(
+        &mut self,
+        session: &str,
+        query: GetV1SessionsSessionRelayEventsQuery,
+    ) -> app::Result<RelayPage> {
+        Ok(self
+            .client
+            .call(&GetV1SessionsSessionRelayEvents::new(session).with_query(query))?)
+    }
+
+    fn relay_state(&mut self, session: &str) -> app::Result<RelayState> {
+        Ok(self.client.call(&GetV1SessionsSessionRelay::new(session))?)
     }
 }
 

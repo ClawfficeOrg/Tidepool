@@ -208,3 +208,12 @@ bullets over prose. Read the last few sections before starting a similar task.
   one run in five, while `--test async_client` alone passes. Pre-existing and
   unrelated to the conformance suite; it is why the conformance CI job does not
   gate on the Rust SDK's own integration suite.
+- A forward-only `after=` cursor can still page backwards: step the cursor back
+  a page, request forward from there and discard everything at or above the
+  requested cursor. A page shorter than the page size is not proof of the start
+  when sequences have gaps, so keep stepping until a full page is collected or
+  `after=0` was read.
+- A test helper that captures its own `Instant` internally shifts every
+  deadline relative to the caller's clock. Return the helper's clock, or a
+  `base + interval` drive lands a few microseconds short of the interval and a
+  timer test fails intermittently by design.

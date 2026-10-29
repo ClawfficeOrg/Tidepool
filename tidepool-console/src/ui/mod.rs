@@ -15,6 +15,7 @@ use ratatui::widgets::{Block, Clear, Paragraph, Tabs, Wrap};
 use crate::app::{App, Connection, Tab};
 
 pub mod hosts;
+pub mod rooms;
 pub mod runs;
 
 /// Draw one whole frame.
@@ -56,6 +57,10 @@ fn render_body(app: &App, frame: &mut Frame, area: Rect) {
     }
     if app.tab() == Tab::Runs {
         runs::render(app.runs(), frame, area);
+        return;
+    }
+    if app.tab() == Tab::Rooms {
+        rooms::render(app.rooms(), frame, area);
         return;
     }
     let block = Block::bordered().title(format!(" {} ", app.tab().title()));

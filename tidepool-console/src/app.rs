@@ -18,6 +18,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tidepool_cli::credentials::CredentialFile;
 
 use crate::tabs::hosts::{HostsClient, HostsState};
+use crate::tabs::rooms::{RoomsClient, RoomsState};
 use crate::tabs::runs::{RunsClient, RunsState};
 
 /// Everything that can go wrong before or during a console run.
@@ -189,7 +190,7 @@ pub struct Identity {
 /// [`HostsClient`] and [`RunsClient`] add exactly what the hosts and runs tabs
 /// read and do. Later screens add reads here, which keeps the scripted client in
 /// the tests the same shape as the SDK-backed one.
-pub trait PoolClient: HostsClient + RunsClient {
+pub trait PoolClient: HostsClient + RunsClient + RoomsClient {
     /// Ask the pool who the token belongs to.
     fn identity(&mut self) -> Result<Identity>;
 }
@@ -257,6 +258,7 @@ pub struct App {
     client: Option<Box<dyn PoolClient>>,
     hosts: HostsState,
     runs: RunsState,
+    rooms: RoomsState,
     quit: bool,
 }
 
@@ -280,6 +282,8 @@ impl App {
         };
         let mut runs = RunsState::new();
         runs.set_member(member.clone());
+        let mut rooms = RoomsState::new();
+        rooms.set_member(member.clone());
         Self {
             tab: Tab::Hosts,
             palette: None,
@@ -290,6 +294,7 @@ impl App {
             client,
             hosts: HostsState::new(),
             runs,
+            rooms,
             quit: false,
         }
     }
@@ -306,6 +311,7 @@ impl App {
         if self.connection == Connection::Online {
             self.pump_hosts(Instant::now());
             self.pump_runs(Instant::now());
+            self.pump_rooms(Instant::now());
         }
     }
 
@@ -340,6 +346,7 @@ impl App {
         if self.connection == Connection::Online {
             self.pump_hosts(Instant::now());
             self.pump_runs(Instant::now());
+            self.pump_rooms(Instant::now());
         }
     }
 
@@ -354,6 +361,7 @@ impl App {
         if self.connection == Connection::Online {
             self.pump_hosts(now);
             self.pump_runs(now);
+            self.pump_rooms(now);
         }
     }
 
@@ -369,6 +377,13 @@ impl App {
             return;
         };
         self.runs.drive(&mut **client, now);
+    }
+
+    fn pump_rooms(&mut self, now: Instant) {
+        let Some(client) = self.client.as_mut() else {
+            return;
+        };
+        self.rooms.drive(&mut **client, now);
     }
 
     fn probe(&mut self) {
@@ -432,6 +447,10 @@ impl App {
         }
         if self.tab == Tab::Runs && self.runs.on_key(key) {
             self.pump_runs(Instant::now());
+            return;
+        }
+        if self.tab == Tab::Rooms && self.rooms.on_key(key) {
+            self.pump_rooms(Instant::now());
             return;
         }
         match key.code {
@@ -521,6 +540,11 @@ impl App {
         &self.runs
     }
 
+    /// The rooms tab's state.
+    pub fn rooms(&self) -> &RoomsState {
+        &self.rooms
+    }
+
     /// Whether the event loop should stop.
     pub fn should_quit(&self) -> bool {
         self.quit
@@ -558,14 +582,18 @@ pub(crate) mod testing {
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
 
-    use tidepool_client::endpoints::GetV1ActivityQuery;
+    use tidepool_client::endpoints::{
+        GetV1ActivityQuery, GetV1ChatroomsRoomMessagesQuery, GetV1SessionsSessionRelayEventsQuery,
+    };
     use tidepool_client::types::{
-        ActivityPage, ActivityRunDetail, HostCapabilityReport, HostView, ManualDispatchRequest,
-        ManualDispatchResponse, ProjectView,
+        ActivityPage, ActivityRunDetail, HistoryResponse, HostCapabilityReport, HostView,
+        ManualDispatchRequest, ManualDispatchResponse, MessageView, ProjectView, RelayPage,
+        RelayState, RoomMemberView, RoomView, SendMessageBody,
     };
 
     use super::{ConsoleError, Identity, PoolClient};
     use crate::tabs::hosts::{Enrollment, HostsClient};
+    use crate::tabs::rooms::RoomsClient;
     use crate::tabs::runs::{RunsClient, TriggerSummary};
 
     /// A client that answers from a script and counts its calls.
@@ -676,6 +704,46 @@ pub(crate) mod testing {
 
         fn list_triggers(&mut self, _project: &str) -> Result<Vec<TriggerSummary>, ConsoleError> {
             Ok(Vec::new())
+        }
+    }
+
+    /// The scaffold scripts no rooms; the rooms tab's own tests script that
+    /// surface.
+    impl RoomsClient for ScriptedClient {
+        fn list_rooms(&mut self) -> Result<Vec<RoomView>, ConsoleError> {
+            Ok(Vec::new())
+        }
+
+        fn room_members(&mut self, _room: &str) -> Result<Vec<RoomMemberView>, ConsoleError> {
+            Ok(Vec::new())
+        }
+
+        fn room_history(
+            &mut self,
+            _room: &str,
+            _query: GetV1ChatroomsRoomMessagesQuery,
+        ) -> Result<HistoryResponse, ConsoleError> {
+            Ok(HistoryResponse::default())
+        }
+
+        fn send_message(
+            &mut self,
+            _room: &str,
+            _body: SendMessageBody,
+        ) -> Result<MessageView, ConsoleError> {
+            Err(transport("no scripted send"))
+        }
+
+        fn relay_events(
+            &mut self,
+            _session: &str,
+            _query: GetV1SessionsSessionRelayEventsQuery,
+        ) -> Result<RelayPage, ConsoleError> {
+            Ok(RelayPage::default())
+        }
+
+        fn relay_state(&mut self, _session: &str) -> Result<RelayState, ConsoleError> {
+            Err(transport("no scripted relay state"))
         }
     }
 
@@ -1023,6 +1091,24 @@ mod tests {
         app.on_key(key(KeyCode::Esc));
         assert_eq!(app.hosts().prompt(), None);
 
+        app.on_key(key(KeyCode::Char('q')));
+        assert!(app.should_quit(), "q quits once the prompt is closed");
+    }
+
+    #[test]
+    fn the_rooms_tab_owns_its_keys() {
+        let mut app = online_app("ops@x");
+        app.on_key(key(KeyCode::Char('3')));
+        assert_eq!(app.tab(), Tab::Rooms);
+
+        app.on_key(key(KeyCode::Char('f')));
+        assert_eq!(app.rooms().follow_prompt(), Some(""));
+        app.on_key(key(KeyCode::Char('q')));
+        assert!(!app.should_quit(), "q typed into the session prompt");
+        assert_eq!(app.rooms().follow_prompt(), Some("q"));
+
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.rooms().follow_prompt(), None);
         app.on_key(key(KeyCode::Char('q')));
         assert!(app.should_quit(), "q quits once the prompt is closed");
     }
