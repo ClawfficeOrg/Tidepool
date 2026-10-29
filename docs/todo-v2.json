@@ -230,7 +230,7 @@
         {
           "id": "2.1.1",
           "title": "Scaffold and clawffice-design tokens",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "tidepool-control-plane: a Svelte and Vite and TypeScript app consuming clawffice-design, with all five palettes and Biolume as the default, the tide product hue driving focus and selection, the Tidepool mark and cell sprite as the favicon and the app icon, and light and dark. Routing, a typed API client from the TypeScript SDK, an app shell with navigation, and an error boundary that renders a problem-details failure readably.",
           "touches": [
             "tidepool-control-plane/src/",
@@ -250,7 +250,9 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Scaffolded the Svelte control plane on clawffice-design tokens",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T08:26:26Z",
+          "human_look": "All five palettes render and Biolume is the default; the shell renders a pool failure as a readable message with its request id"
         },
         {
           "id": "2.1.2",

@@ -1,0 +1,6 @@
+# Dependencies and build output are local to a checkout.
+node_modules
+node_modules/
+dist/
+coverage/
+*.local

@@ -2,6 +2,54 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane scaffold and design tokens (task 2.1.1)
+
+### Added
+- `tidepool-control-plane/` — the control plane as a Svelte 5, Vite and
+  TypeScript app. `npm run build` produces `dist/`; `npm test` runs 79 tests in
+  the `node` environment with no DOM, no network and no live pool.
+- `tidepool-control-plane/src/lib/design/` — the Clawffice design tokens as
+  code. `clawffice-design.snapshot.json` is a pinned snapshot of
+  `tokens/core.json`, `tokens/apps/tidepool.json`, `tokens/cells.json` and the
+  five palette files, generated from a sibling `clawffice-design` checkout by
+  `src/lib/design/snapshot.mjs`; `design.drift.test.ts` fails when the checkout
+  and the snapshot disagree, and skips when no checkout is present. Tokens are
+  never fetched from a registry and never installed.
+- `tokens.ts` turns a palette into `--tp-*` custom properties: every colour,
+  radius, space and font size the app uses. All five palettes render, Biolume
+  is the default, and the `tide` product hue (`#4A9FE0` dark, `#1864AB` light)
+  drives focus and selection regardless of the palette's primary. Light and
+  dark follow the palette's own scheme (Sea Glass is the light one).
+- `src/lib/status.ts` + `StatusBadge.svelte` — status is colour, **icon and
+  word**: every state in the table has a word and a 24x24 glyph, the glyph is
+  `aria-hidden`, and the word is what is read. A test fails if a status loses
+  either.
+- `src/lib/router.ts` — a hash route table (Overview, Hosts, Runs, Settings)
+  that resolves a path, strips query strings and trailing slashes, and reports
+  an unknown path as not found. A built app is servable from any origin with no
+  rewrite rules, including the pool's own.
+- `src/lib/api/pool.ts` — "no pool configured" as an explicit state rather than
+  an error: the shell says so, makes no request, and the typed SDK client is
+  only built once there is an absolute pool URL. Build-time `VITE_POOL_URL`
+  wins over the saved value.
+- `src/lib/api/problem.ts` — any thrown value becomes a readable title,
+  sentence, status, code and request id, using the SDK's `ProblemError`.
+- `src/App.svelte` — the shell: brand mark and pool cell sprite, palette
+  switch, navigation, the no-pool notice, and a `svelte:boundary` whose failed
+  snippet renders `ProblemDetails` (request id always shown, "none" when the
+  request never reached the pool).
+- `public/` — the Tidepool mark and icon from
+  `clawffice-design/logos/tidepool`, the 12x12 "pool" cell sprite as
+  `tidepool-cell.svg` (favicon), the icon as the app icon, and a web app
+  manifest. Light and dark both supported through `color-scheme`.
+
+### Notes
+- The TypeScript SDK is aliased to `sdk/ts/src/browser.js` in `vite.config.ts`
+  and declared as `file:../sdk/ts`, so a checkout builds without a package
+  install and `npm install` resolves to the same source.
+- Human check outstanding: the rendered look of the five palettes and the
+  shell's failure view are asserted in markup, not looked at in a browser.
+
 ## [Unreleased] — 2026-10-29 — tidepool CLI (task 2.0.6)
 
 ### Added
