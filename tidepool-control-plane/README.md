@@ -51,3 +51,20 @@ a word, and `StatusBadge.svelte` renders all three.
 `tidepool-cell.svg` come from `clawffice-design/logos/tidepool` and
 `tokens/cells.json` (the 12x12 "pool" sprite, rendered by `snapshot.mjs`). The
 favicon is the cell sprite; the app icon and manifest use the Tidepool icon.
+
+## Container image
+
+The built app is static, so the image is a multi-stage build that runs
+`vite build` and serves `dist/` with nginx. The build context must be the
+repository root, because the app aliases the SDK source in `sdk/ts`.
+
+```bash
+# from the repository root
+docker build -f tidepool-control-plane/Dockerfile -t tidepool-control-plane:local .
+docker run --rm -p 8088:80 tidepool-control-plane:local   # http://localhost:8088
+```
+
+No pool URL or secret is baked in; enter the pool URL in the app. `/healthz`
+returns 200 for health checks, and unknown paths fall back to `index.html`.
+There is no committed lockfile yet, so the image uses `npm install`; switch the
+Dockerfile to `npm ci` once one exists.
