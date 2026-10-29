@@ -629,7 +629,7 @@
         {
           "id": "2.2.5",
           "title": "Session handling, parity with the CLI and scripting mode",
-          "status": "pending",
+          "status": "done",
           "goal": "Sign in from the console and share the credential store with the CLI, honouring the member's role by hiding what the role cannot do. Add a non-interactive mode that runs one action and prints the same JSON the CLI prints, so the console and the CLI are one tool with two skins and a script can use either. Document which commands exist in both and that neither holds logic the pool does not.",
           "touches": [
             "tidepool-console/src/auth.rs",
@@ -649,8 +649,9 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added console session handling, CLI parity and a headless mode",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Session handling, parity with the CLI and scripting mode",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T15:13:10Z"
         },
         {
           "id": "2.2.6",
@@ -893,7 +894,8 @@
           "Console scaffold and connection handling",
           "Hosts and presence screen",
           "Triggers and runs screen",
-          "Rooms and relay follow"
+          "Rooms and relay follow",
+          "Session handling, parity with the CLI and scripting mode"
         ]
       }
     }

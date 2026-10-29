@@ -17,6 +17,7 @@ use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tidepool_cli::credentials::CredentialFile;
 
+use crate::auth::{Capability, Role};
 use crate::tabs::hosts::{HostsClient, HostsState};
 use crate::tabs::rooms::{RoomsClient, RoomsState};
 use crate::tabs::runs::{RunsClient, RunsState};
@@ -27,6 +28,9 @@ pub enum ConsoleError {
     /// The credential store could not be read.
     #[error("credential store: {0}")]
     Store(#[from] tidepool_cli::CliError),
+    /// The shared session or the pool-role lookup failed.
+    #[error(transparent)]
+    Auth(#[from] crate::auth::AuthError),
     /// The SDK could not build or perform a request.
     #[error("pool: {0}")]
     Pool(#[from] tidepool_client::Error),
@@ -182,6 +186,8 @@ impl Connection {
 pub struct Identity {
     /// The signed-in member, normally the email the pool reported.
     pub member: String,
+    /// The member's role, which gates mutating actions.
+    pub role: Role,
 }
 
 /// What the console needs from a pool.
@@ -255,6 +261,7 @@ pub struct App {
     connection: Connection,
     pool: Option<String>,
     member: Option<String>,
+    role: Option<Role>,
     client: Option<Box<dyn PoolClient>>,
     hosts: HostsState,
     runs: RunsState,
@@ -291,6 +298,7 @@ impl App {
             connection,
             pool,
             member,
+            role: None,
             client,
             hosts: HostsState::new(),
             runs,
@@ -322,6 +330,7 @@ impl App {
     pub fn startup_failure(&mut self, reason: impl Into<String>) {
         let reason = reason.into();
         let pool = self.pool.clone().unwrap_or_else(|| "the pool".to_owned());
+        self.role = None;
         self.connection = Connection::Unreachable {
             reason: reason.clone(),
         };
@@ -337,6 +346,7 @@ impl App {
         };
         if self.client.is_none() {
             self.connection = Connection::SignedOut;
+            self.role = None;
             self.notice = Some(sign_in_notice(&pool));
             return;
         }
@@ -393,12 +403,14 @@ impl App {
         match client.identity() {
             Ok(identity) => {
                 self.member = Some(identity.member);
+                self.role = Some(identity.role);
                 self.runs.set_member(self.member.clone());
                 self.connection = Connection::Online;
                 self.notice = None;
             }
             Err(error) => {
                 let reason = error.to_string();
+                self.role = None;
                 self.connection = Connection::Unreachable {
                     reason: reason.clone(),
                 };
@@ -439,6 +451,13 @@ impl App {
         }
         if self.palette.is_some() {
             self.on_palette_key(key);
+            return;
+        }
+        if let Some(capability) = self.forbidden_capability(key)
+            && let Some(role) = self.role
+            && let Some(explanation) = capability.denial(role)
+        {
+            self.notice = Some(explanation);
             return;
         }
         if self.tab == Tab::Hosts && self.hosts.on_key(key) {
@@ -500,6 +519,57 @@ impl App {
         self.palette = Some(Palette::default());
     }
 
+    /// The capability a key would use on the tab in front, if it would mutate.
+    ///
+    /// The table follows the key handling below: an enrol prompt's `Enter`, a
+    /// dispatch form's `Enter`, `e`/`g`/`x` on the hosts tab, `d` on the runs
+    /// tab, `c` in an open room and `Ctrl-S` in the composer.
+    fn capability_for_key(&self, key: KeyEvent) -> Option<Capability> {
+        match self.tab {
+            Tab::Hosts => {
+                if self.hosts.prompt().is_some() {
+                    return (key.code == KeyCode::Enter).then_some(Capability::Mutate);
+                }
+                matches!(key.code, KeyCode::Char('e' | 'g' | 'x')).then_some(Capability::Mutate)
+            }
+            Tab::Runs => {
+                if self.runs.form().is_some() {
+                    return (key.code == KeyCode::Enter).then_some(Capability::Mutate);
+                }
+                (key.code == KeyCode::Char('d')).then_some(Capability::Mutate)
+            }
+            Tab::Rooms => {
+                if self.rooms.composer().is_some() {
+                    return (key.code == KeyCode::Char('s')
+                        && key.modifiers.contains(KeyModifiers::CONTROL))
+                    .then_some(Capability::Mutate);
+                }
+                (key.code == KeyCode::Char('c')
+                    && self.rooms.open_room_id().is_some()
+                    && self.rooms.follow_prompt().is_none())
+                .then_some(Capability::Mutate)
+            }
+            Tab::Settings => None,
+        }
+    }
+
+    /// The capability the current role lacks for this key, if any.
+    fn forbidden_capability(&self, key: KeyEvent) -> Option<Capability> {
+        let capability = self.capability_for_key(key)?;
+        (!self.can(capability)).then_some(capability)
+    }
+
+    /// Whether the signed-in member may perform `capability`.
+    ///
+    /// With no role yet (no pool, a signed-out store or an unanswered probe)
+    /// this is `true`: the pool is the authority and will refuse what the
+    /// console cannot know about. The key gate and a renderer can both use it,
+    /// so a known role hides an affordance and an unknown one defers to the
+    /// pool.
+    pub fn can(&self, capability: Capability) -> bool {
+        self.role.is_none_or(|role| role.allows(capability))
+    }
+
     /// The tab in front.
     pub fn tab(&self) -> Tab {
         self.tab
@@ -550,13 +620,14 @@ impl App {
         self.quit
     }
 
-    /// The status line: connection state, pool and member, always all three.
+    /// The status line: connection state, pool, member and role, always all four.
     pub fn status_line(&self) -> String {
         format!(
-            "{}  pool {}  member {}",
+            "{}  pool {}  member {}  role {}",
             self.connection.label(),
             self.pool.as_deref().unwrap_or("no pool"),
-            self.member.as_deref().unwrap_or("not signed in")
+            self.member.as_deref().unwrap_or("not signed in"),
+            self.role.map(Role::as_str).unwrap_or("unknown")
         )
     }
 }
@@ -591,7 +662,7 @@ pub(crate) mod testing {
         RelayState, RoomMemberView, RoomView, SendMessageBody,
     };
 
-    use super::{ConsoleError, Identity, PoolClient};
+    use super::{ConsoleError, Identity, PoolClient, Role};
     use crate::tabs::hosts::{Enrollment, HostsClient};
     use crate::tabs::rooms::RoomsClient;
     use crate::tabs::runs::{RunsClient, TriggerSummary};
@@ -614,6 +685,14 @@ pub(crate) mod testing {
         pub(crate) fn online(member: &str) -> Self {
             Self::scripted(vec![Ok(Identity {
                 member: member.to_owned(),
+                role: Role::Member,
+            })])
+        }
+
+        pub(crate) fn viewer(member: &str) -> Self {
+            Self::scripted(vec![Ok(Identity {
+                member: member.to_owned(),
+                role: Role::Viewer,
             })])
         }
 
@@ -956,9 +1035,11 @@ mod tests {
             let client = ScriptedClient::scripted(vec![
                 Ok(Identity {
                     member: "ops@x".to_owned(),
+                    role: Role::Member,
                 }),
                 Ok(Identity {
                     member: "ops@x".to_owned(),
+                    role: Role::Member,
                 }),
             ]);
             let handle = client.handle();
@@ -1111,6 +1192,69 @@ mod tests {
         assert_eq!(app.rooms().follow_prompt(), None);
         app.on_key(key(KeyCode::Char('q')));
         assert!(app.should_quit(), "q quits once the prompt is closed");
+    }
+
+    #[test]
+    fn a_viewer_is_refused_at_every_mutating_key_and_told_why() {
+        let client = ScriptedClient::viewer("ops@x");
+        let handle = client.handle();
+        let mut app = App::from_credentials(
+            &file(Some("pool.test"), Some("ops@x"), Some("token")),
+            Some(Box::new(client)),
+        );
+        app.start();
+        assert!(app.status_line().contains("role viewer"));
+        assert!(!app.can(Capability::Mutate));
+        assert!(app.can(Capability::Read));
+
+        // Hosts: enrol, grant and revoke never open or queue anything.
+        for character in ['e', 'g', 'x'] {
+            app.on_key(key(KeyCode::Char(character)));
+            assert_eq!(app.hosts().prompt(), None, "{character} opened a prompt");
+            let notice = app.notice().expect("an explanation");
+            assert!(notice.contains("`viewer`"), "{notice}");
+            assert!(notice.contains("does not attempt"), "{notice}");
+        }
+
+        // Runs: the dispatch form never opens.
+        app.on_key(key(KeyCode::Char('2')));
+        app.on_key(key(KeyCode::Char('d')));
+        assert!(app.runs().form().is_none());
+        assert!(
+            app.notice()
+                .is_some_and(|notice| notice.contains("change pool state"))
+        );
+
+        // The only call was the startup identity probe; no tab action ran.
+        assert_eq!(calls(&handle), 1);
+    }
+
+    #[test]
+    fn a_viewer_can_still_type_filter_letters_that_are_operation_keys() {
+        let client = ScriptedClient::viewer("ops@x");
+        let mut app = App::from_credentials(
+            &file(Some("pool.test"), Some("ops@x"), Some("token")),
+            Some(Box::new(client)),
+        );
+        app.start();
+        app.on_key(key(KeyCode::Char('/')));
+        app.on_key(key(KeyCode::Char('e')));
+        assert_eq!(app.hosts().prompt(), Some(("filter", "e")));
+        assert_eq!(app.hosts().query(), "e");
+    }
+
+    #[test]
+    fn a_member_may_use_the_mutating_keys() {
+        let mut app = online_app("ops@x");
+        assert!(app.status_line().contains("role member"));
+        assert!(app.can(Capability::Mutate));
+        app.on_key(key(KeyCode::Char('e')));
+        assert_eq!(app.hosts().prompt(), Some(("hostname", "")));
+
+        app.on_key(key(KeyCode::Esc));
+        app.on_key(key(KeyCode::Char('2')));
+        app.on_key(key(KeyCode::Char('d')));
+        assert!(app.runs().form().is_some());
     }
 
     #[test]

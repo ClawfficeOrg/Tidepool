@@ -18,6 +18,8 @@
 #![allow(clippy::result_large_err)]
 
 mod app;
+mod auth;
+mod headless;
 mod tabs;
 mod ui;
 
@@ -53,6 +55,18 @@ use crate::tabs::rooms::RoomsClient;
 use crate::tabs::runs::{RunsClient, TriggerSummary, triggers_from_revision};
 
 fn main() -> ExitCode {
+    let tokens: Vec<String> = std::env::args().skip(1).collect();
+    if headless::requested(&tokens) {
+        let mut stdin = std::io::stdin();
+        let mut stdout = std::io::stdout();
+        return match headless::run(tokens, &mut stdin, &mut stdout) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("tidepool-console: {error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -63,12 +77,11 @@ fn main() -> ExitCode {
 }
 
 fn run() -> app::Result<()> {
-    let path = tidepool_cli::credentials::default_path(|name| std::env::var(name).ok())?;
-    let store = tidepool_cli::credentials::CredentialStore::load(path)?;
-    let file = store.file().clone();
+    let session = auth::Session::from_environment()?;
+    let file = session.file().clone();
 
     let (client, startup_error): (Option<Box<dyn app::PoolClient>>, Option<String>) =
-        match (file.pool.as_deref(), file.token.as_deref()) {
+        match (session.pool(), session.token()) {
             (Some(pool), Some(token)) => match SdkPoolClient::new(pool, token) {
                 Ok(client) => (Some(Box::new(client)), None),
                 Err(error) => (None, Some(error.to_string())),
@@ -106,7 +119,10 @@ impl app::PoolClient for SdkPoolClient {
         } else {
             identity.user.email
         };
-        Ok(app::Identity { member })
+        Ok(app::Identity {
+            member,
+            role: auth::Role::from_wire(&identity.user.role),
+        })
     }
 }
 

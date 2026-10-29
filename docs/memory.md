@@ -2416,6 +2416,44 @@ propagation, key routing, tick, renderer delegation and the six SDK calls;
 
 ---
 
+## 2026-10-29 — Console session, CLI parity and headless mode (task 2.2.5)
+
+**Decision: one credential store, the CLI's.** The console does not own a copy,
+a second format or a fallback location. `auth::Session` is a thin view over
+`tidepool_cli::credentials::CredentialStore`, so `tidepool login`, the console's
+own startup and `tidepool-console --headless login` all read and write one file.
+That is what makes either skin's sign-in visible to the other without a sync
+step, and it keeps the redaction and "never inside a repository" rules in one
+implementation.
+
+**Decision: the role is the pool's, asked each time it is needed.** The pool
+reads the role from the member row on every request, so the console asks
+`GET /v1/pool/me` rather than caching a role in the store: headless mode asks
+before every mutating command, and the terminal UI asks on the connection probe
+and on reconnect. The mapping restates the pool's `require_mutating` line and
+nothing more: `viewer` is read-only; `member`, `admin` and `owner` may mutate.
+Unknown wire roles are read as `viewer`, so a newer pool cannot make an older
+console offer an action it does not understand. Owner-only organization actions
+are not in the console's surface, so they are not modelled; there is no
+console-only permission. A missing role (no pool, signed out, unanswered probe)
+is not a denial: the pool remains the authority and refuses what the console
+cannot know.
+
+**Decision: headless mode delegates instead of reimplementing.** It parses with
+the CLI's own grammar, then calls `tidepool_cli::run_with_path` with the same
+tokens, store and printer. One parser, one printer, one SDK call path, so the
+`--json` bytes are equal by construction rather than by a maintained copy; the
+role gate is the only thing this module adds. If headless grew its own command
+handling, the parity criterion would become a test that can drift.
+
+**Consequence: shell wiring is outside the owned paths.** `app.rs` gained the
+role on `Identity`, the key gate, the notice and the status-line role;
+`main.rs` gained the module declarations and the headless branch. `tabs/hosts.rs`
+was read for its prompt semantics and left byte-identical. `docs/CHANGES.md`
+carries the task entry.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

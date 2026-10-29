@@ -2,6 +2,47 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Console session, CLI parity and headless mode (task 2.2.5)
+
+### Added
+- `tidepool-console/src/auth.rs` — the console's session over the CLI's own
+  credential store, so one file (`$TIDEPOOL_HOME/credentials.json`, then XDG,
+  then `$HOME/.config`) serves both skins. The role is asked of the pool
+  (`GET /v1/pool/me`) rather than cached in the store: headless mode asks before
+  every mutating command, the TUI at each connection probe and reconnect. The
+  mapping restates the pool's `require_mutating` line exactly: `viewer` is
+  read-only, `member`/`admin`/`owner` may operate. An unknown wire role is read
+  as `viewer`, the least privilege. `AuthError` and `Session` are documented and
+  unit-tested, including that the CLI reads what the console wrote and vice
+  versa; no secret is printed (`Debug` reuses the CLI's redaction).
+- `tidepool-console/src/headless.rs` — `tidepool-console --headless <command>`.
+  It strips the marker, parses with `tidepool_cli::args`, checks the role before
+  a mutating command (one `GET /v1/pool/me`, then a refusal or the command) and
+  delegates to `tidepool_cli::run_with_path` with the same tokens, store and
+  printer. `--json` is therefore the CLI's bytes by construction; a viewer's
+  mutating command stops after the role read, with no mutating request sent.
+  `HeadlessError` names the role, the capability and the fix.
+- `tidepool-console/README.md` — how the shared store and both sign-in paths
+  work, the role line, every command that exists in both skins, the TUI keys,
+  and the boundary that neither skin holds logic the pool does not.
+
+### Changed
+- `tidepool-console/src/app.rs` / `src/main.rs` — `Identity` carries the role,
+  the shell gates the mutating keys (`e`/`g`/`x` on Hosts, `d` and a dispatch
+  form's Enter on Runs, `c` and `Ctrl-S` on Rooms) with a notice that names the
+  role and the fix, and the status line reports the role. `main` selects
+  headless mode when any argument is present and otherwise loads the shared
+  `Session`. Tests cover the viewer refusal at every mutating key, that a
+  viewer can still type filter letters, and that a member keeps every key.
+
+### Tests
+- Byte-for-byte parity between headless and the CLI for a read (`host list
+  --json`) and a mutation (`run dispatch --json`), a viewer refusal that
+  records only the role read, console-sign-in-visible-to-CLI and
+  CLI-sign-in-visible-to-console round trips, the role mapping, the shared
+  store in both directions, and README/CLI command-list equality. All hermetic
+  against a scripted HTTP server.
+
 ## [Unreleased] — 2026-10-29 — Console rooms and relay follow (task 2.2.4)
 
 ### Added
