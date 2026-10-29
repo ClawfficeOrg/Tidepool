@@ -2,6 +2,67 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane chatrooms (task 2.1.9)
+
+### Added
+- `tidepool-control-plane/src/lib/rooms.ts` — the chatroom page's model, kept
+  out of Svelte so every rule is testable without a DOM, a socket or a pool:
+  - `mergeMessages`: one row per server message id, ordered by the pool's
+    `sequence`; a page, a live frame and a reconnect replay that repeat a
+    message collapse to one row and keep the id the pool minted;
+  - `olderMessagesPage`: the backward cursor walk. The contract only reads
+    forward from `after`, so an older page is read by stepping the cursor back
+    one page at a time, discarding everything at or above the oldest held
+    sequence, and stepping again when sequence gaps make a short read. The
+    returned page is the newest `pageSize` messages below the window, so it
+    cannot overlap what the reader already has;
+  - `currentnessBanner` / `isCurrent`: "Current" is only ever returned when a
+    fetch (and, with a socket, the server's `chat.current`) has confirmed it;
+    a cached first render, an in-flight fetch, `chat.catchUp` and a dropped
+    socket all say catching up or reconnecting;
+  - `describeAuthor`: a person is a filled circle and the word "Person", an
+    agent session a diamond and "Agent session", each with its own accessible
+    label and `data-author-kind` — colour is never the only signal;
+  - `roomRoleFor` / `canPostInRoom`: a viewer's composer is withdrawn with a
+    sentence instead of accepting a message the pool would refuse;
+  - `RoomsController`: loads the member's rooms, opens a room with cached
+    history visible immediately, reads members and history in parallel, opens
+    the live stream after the catch-up cursor, merges `chat.history`,
+    `chat.message` and `chat.presence` frames, reconnects from the last cursor
+    (staying in catch-up until `chat.current`), reads older pages, posts, and
+    reports every state change through `onChange` so the page renders live
+    updates rather than only the state after an await.
+- `tidepool-control-plane/src/routes/rooms/` — the page:
+  - `RoomsPage.svelte` renders the member's rooms, the selected room's
+    currentness banner, presence, history, composer and members;
+  - `CatchUpBanner.svelte` prints the one decision from `currentnessBanner`;
+  - `MessageList.svelte` renders the history keyed by server id and asks for an
+    older page when the reader scrolls to the top (a button does the same for
+    keyboard and screen-reader readers);
+  - `MessageComposer.svelte` withdraws a viewer's composer with the reason and
+    keeps a failed draft in place;
+  - `AuthorBadge.svelte` + `RoomMembers.svelte` show kind word, distinct glyph,
+    id, role and watching state;
+  - component tests for the merge, the backward cursor walk, catch-up
+    labelling, the person/agent distinction, the viewer gate and presence; an
+    SDK-driven end-to-end with two controllers in one room, sharing a fake
+    WebSocket hub: both read 120 messages, one sends, the other receives the
+    same server id live, both see both watchers, and the client that starts
+    from a cached tail pages back to sequence 1 without duplicates.
+
+### Changed
+- `src/lib/router.ts`, `src/App.svelte` and `src/lib/router.test.ts` add the
+  `/rooms` route and pass the pool, token and signed-in member id to the page.
+  These are outside the task's owned paths; without them the page cannot be
+  reached or authenticated.
+
+### Notes
+- The hub's history route is forward-only (`after`), so "scroll up loads
+  older" is implemented by walking the cursor backwards from the oldest held
+  message. That costs one history read per older page in the common case and
+  a few more when sequence gaps leave a page short; it never duplicates and
+  never changes the server contract.
+
 ## [Unreleased] — 2026-10-29 — Control plane members and API keys (task 2.1.8)
 
 ### Added

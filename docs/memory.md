@@ -2154,6 +2154,57 @@ Everything else is inside `src/lib/keys.ts` and `src/routes/settings/`.
 
 ---
 
+## 2026-10-29 — Chatrooms in the browser: merge by id, step the cursor back, never imply current (task 2.1.9)
+
+**Decision: the page merges by the pool's message id and sorts by the pool's
+sequence, never by time.** A message can arrive from a history page, a live
+`chat.message` frame, a reconnect replay and a `chat.history` frame, in any
+order. `mergeMessages` keeps one row per id, lets the newer copy win and orders
+by `sequence` with the id as a tie-break. A live frame therefore keeps the id
+the pool minted, and a duplicate is invisible rather than a second row. The e2e
+proves this across the real SDK: the sender's response and the receiver's live
+frame name the same `server-121` id.
+
+**Decision: "older" is a backward cursor walk, because the contract only pages
+forward.** `GET /v1/chatrooms/{room}/messages` takes `after`, so there is no
+cheap "before" read. `olderMessagesPage` steps `after` back one page at a time,
+keeps only sequences below the oldest held message, and steps again when a
+short page could mean sequence gaps rather than the room's start. The result is
+the newest `pageSize` messages below the window, so merging cannot overlap what
+the reader already has. This is the one place where the page pays a few extra
+reads for a capability the server does not expose; changing the route table was
+out of this task's scope and would be a contract change.
+
+**Decision: currentness is a fetched fact, not a mood.** `current` is set only
+after a history read reaches the head and, when a stream is open, after the
+server's `chat.current` frame. Cached history, an in-flight fetch, a
+`chat.catchUp` frame and a closed socket all render the catch-up or reconnecting
+banner, and `isCurrent` is false whenever `catchingUp` is true. A dropped socket
+puts the page straight back into catch-up; reconnecting reuses the last cursor
+and stays in catch-up until `chat.current`, so a reconnect never claims a
+currentness it has not confirmed.
+
+**Decision: author kind is carried by word, glyph and label, not colour.** The
+pool tells a person from an agent only through `Principal.kind`. The page turns
+that into "Person"/"Agent session", a filled circle/diamond, an accessible
+label and `data-author-kind`. The member list uses the same descriptor, so the
+distinction is consistent between history and presence and survives a
+monochrome palette.
+
+**Decision: the controller notifies on every state change.** Live frames arrive
+outside a click handler, so a page that only adopted the result of an `await`
+would render history once and then freeze. `RoomsController` writes through a
+private setter that calls `onChange`, and the page adopts every snapshot. That
+also makes the cached history render under the catch-up banner while the first
+fetch is still in flight, which is the behaviour the task calls for.
+
+**Consequence: routing and auth wiring are outside the owned paths.**
+`src/lib/router.ts`, `src/App.svelte` and the route-table test gained the
+`/rooms` entry; `App.svelte` passes the pool, token and signed-in member id.
+Everything else is inside `src/lib/rooms.ts` and `src/routes/rooms/`.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

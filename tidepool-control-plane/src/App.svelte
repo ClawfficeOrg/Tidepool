@@ -20,6 +20,7 @@
   import Overview from './routes/Overview.svelte';
   import Projects from './routes/projects/ProjectsPage.svelte';
   import Runs from './routes/Runs.svelte';
+  import RoomsPage from './routes/rooms/RoomsPage.svelte';
   import Triggers from './routes/Triggers.svelte';
   import Settings from './routes/Settings.svelte';
   import Setup from './routes/Setup.svelte';
@@ -189,6 +190,12 @@
                 pool={pool}
                 token={session?.token ?? null}
                 role={session?.user.role ?? null}
+              />
+            {:else if current.found && current.route.id === 'rooms'}
+              <RoomsPage
+                pool={pool}
+                token={session?.token ?? null}
+                viewerId={session?.user.id ?? null}
               />
             {:else if current.found && current.route.id === 'settings'}
               <Settings

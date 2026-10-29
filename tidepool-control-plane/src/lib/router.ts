@@ -10,7 +10,15 @@
 /** One top-level page. */
 export interface RouteDefinition {
   /** Stable id, used to pick the page component. */
-  id: 'overview' | 'hosts' | 'connections' | 'projects' | 'triggers' | 'runs' | 'settings';
+  id:
+    | 'overview'
+    | 'hosts'
+    | 'connections'
+    | 'projects'
+    | 'triggers'
+    | 'runs'
+    | 'rooms'
+    | 'settings';
   /** Absolute in-app path. */
   path: string;
   /** Navigation label. */
@@ -56,6 +64,12 @@ export const ROUTES: readonly RouteDefinition[] = [
     path: '/runs',
     label: 'Runs',
     description: 'What arrived, what ran, and what it produced',
+  },
+  {
+    id: 'rooms',
+    path: '/rooms',
+    label: 'Rooms',
+    description: 'Chatrooms, their members and the live conversation',
   },
   {
     id: 'settings',
