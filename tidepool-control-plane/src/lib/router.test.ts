@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { ROUTES, normalisePath, resolveRoute, routeHref } from './router';
 
 describe('routes', () => {
-  it('has the four top-level pages, with unique ids and paths', () => {
-    expect(ROUTES.map((route) => route.id)).toEqual(['overview', 'hosts', 'runs', 'settings']);
+  it('has the five top-level pages, with unique ids and paths', () => {
+    expect(ROUTES.map((route) => route.id)).toEqual([
+      'overview',
+      'hosts',
+      'connections',
+      'runs',
+      'settings',
+    ]);
     expect(new Set(ROUTES.map((route) => route.path)).size).toBe(ROUTES.length);
     for (const route of ROUTES) {
       expect(route.path.startsWith('/')).toBe(true);

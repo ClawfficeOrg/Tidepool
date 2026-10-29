@@ -14,6 +14,7 @@
   import ProblemDetails from './components/ProblemDetails.svelte';
   import SessionBar from './auth/SessionBar.svelte';
   import AuthLoading from './routes/AuthLoading.svelte';
+  import Connections from './routes/Connections.svelte';
   import Hosts from './routes/Hosts.svelte';
   import NotFound from './routes/NotFound.svelte';
   import Overview from './routes/Overview.svelte';
@@ -159,6 +160,12 @@
               />
             {:else if current.found && current.route.id === 'hosts'}
               <Hosts
+                pool={pool}
+                token={session?.token ?? null}
+                role={session?.user.role ?? null}
+              />
+            {:else if current.found && current.route.id === 'connections'}
+              <Connections
                 pool={pool}
                 token={session?.token ?? null}
                 role={session?.user.role ?? null}

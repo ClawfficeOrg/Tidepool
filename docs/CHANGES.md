@@ -2,6 +2,79 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane connections view (task 2.1.4)
+
+### Added
+- `tidepool-control-plane/src/lib/connections.ts` — the provider model, kept
+  out of Svelte so every word and branch is testable without a DOM or a pool:
+  - the catalogue: GitHub over a webhook, Slack over a webhook **or socket
+    mode**, Discord over the bot gateway, each with the credential fields and
+    resource kinds the pool's provider implementations read;
+  - the exact callback URL for the pool's current origin
+    (`/v1/webhooks/github/{slug}`, `/v1/webhooks/slack/{slug}`), the outbound
+    explanation for socket mode and the gateway, and the inability to build a
+    webhook URL when the pool has no public origin;
+  - `callbackChanges`: the old and new callback URL for every webhook
+    connection across a pool-origin move, with outbound connections correctly
+    absent;
+  - `secretFieldView`: a write-only credential field with no slot for a value.
+    A configured credential reads **Credential set** and offers **Replace
+    credential**; it is never read back;
+  - `verificationChecks`: five named checks — the pool answered, the
+    connection is active, the credential is configured, the resource scope is
+    registered, the transport is ready — each carrying the provider's own words
+    when it fails;
+  - `ConnectionsController`: list, create (then verify), verify, rename,
+    enable/disable and delete, plus a replacement path that reports the
+    contract gap rather than faking a write;
+  - transport preferences and the last-seen pool origin, both browser
+    preferences because this contract revision carries neither.
+- `tidepool-control-plane/src/routes/connections/` — the page:
+  - `ConnectionsPage.svelte` renders the summary, the create form, every
+    connection and the origin-change notice, and loads itself from the shell's
+    pool and token;
+  - `ConnectionCard.svelte` renders one connection, its transport, its
+    write-only credential field, its callback block, resources, verification
+    report and labelled actions (delete has a second, connection-named step);
+  - `SecretField.svelte` is the set/not-set + replace-only control;
+    `ConnectionCallback.svelte` prints the exact URL or explains the outbound
+    transport;
+  - `VerificationReport.svelte` lists every check and names the failing one;
+  - `OriginChangeNotice.svelte` lists each callback URL that must change, old
+    beside new;
+  - `ConnectionForm.svelte` creates GitHub, Slack (webhook or socket mode) and
+    Discord (bot gateway) connections.
+
+### Changed
+- `src/lib/router.ts`, `src/lib/router.test.ts`, `src/App.svelte`,
+  `src/App.test.ts` and `src/routes/Connections.svelte` — route the page at
+  `#/connections`. Outside the task's owned paths; the view cannot be reached
+  without them.
+
+### Notes
+- **The contract has no transport field.** `ConnectionView` does not say
+  whether a Slack connection uses the webhook or socket mode, so the page
+  remembers the choice per connection id in the browser and defaults to the
+  webhook otherwise. The card says so; it never pretends the pool reported it.
+- **The contract has no credential-rotation operation.**
+  `PATCH /v1/connections/{id}` accepts a display name, slug and status only.
+  The credential field still offers replacement, and the replacement path says
+  plainly that the secret must be rotated in the pool environment and then
+  verified again. It never echoes the value.
+- Tests: model and controller unit tests; component tests for the
+  secret-set-and-replace pattern, the exact callback URLs, the origin-change
+  list, the socket-mode and gateway choices, and failed verification naming its
+  check; an end-to-end that configures a Slack socket-mode connection through
+  the real SDK against an in-memory pool, walks create → verify → rename →
+  disable → delete, and asserts no response or view state carries the stored
+  secret. Control-plane suite: 245 tests, 23 files. Rust gates unchanged:
+  `cargo fmt --check`, `cargo clippy --all-targets --all-features -D warnings`
+  and `cargo test` pass.
+- Needs a human look: moving the pool's public origin in Settings in the
+  running app and confirming the callback-change list appears. The logic and
+  rendering are covered by tests with an injected previous origin; the
+  click-through is not.
+
 ## [Unreleased] — 2026-10-29 — Control plane hosts view (task 2.1.3)
 
 ### Added

@@ -15,7 +15,7 @@ describe('App shell', () => {
 
   it('renders every page in the navigation', () => {
     const { text } = renderComponent(App, {});
-    for (const label of ['Overview', 'Hosts', 'Runs', 'Settings']) {
+    for (const label of ['Overview', 'Hosts', 'Connections', 'Runs', 'Settings']) {
       expect(text).toContain(label);
     }
   });
@@ -86,6 +86,7 @@ describe('App shell', () => {
 
   it('routes to each page and reports an unknown path', () => {
     expect(renderComponent(App, { path: '/' }).text).toContain('This control plane is scaffolded');
+    expect(renderComponent(App, { path: '/connections' }).text).toContain('provider accounts');
     expect(renderComponent(App, { path: '/runs' }).text).toContain('What arrived');
     expect(renderComponent(App, { path: '/settings' }).text).toContain('The pool URL, the palette');
     const missing = renderComponent(App, { path: '/nowhere' });

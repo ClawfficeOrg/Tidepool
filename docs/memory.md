@@ -1903,6 +1903,53 @@ until then the hosts view is honest about the gap rather than approximating it.
 
 ---
 
+## 2026-10-29 — Connections view: write-only credentials and named checks (task 2.1.4)
+
+**Decision: the credential field has no read path at any layer.** The pool
+contract projects `credential_configured` as a boolean and never the reference
+or value. The control-plane model mirrors that: `secretFieldView` takes only
+the boolean, its `value` field is typed `null`, and the controller's view state
+contains no credential input. The only credential action is *replace*, and the
+replacement input is cleared on submit. This is deliberately stronger than
+"don't render the secret": there is nowhere in the model to put one.
+
+**Decision: verification is a named list of checks, not a boolean.** The
+contract has no `/verify` operation, so the page reads the connection and runs
+five checks: the pool answered, the connection is active, the credential is
+configured, the resource scope is registered, and the transport is ready. A
+failure names the check and uses the provider's own words (for example Slack's
+`bot_token, signing_secret, app_token` requirement, or the pool's exact
+problem-detail sentence when the read itself failed). This keeps
+"verification failed" actionable, which a bare false cannot be.
+
+**Open: the contract carries neither transport nor credential rotation.**
+`ConnectionView` has no transport field, so a Slack webhook and a Slack socket
+connection are indistinguishable after a reload; the page remembers the
+transport chosen here per connection id as a browser preference and defaults
+to webhook, and says so. `PATCH /v1/connections/{id}` accepts no
+`credential_ref`, so the replace flow reports the gap and tells the operator to
+rotate the secret in the pool environment, then verify. A future contract
+revision that adds `transport` and a rotation operation should remove the
+preference and the explanatory copy, not work around them.
+
+**Decision: the origin-change list is derived from the origin the page last
+showed.** The page remembers `https://…` in `localStorage` and compares it with
+the configured pool origin on the next visit. For every webhook connection it
+prints the old URL beside the new one; socket mode and the gateway are absent
+because there is nothing at the provider to change. The rendering and the
+derivation are tested; confirming it after editing the pool URL in Settings in
+the running app needs a human.
+
+**Consequences:**
+- Any new provider belongs in `CONNECTION_PROVIDERS_CATALOG` (transports,
+  credential keys, resource kinds, callback path), not in a component.
+- Verification words and requirements live beside the catalogue, so a provider
+  transport change cannot drift from what the page tells an operator.
+- The page needs the session token and role from the shell, as hosts does; the
+  route wrapper and `App.svelte` pass them through.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

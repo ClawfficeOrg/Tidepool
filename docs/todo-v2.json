@@ -312,7 +312,7 @@
         {
           "id": "2.1.4",
           "title": "Connections view",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Configure GitHub, Slack and Discord connections. GitHub and Slack webhook transports show the exact callback URL for the pool's current origin, and Slack offers socket mode for a pool with no public address. Discord configures the bot gateway. Credentials are entered but never read back: the field shows that a value is set and offers to replace it. A connection that fails verification says which check failed, in the provider's own words.",
           "touches": [
             "tidepool-control-plane/src/routes/connections/",
@@ -334,7 +334,9 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.3.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:22:38Z",
+          "human_look": "Changing the pool's public origin shows the callback URLs that must change with it"
         },
         {
           "id": "2.1.5",
