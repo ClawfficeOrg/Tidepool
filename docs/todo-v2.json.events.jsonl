@@ -46,3 +46,5 @@
 {"at": "2026-10-29T15:46:17Z", "event": "look_defer", "task": "2.3.1", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "exact CLI reproduction (Zoid 9.0.0 exposes shape choices only in the wizard); app starts icon-only and opens popover/window in the running app; tray icon legibility at menu-bar size"}
 {"at": "2026-10-29T15:46:18Z", "event": "start", "task": "2.3.2", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T23:46:18Z"}
 {"at": "2026-10-29T16:03:02Z", "event": "look_defer", "task": "2.3.2", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "The client enrols this machine and the pool shows it as connected"}
+{"at": "2026-10-29T16:03:03Z", "event": "start", "task": "2.3.3", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-30T00:03:03Z"}
+{"at": "2026-10-29T16:24:24Z", "event": "look_defer", "task": "2.3.3", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "A session started from the client appears in the pool's activity"}

@@ -2,6 +2,52 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Sessions: list, start, follow, steer and abort (task 2.3.3)
+
+### Added
+- `tidepool-client/src/sessions/protocol.rs` — the local host session protocol,
+  v1: list, start in a project directory, read the timeline after an exclusive
+  cursor, deliver an input as a prompt/steer/queue, and abort. Event kinds and
+  statuses reuse the pool's vocabulary (`started`, `status`, `output`, `tool`,
+  `message`, `stopped`; `queued`, `running`, `waiting`, `succeeded`, `failed`,
+  `interrupted`), the credential travels in `X-Host-Credential` and is redacted,
+  and session ids are path-checked before a request. `SessionStatus::is_complete`
+  is true only for `succeeded`, so `interrupted` is terminal but never complete.
+- `tidepool-client/src/sessions/timeline.rs` — the four-kind timeline (`You`,
+  `Agent`, `Tool`, `Session`) mapped from host events, with the backfill/live
+  boundary marked. Rows merge idempotently by sequence, keep late events rather
+  than losing them, and a `message` with no author is the session's, never the
+  person's.
+- `tidepool-client/src/sessions/pool.rs` — best-effort publication of a
+  client-started session's lifecycle to the pool's documented relay routes
+  (`PUT /v1/sessions/{id}/relay`, `POST /v1/sessions/{id}/relay/events`).
+  Content (output, messages, tool results) is not published unless the person
+  enables it, and a pool that is away leaves a notice without undoing the local
+  start.
+- `tidepool-client/src/sessions/mod.rs` — `SessionController`, the loop around
+  the host and the relay: refresh, start, open/backfill, poll, submit, steer,
+  queue and abort. A busy session is steered or queued and is never offered a
+  second prompt; a host that answers with a different delivery mode is refused;
+  an abort converts an unexpected `succeeded` into `interrupted`.
+- `tidepool-client/src/session_view.rs` — the session pane: a header carrying
+  the status sentence, the session list, timeline rows labelled by kind, the
+  composer's mode and its hint, and the actions the open session offers.
+- Unit tests over the host protocol (real HTTP against a loopback host),
+  controller tests over scripted host and relay, and rendering tests for the
+  four entry kinds, steering-versus-prompt, queueing and the interrupted label.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares the `sessions` and `session_view`
+  modules (outside the task's owned paths, required to compile the new code).
+
+### Notes
+- The pool has no route that creates a standalone session: `PUT
+  /v1/sessions/{id}/relay` only accepts a `host_executions` row that the pool
+  itself created for a run. A session started directly on this machine is
+  therefore announced best-effort and can be refused until the pool grows a
+  session-create route; `/v1/activity` lists only run-joined executions. The
+  client reports the refusal as a notice and keeps the local session usable.
+
 ## [Unreleased] — 2026-10-29 — Pool connection and this machine's enrollment (task 2.3.2)
 
 ### Added

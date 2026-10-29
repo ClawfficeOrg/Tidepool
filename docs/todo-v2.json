@@ -751,7 +751,7 @@
         {
           "id": "2.3.3",
           "title": "Sessions: list, start, follow, steer, abort",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "The client's core loop: list the sessions on this machine, start one in a chosen project directory, follow its timeline live, send a follow-up, steer a running one, queue while it is busy, and abort. The timeline distinguishes what the agent said, what a tool did and what the user asked, and a session that was interrupted or errored says so rather than looking finished.",
           "touches": [
             "tidepool-client/src/sessions/",
@@ -773,7 +773,9 @@
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.2.5"
-          ]
+          ],
+          "updated_at": "2026-10-29T16:24:24Z",
+          "human_look": "A session started from the client appears in the pool's activity"
         },
         {
           "id": "2.3.4",

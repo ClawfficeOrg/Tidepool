@@ -2590,3 +2590,57 @@ this task does not implement (it is not in the owned paths); the client reads
 and renders whatever status the pool reports. The settings window does not yet
 render `MachineStatus`; that surface arrives with the client settings task
 (2.3.7), so this work is the engine plus its tests.
+
+---
+
+## 2026-10-29 — Sessions run here; the pool hears the lifecycle (task 2.3.3)
+
+**Decision: the client's session loop speaks a local host protocol, not the
+pool's HTTP API.** The pool has no route that lists, starts, steers or aborts a
+session; sessions are processes on this machine. `sessions/protocol.rs` therefore
+defines the host agent's v1 routes (`GET/POST /v1/sessions`,
+`GET /v1/sessions/{id}/events?after=&limit=`, `POST /v1/sessions/{id}/input`,
+`POST /v1/sessions/{id}/abort`) and reuses the pool's vocabulary rather than
+inventing one: a session id is the host execution's public id, event kinds are
+the relay's six, and statuses are `queued`, `running`, `waiting`, `succeeded`,
+`failed`, `interrupted`. The host credential travels in `X-Host-Credential` and
+is redacted in `Debug`; session ids are path-checked before a request. The
+protocol is tested against a loopback host that answers the documented routes,
+so the request lines, header and JSON bodies are exercised without a live agent.
+
+**Decision: a timeline row has exactly one of four kinds, and the kind is a
+word.** `You`, `Agent`, `Tool`, `Session` are drawn before the text, so the
+four kinds are distinguishable with the palette removed and for a reader who
+cannot separate two hues. A `message` with no author is mapped to `Agent`, never
+`User`: misattributing a session's words to the person is the one error a
+transcript must not make. Merging is idempotent by the host's monotonic
+sequence, and a late event below the cursor is kept rather than dropped, because
+a live read can be reordered and losing a row is worse than holding it twice.
+
+**Decision: interrupted is terminal, never complete.** `is_complete` is true only
+for `succeeded`. `stopped` parses as `interrupted`; the header and the lifecycle
+rows say `interrupted — stopped before it could finish`; and an abort that comes
+back `succeeded` is rewritten to `interrupted` (`after_abort`), because the
+person asked for the session to stop. This is the rule that keeps a stopped
+session from looking like a finished one.
+
+**Decision: the pool receives lifecycle, not transcript.** Starting a session
+from the pool-connected client opts into the relay and publishes `started`,
+`status` and `stopped`; output, messages and tool results stay on the machine
+unless `set_publish_content(true)` is called. Publication is best effort: an
+unreachable or refusing pool becomes a notice and the local session keeps
+running, matching 2.3.2's rule that an unreachable pool never breaks the app.
+
+**Open gap for the pool.** `PUT /v1/sessions/{id}/relay` only accepts a
+`host_executions` row the pool created for a run (`services/relay.rs`), and
+`/v1/activity` lists executions only through `run_steps` → `runs`. A session a
+person starts directly on the machine has no such row, so the lifecycle
+announcement can be refused with 404 and the session cannot appear in
+`/v1/activity` until the pool grows a session-create route (or the host agent
+registers person-started sessions). The client's seam and its tests are in
+place; the pool route is a follow-up outside this task's owned paths.
+
+**What is still a person's check:** start a session from the running client
+against a live pool and host agent and confirm it appears in the pool's activity.
+The client's side of that (the relay calls, their order and bodies) is tested
+against a loopback pool; the pool-side record depends on the gap above.
