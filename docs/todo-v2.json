@@ -863,7 +863,7 @@
         {
           "id": "2.3.7",
           "title": "Palettes, settings and packaging",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "All five Clawffice palettes with Biolume default, remembered across launches; settings for the pool URL, notification kinds, the project directories a person works in and the default agent; and release packaging for macOS (a bundle dragging into Applications), Windows (a zip with an executable) and Linux (a tarball with a desktop entry and icons), following the suite's existing packaging shape. Document that the client is a Zoid example and how to regenerate it.",
           "touches": [
             "tidepool-client/src/theme.rs",
@@ -884,7 +884,9 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added client palettes, settings and release packaging",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T17:13:17Z",
+          "human_look": "Every palette renders every surface and the choice survives a restart"
         }
       ],
       "release": {

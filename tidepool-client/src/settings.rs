@@ -18,17 +18,24 @@
 //!   rendered, and it keeps at most four leading characters.
 //!
 //! A file that exists but does not parse is reported as
-//! [`SettingsError::Corrupt`] and left in place: the client never silently
-//! replaces settings it could not read. The rest of the app keeps working with
-//! an empty store, which is what makes an unreachable pool harmless.
+//! [`SettingsError::Corrupt`] and **set aside**, never silently replaced: the
+//! bad bytes are renamed to a timestamped sibling so a person can inspect or
+//! recover them, and the caller is told where they went. The rest of the app
+//! keeps working with an empty store, which is what makes an unreachable pool
+//! harmless.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use gpui::App;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::notify::{NotificationKind, NotificationPolicy};
+use crate::theme::PaletteName;
 
 /// Environment variable that relocates the store to a directory.
 ///
@@ -49,11 +56,14 @@ pub enum SettingsError {
     NoConfigDir(&'static str),
     /// A store file exists but is not valid settings.
     ///
-    /// The file is left untouched; the caller decides whether to report it.
+    /// The bad file is moved to [`SettingsError::Corrupt::aside`] when that is
+    /// possible; when it is `None` the file is still in place and untouched.
     #[error("settings at {path} are not valid JSON or do not match the schema")]
     Corrupt {
         /// The file that could not be parsed.
         path: PathBuf,
+        /// Where the unreadable file was moved, when it could be set aside.
+        aside: Option<PathBuf>,
     },
     /// The store could not be read.
     #[error("could not read settings at {path}: {source}")]
@@ -80,6 +90,24 @@ pub enum SettingsError {
         /// The refused path.
         path: PathBuf,
     },
+}
+
+impl SettingsError {
+    /// The message a person should see, including where a bad file went.
+    ///
+    /// [`Display`](std::fmt::Display) stays stable for logs and tests; this
+    /// adds the recovery path that makes a corrupt file actionable.
+    pub fn report(&self) -> String {
+        match self {
+            Self::Corrupt {
+                aside: Some(aside), ..
+            } => format!(
+                "{self}; the unreadable file was set aside at {}",
+                aside.display()
+            ),
+            _ => self.to_string(),
+        }
+    }
 }
 
 /// One enrolled machine, as the client remembers it.
@@ -135,6 +163,20 @@ pub struct ClientSettings {
     /// The host this machine enrolled most recently.
     #[serde(default)]
     pub active_host: Option<String>,
+    /// The Clawffice palette the client paints with.
+    #[serde(default)]
+    pub palette: PaletteName,
+    /// Notification kinds the person switched on, by their stable keys.
+    ///
+    /// Empty by default: notifications are opt-in.
+    #[serde(default)]
+    pub notifications: Vec<String>,
+    /// Project directories the person works in, in the order they added them.
+    #[serde(default)]
+    pub project_directories: Vec<String>,
+    /// The agent a new session starts with, when the person chose one.
+    #[serde(default)]
+    pub default_agent: Option<String>,
 }
 
 impl std::fmt::Debug for ClientSettings {
@@ -146,6 +188,10 @@ impl std::fmt::Debug for ClientSettings {
             .field("member_token", &self.member_token.as_deref().map(redact))
             .field("hosts", &self.hosts)
             .field("active_host", &self.active_host)
+            .field("palette", &self.palette)
+            .field("notifications", &self.notifications)
+            .field("project_directories", &self.project_directories)
+            .field("default_agent", &self.default_agent)
             .finish()
     }
 }
@@ -185,6 +231,58 @@ impl ClientSettings {
         if self.active_host.as_deref() == Some(id) {
             self.active_host = None;
         }
+    }
+
+    /// The notification policy the stored keys describe.
+    ///
+    /// A key this build does not know is ignored, so a file written by a newer
+    /// client still opens.
+    pub fn notification_policy(&self) -> NotificationPolicy {
+        NotificationPolicy::from_keys(self.notifications.iter().map(String::as_str))
+    }
+
+    /// Replace the stored notification keys with a policy's.
+    pub fn set_notification_policy(&mut self, policy: &NotificationPolicy) {
+        self.notifications = policy.keys().into_iter().map(str::to_owned).collect();
+    }
+
+    /// Switch one notification kind on or off.
+    pub fn set_notification(&mut self, kind: NotificationKind, enabled: bool) {
+        let mut policy = self.notification_policy();
+        policy.set(kind, enabled);
+        self.set_notification_policy(&policy);
+    }
+
+    /// Add a project directory, keeping the list unique and in insertion order.
+    ///
+    /// Blank input is ignored. Returns whether the directory was added, so a
+    /// caller can avoid a pointless save.
+    pub fn remember_project_directory(&mut self, directory: impl AsRef<str>) -> bool {
+        let directory = directory.as_ref().trim();
+        if directory.is_empty()
+            || self
+                .project_directories
+                .iter()
+                .any(|known| known == directory)
+        {
+            return false;
+        }
+        self.project_directories.push(directory.to_owned());
+        true
+    }
+
+    /// Remove one project directory, if it is listed.
+    pub fn forget_project_directory(&mut self, directory: &str) -> bool {
+        let before = self.project_directories.len();
+        self.project_directories
+            .retain(|known| known.as_str() != directory);
+        before != self.project_directories.len()
+    }
+
+    /// Set the agent a new session starts with; blank clears it.
+    pub fn set_default_agent(&mut self, agent: impl AsRef<str>) {
+        let agent = agent.as_ref().trim();
+        self.default_agent = (!agent.is_empty()).then(|| agent.to_owned());
     }
 }
 
@@ -235,7 +333,36 @@ impl SettingsStore {
         Self::open_at(Self::default_path()?)
     }
 
+    /// Open the default store, reporting rather than failing.
+    ///
+    /// A corrupt file has already been set aside by [`SettingsStore::open_at`];
+    /// the returned store is empty and the error says where the old file went.
+    /// The rest of the app can start without settings, which is what makes a
+    /// broken file a report rather than a crash.
+    pub fn open_default_or_empty() -> (Self, Option<SettingsError>) {
+        match Self::default_path() {
+            Ok(path) => Self::open_or_empty_at(path),
+            Err(error) => (Self::empty_at(PathBuf::from(STORE_FILE)), Some(error)),
+        }
+    }
+
+    /// Open `path`, falling back to an empty store and the error that stopped it.
+    ///
+    /// Split from [`SettingsStore::open_default_or_empty`] so the fallback can
+    /// be tested without moving the process's home directory.
+    pub fn open_or_empty_at(path: PathBuf) -> (Self, Option<SettingsError>) {
+        match Self::open_at(path.clone()) {
+            Ok(store) => (store, None),
+            Err(error) => (Self::empty_at(path), Some(error)),
+        }
+    }
+
     /// Open the store at `path`, treating a missing file as empty settings.
+    ///
+    /// A file that exists but does not parse is moved to a timestamped sibling
+    /// before the error is returned. The bytes are never overwritten, so a
+    /// person can recover a hand-edited file; the next save starts a fresh
+    /// store at `path`.
     pub fn open_at(path: PathBuf) -> Result<Self, SettingsError> {
         match fs::read(&path) {
             Ok(bytes) => match serde_json::from_slice(&bytes) {
@@ -244,7 +371,10 @@ impl SettingsStore {
                     settings,
                     present: true,
                 }),
-                Err(_) => Err(SettingsError::Corrupt { path }),
+                Err(_) => {
+                    let aside = set_aside(&path);
+                    Err(SettingsError::Corrupt { path, aside })
+                }
             },
             Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(Self {
                 path,
@@ -320,6 +450,98 @@ impl SettingsStore {
     }
 }
 
+/// The loaded settings, shared with every window.
+///
+/// The store stays in memory and every change is written by [`update`], so a
+/// window never opens a second copy of the file and two surfaces cannot
+/// disagree about what is saved.
+pub struct SettingsState {
+    store: SettingsStore,
+    problem: Option<String>,
+}
+
+impl SettingsState {
+    /// Wrap an opened store and the report that came with it, if any.
+    pub fn new(store: SettingsStore, problem: Option<String>) -> Self {
+        Self { store, problem }
+    }
+
+    /// The settings as loaded.
+    pub fn settings(&self) -> &ClientSettings {
+        self.store.settings()
+    }
+
+    /// What went wrong loading or saving, in words a person can act on.
+    pub fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
+    }
+
+    /// The file the settings live in.
+    pub fn path(&self) -> &Path {
+        self.store.path()
+    }
+}
+
+impl gpui::Global for SettingsState {}
+
+/// Load the default store into a global, reporting any problem.
+///
+/// A corrupt file has already been set aside by the store; the message names
+/// the backup path. The app keeps its local surfaces with empty settings rather
+/// than refusing to start.
+pub fn install(cx: &mut App) {
+    let (store, problem) = SettingsStore::open_default_or_empty();
+    if let Some(error) = &problem {
+        eprintln!("tidepool client settings: {}", error.report());
+    }
+    cx.set_global(SettingsState::new(
+        store,
+        problem.map(|error| error.report()),
+    ));
+}
+
+/// The settings in effect, when [`install`] has run.
+pub fn settings(cx: &App) -> Option<&ClientSettings> {
+    cx.try_global::<SettingsState>()
+        .map(SettingsState::settings)
+}
+
+/// The palette in effect, Biolume until a settings store says otherwise.
+pub fn palette(cx: &App) -> PaletteName {
+    settings(cx)
+        .map(|settings| settings.palette)
+        .unwrap_or_default()
+}
+
+/// What went wrong loading or saving the settings, if anything.
+pub fn problem(cx: &App) -> Option<&str> {
+    cx.try_global::<SettingsState>()
+        .and_then(SettingsState::problem)
+}
+
+/// Change the settings and write them atomically.
+///
+/// The in-memory value changes even when the write fails, so the window shows
+/// what the person typed; the error is also kept in the global for the settings
+/// window to display. No global installed (a unit test) is a no-op.
+pub fn update(cx: &mut App, change: impl FnOnce(&mut ClientSettings)) -> Result<(), SettingsError> {
+    if !cx.has_global::<SettingsState>() {
+        return Ok(());
+    }
+    let state = cx.global_mut::<SettingsState>();
+    change(state.store.settings_mut());
+    match state.store.save() {
+        Ok(()) => {
+            state.problem = None;
+            Ok(())
+        }
+        Err(error) => {
+            state.problem = Some(error.report());
+            Err(error)
+        }
+    }
+}
+
 /// Replace `destination` with `temporary`.
 ///
 /// On Unix `rename` replaces atomically. The Windows standard library has no
@@ -347,6 +569,24 @@ fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut file = options.open(path)?;
     file.write_all(bytes)?;
     file.sync_all()
+}
+
+/// Move an unreadable store to a timestamped sibling, returning where it went.
+///
+/// A rename keeps the bytes intact and is the same filesystem, so it works when
+/// the file is read-only or the directory is otherwise writable. If the rename
+/// fails the file is left exactly where it was and `None` says so.
+fn set_aside(path: &Path) -> Option<PathBuf> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| STORE_FILE.to_owned());
+    let aside = path.with_file_name(format!("{name}.corrupt-{stamp}"));
+    fs::rename(path, &aside).ok().map(|()| aside)
 }
 
 /// The sibling temporary path used for the atomic replace.
@@ -402,6 +642,11 @@ mod tests {
                 display_name: "Build box".to_owned(),
             },
         );
+        settings.palette = PaletteName::SeaGlass;
+        settings.set_notification(NotificationKind::SessionFinished, true);
+        settings.set_notification(NotificationKind::RunFailed, true);
+        settings.remember_project_directory("/Users/operator/work/tidepool");
+        settings.set_default_agent("build-agent");
         settings
     }
 
@@ -442,13 +687,53 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_file_is_reported_and_left_in_place() {
+    fn corrupt_file_is_set_aside_and_reported() {
         let dir = scratch("corrupt");
         let path = dir.join(STORE_FILE);
         fs::write(&path, b"{ this is not json").expect("seed");
         let error = SettingsStore::open_at(path.clone()).expect_err("corrupt");
-        assert!(matches!(error, SettingsError::Corrupt { .. }));
-        assert_eq!(fs::read(&path).expect("still there"), b"{ this is not json");
+        let SettingsError::Corrupt { aside, .. } = &error else {
+            panic!("expected Corrupt, got {error:?}");
+        };
+        let aside = aside.as_ref().expect("the bad file is set aside");
+        assert!(!path.exists(), "the unreadable file is not left in place");
+        assert_eq!(
+            fs::read(aside).expect("backup kept"),
+            b"{ this is not json",
+            "the bytes are preserved, not replaced"
+        );
+        assert!(
+            aside
+                .file_name()
+                .is_some_and(|name| { name.to_string_lossy().contains(".corrupt-") })
+        );
+        assert!(error.report().contains(&aside.display().to_string()));
+    }
+
+    #[test]
+    fn a_set_aside_file_opens_as_empty_settings_next_time() {
+        let dir = scratch("corrupt-next");
+        let path = dir.join(STORE_FILE);
+        fs::write(&path, b"not json").expect("seed");
+        SettingsStore::open_at(path.clone()).expect_err("corrupt");
+        let store = SettingsStore::open_at(path).expect("nothing left to fail on");
+        assert_eq!(store.settings(), &ClientSettings::default());
+        assert!(!store.present());
+    }
+
+    #[test]
+    fn open_or_empty_reports_a_corrupt_file_without_losing_it() {
+        let dir = scratch("default-corrupt");
+        let path = dir.join(STORE_FILE);
+        fs::write(&path, b"still not json").expect("seed");
+        let (store, problem) = SettingsStore::open_or_empty_at(path.clone());
+        assert!(problem.is_some_and(|error| error.report().contains(".corrupt-")));
+        assert_eq!(store.settings(), &ClientSettings::default());
+        assert_eq!(
+            fs::read_dir(&dir).expect("read dir").count(),
+            1,
+            "only the set-aside copy remains"
+        );
     }
 
     #[test]
@@ -527,6 +812,64 @@ mod tests {
         settings.forget_sign_in();
         assert!(settings.member_token.is_none());
         assert!(settings.active_host().is_some());
+    }
+
+    #[test]
+    fn palette_notifications_directories_and_agent_round_trip() {
+        let dir = scratch("preferences");
+        let path = dir.join(STORE_FILE);
+        let mut store = SettingsStore::open_at(path.clone()).expect("open");
+        store.settings_mut().palette = PaletteName::Phosphor;
+        store
+            .settings_mut()
+            .set_notification(NotificationKind::RoomMessage, true);
+        assert!(
+            store
+                .settings_mut()
+                .remember_project_directory("  /Users/operator/work  ")
+        );
+        assert!(
+            !store
+                .settings_mut()
+                .remember_project_directory("/Users/operator/work"),
+            "the same directory is only listed once"
+        );
+        assert!(
+            !store.settings_mut().remember_project_directory("   "),
+            "blank input is ignored"
+        );
+        store.settings_mut().set_default_agent("review-agent");
+        store.save().expect("save");
+
+        let reloaded = SettingsStore::open_at(path).expect("reload");
+        let settings = reloaded.settings();
+        assert_eq!(settings.palette, PaletteName::Phosphor);
+        assert_eq!(
+            settings.notification_policy().enabled(),
+            vec![NotificationKind::RoomMessage]
+        );
+        assert_eq!(
+            settings.project_directories,
+            vec!["/Users/operator/work".to_owned()]
+        );
+        assert_eq!(settings.default_agent.as_deref(), Some("review-agent"));
+    }
+
+    #[test]
+    fn a_blank_default_agent_clears_it() {
+        let mut settings = ClientSettings::default();
+        settings.set_default_agent("build-agent");
+        settings.set_default_agent("  ");
+        assert!(settings.default_agent.is_none());
+    }
+
+    #[test]
+    fn forgetting_a_directory_reports_whether_it_was_listed() {
+        let mut settings = ClientSettings::default();
+        settings.remember_project_directory("/work/one");
+        assert!(settings.forget_project_directory("/work/one"));
+        assert!(!settings.forget_project_directory("/work/one"));
+        assert!(settings.project_directories.is_empty());
     }
 
     #[test]

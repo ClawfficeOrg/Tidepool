@@ -54,3 +54,5 @@
 {"at": "2026-10-29T16:44:06Z", "event": "look_defer", "task": "2.3.5", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "Activity filters combine and never show another project's runs; A named failure code renders as words with the code available"}
 {"at": "2026-10-29T16:44:06Z", "event": "start", "task": "2.3.6", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-30T00:44:06Z"}
 {"at": "2026-10-29T16:57:05Z", "event": "done", "task": "2.3.6", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Menu bar and tray surfaces", "filed_under": "2.3"}
+{"at": "2026-10-29T16:57:06Z", "event": "start", "task": "2.3.7", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-30T00:57:06Z"}
+{"at": "2026-10-29T17:13:17Z", "event": "look_defer", "task": "2.3.7", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "Every palette renders every surface and the choice survives a restart"}

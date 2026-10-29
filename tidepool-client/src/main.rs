@@ -19,9 +19,14 @@ mod host {
     pub mod enroll;
 }
 
-// The client's own settings store: the pool URL and the host relationship
-// credential, outside any repository and redacted everywhere it is printed.
+// The client's own settings store: the pool URL, the host relationship
+// credential and the person's preferences, outside any repository and redacted
+// everywhere it is printed.
 mod settings;
+
+// The five Clawffice palettes, Biolume by default. The palette is a setting,
+// so the choice survives a restart; `settings_window` is where it is changed.
+mod theme;
 
 mod host_entry;
 mod icon_assets;
@@ -320,9 +325,13 @@ fn main() {
             // and before any window opens.
             window_options::configure_theme(cx);
 
-            // `init` installs the light theme; follow the system instead
-            // until the user picks one in Settings.
-            settings_window::apply_theme(settings_window::ThemeChoice::System, cx);
+            // Load the person's preferences, then paint with the palette they
+            // chose. `init` installs the component library's own light theme,
+            // so the palette must be applied after it and before any window
+            // opens. A corrupt file has already been set aside; the app starts
+            // with Biolume and reports it in Settings.
+            settings::install(cx);
+            theme::apply(settings::palette(cx), cx);
 
             // Enforce a single running instance via a lock file in the app
             // data directory. A second instance signals the first to surface

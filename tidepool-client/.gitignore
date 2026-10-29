@@ -3,5 +3,8 @@
 **/*.rs.bk
 *.pdb
 
+# Release artifacts produced by scripts/package.sh
+/dist
+
 # JetBrains IDEs (optional)
 .idea/

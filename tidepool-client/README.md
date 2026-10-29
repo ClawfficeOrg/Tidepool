@@ -35,6 +35,12 @@ rendered into the UI is `Tidepool`.
 copies are part of the generated project: the client builds against them without
 depending on the Zoid workspace.
 
+**The generated part is `src/ui/` only.** `src/ui/zml_layout.rs` and
+`src/ui/window_options.rs` are written by Zoid from `ui/app.json` and must not be
+hand-edited; the rest of `src/` is Tidepool's own code layered on the template.
+See [`ui/app.json` is the editable UI source](#uiappjson-is-the-editable-ui-source)
+for regeneration.
+
 ## Building and testing
 
 The client is its own Cargo workspace. It is intentionally **not** a member of
@@ -98,6 +104,77 @@ asked for.
   instance. A stale lock is reclaimed; a second launch signals the first to show
   its surface.
 
+## Palettes
+
+The client renders the five Clawffice palettes, copied from `clawffice-design` at
+commit `995b41606e65` (the same pin the console and control plane use):
+
+| Key | Name | Scheme |
+|---|---|---|
+| `biolume` | Biolume (default) | dark |
+| `boiled` | Boiled | dark |
+| `deep-tide` | Deep Tide | dark |
+| `phosphor` | Phosphor | dark |
+| `sea-glass` | Sea Glass | light |
+
+`src/theme.rs` is the only place a palette colour is written. It maps every role
+the component library paints with — window ground, surface, border, text, status
+and every component ground — into a `ThemeConfig`, so a switch cannot leave a
+panel on the previous palette. Focus, selection and links use Tidepool's `tide`
+product hue whatever the palette's primary is, as the design system requires.
+
+The choice lives in `settings.json` as the palette key and is applied at startup
+before the first window opens, so it survives a restart. `Sea Glass` is the
+design system's light palette; the other four are dark.
+
+## Settings
+
+**Settings…** in the tray menu opens the settings window. It edits:
+
+- the Clawffice palette;
+- the pool URL;
+- which notification kinds are allowed (all off by default — notifications are
+  opt-in);
+- the project directories the person works in (added and removed one at a time);
+- the default agent a new session starts with.
+
+Every change goes through `src/settings.rs`, which writes the whole file
+atomically: a temporary sibling with `0600` permissions is written, synced and
+renamed over the destination. The store refuses a path inside a git working
+tree, and `Debug` redacts the member token and host credentials.
+
+A file that exists but does not parse is **set aside**, not silently replaced:
+the bad bytes are renamed to `settings.json.corrupt-<timestamp>` next to the
+store and the error names that path. The app starts with empty settings, keeps
+working locally and shows the report at the top of the settings window. Unit
+tests cover the round-trip, the set-aside copy, the next launch opening empty,
+and the refusal to write inside a repository.
+
+## Packaging
+
+`scripts/package.sh` builds one installable artifact per platform, following the
+suite's shape:
+
+| Platform | Command | Artifact |
+|---|---|---|
+| macOS | `scripts/package.sh macos` | `dist/Tidepool-<version>-macos.zip` containing `Tidepool.app` (drag into Applications; `LSUIElement` keeps it in the menu bar) |
+| Windows | `scripts/package.sh windows` | `dist/Tidepool-<version>-windows.zip` containing `Tidepool/tidepool-client.exe`, `tidepool.ico` and a README |
+| Linux | `scripts/package.sh linux` | `dist/Tidepool-<version>-linux.tar.gz` with `usr/bin/tidepool-client`, a `.desktop` entry and hicolor icons at 16–512px |
+
+`scripts/package.sh all` builds all three. `--profile debug` packages a debug
+build, `--binary PATH` packages an existing executable (used by the smoke test)
+and `--out DIR` changes the artifact directory. Each run ends with a smoke check
+of the staged files and the archive: executable present, plist valid, desktop
+entry launches `tidepool-client`, every icon size present. The macOS bundle is
+unsigned, so first launch goes through Gatekeeper's unidentified-developer
+confirmation; the app icon comes from the same clawffice-design cell sprite as
+the tray icon.
+
+`scripts/test-packaging.sh` (also run by `tests/packaging.rs`) packages a stub
+executable for all three platforms and asserts the archive shapes, so the
+packaging can be checked on any Unix runner without cross-compiling. The real
+artifacts should be built on their own platform before release.
+
 ## Tray icon
 
 The icon is the suite's design, not a placeholder:
@@ -129,28 +206,39 @@ full-colour detail for that reason.
 | `src/tray_icon.rs` | Platform abstraction: `NSStatusBar` on macOS, `Shell_NotifyIconW` on Windows, no-op fallback on Linux |
 | `src/popover_view.rs` | The click-anchored popover |
 | `src/main_window.rs` | The main window opened by **Open App** |
-| `src/settings_window.rs` | Settings window |
+| `src/settings_window.rs` | Settings window: palette, pool URL, notifications, directories, agent |
+| `src/settings.rs` | The atomic settings store and its corrupt-file handling |
+| `src/theme.rs` | The five Clawffice palettes and their component-library mapping |
 | `src/lifecycle.rs` | Single-instance guard |
 | `src/icon_assets.rs` | `include_bytes!` seam for the tray icon |
 | `src/ui/` | **Generated** from `ui/app.json`; do not hand-edit |
 | `ui/app.json` | The editable popover structure |
 | `assets/` | Tray icons and their provenance |
+| `scripts/package.sh` | macOS, Windows and Linux release artifacts |
+| `scripts/render_app_icons.py` | App PNGs and ICNS from the pinned cell sprite |
+| `scripts/test-packaging.sh` | Artifact-shape smoke test for all three platforms |
 | `vendor/` | Zoid's `zoid-gpui` and `zoid-core` crates, copied at generation time |
 | `tests/tray.rs` | Headless tray, view and icon tests |
+| `tests/packaging.rs` | Runs the packaging smoke test under `cargo test` |
 
 ## What a person still has to look at
 
-Two properties are about the running app and cannot be asserted headlessly:
+These properties are about the running app and cannot be asserted headlessly:
 
 1. Launch the app and confirm that no window and no Dock/taskbar entry appear,
    that clicking the icon opens the popover, and that **Open App** opens the main
    window.
 2. Confirm the menu-bar icon is legible at menu-bar size on both a light and a
    dark menubar.
+3. Switch through all five palettes and confirm every surface — popover, main
+   window, settings, menus — repaints with the chosen palette, and that the
+   choice is still in effect after quitting and relaunching.
 
-Everything behind those behaviours (which surface opens at launch, which surface
-a click and the menu item resolve to, and the icon's size, crispness, colours
-and scales) is covered by tests.
+Everything behind those behaviours is covered by tests: which surface opens at
+launch, which surface a click and the menu item resolve to, the icon's size,
+crispness, colours and scales, every palette's role colours and component
+mapping, all five surfaces rendering under each palette, and the palette key
+round-tripping through the settings store.
 
 ## Licence
 

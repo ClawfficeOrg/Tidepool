@@ -36,6 +36,15 @@ mod window_options;
 #[path = "../src/settings_window.rs"]
 mod settings_window;
 
+// The settings window reads and writes the client's preferences, and paints
+// with the Clawffice palette, so the integration binary mounts those modules
+// too.
+#[path = "../src/settings.rs"]
+mod settings;
+
+#[path = "../src/theme.rs"]
+mod theme;
+
 // The menu and the notification policy are mounted here as well, so the
 // template's own tray integration test proves the menu actions, their
 // keyboard twins and the opt-in rule rather than only the unit tests doing so.

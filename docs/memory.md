@@ -2797,3 +2797,56 @@ tray;`, replaced its local three-item menu with `MenuState`, and registers the
 keyboard twins; `tidepool-client/tests/tray.rs` mounts `menu` and `notify` so the
 template's own integration test covers the menu actions and the opt-in rule.
 `docs/CHANGES.md` and this file are updated per AGENTS.md.
+
+### 2026-10-29 — Task 2.3.7, client palettes, settings and packaging
+
+**Decision: palettes are copied into `theme.rs` from the pinned design commit,
+and one function maps every component surface.** The client cannot assume a
+sibling `clawffice-design` checkout or a registry package at build time, so the
+five palettes from commit `995b41606e65` live in `tidepool-client/src/theme.rs`,
+the same commit and the same values the console and control plane pin. The file
+is the only place a palette colour is written. `PaletteName::theme_config` sets
+every `ThemeConfigColors` field the component library paints with; a field left
+`None` would fall back to the library's own theme and leave one panel on the old
+palette after a switch, which is the failure this mapping exists to prevent.
+`tide` (the product hue) drives focus, selection and links in every palette, so
+identity survives the palette choice. `Sea Glass` carries the light scheme; the
+other four are dark, and the palette's scheme replaces the template's separate
+System/Light/Dark choice rather than fighting it.
+
+**Decision: the settings file is the palette's home, and a corrupt file is set
+aside, not replaced.** The palette key, notification-kind keys, project
+directories and default agent are fields on `ClientSettings`, so one atomic save
+covers every preference and a restart reads the palette before the first window
+opens. `SettingsStore::open_at` renames an unparseable file to
+`settings.json.corrupt-<timestamp>` and returns `Corrupt { path, aside }`; the
+bytes are preserved for recovery and `report()` names the backup. The app starts
+with empty settings and shows the report, so a broken file is a notice rather
+than a crash or a silent overwrite. `SettingsState` is the single in-memory copy
+shared by every window, and `settings::update` is the only writer.
+
+**Decision: packaging is one script with a per-platform smoke check, and the
+test packages a stub instead of cross-compiling.** `scripts/package.sh` produces
+the macOS `.app` zip, the Windows zip and the Linux tarball, and checks each
+artifact immediately: executable present and executable, plist parses,
+`LSUIElement` set, desktop entry launches `tidepool-client`, every hicolor size
+present. `--binary` lets `scripts/test-packaging.sh` (and `tests/packaging.rs`
+under `cargo test`) build all three shapes from a stub on any Unix runner, so
+the shape is tested without a Windows or Linux toolchain. Real artifacts are
+still built on their own platform; the app icon is the pinned cell sprite
+rendered to PNG and ICNS by a standard-library script, so there is no new
+dependency.
+
+**What is still a person's check:** switch through all five palettes in the
+running app and confirm every surface repaints and the choice is still in effect
+after a quit and relaunch. The role values, the full component mapping, all five
+surfaces rendering under every palette in a headless GPUI test, and the palette
+key's settings round-trip are mechanical; a real menu-bar repaint across a
+restart is not something this environment can watch.
+
+**Consequence: wiring, tests and docs outside the owned paths.** The palette and
+settings modules required `tidepool-client/src/main.rs` (`mod theme;`, settings
+load, palette apply), `settings_window.rs` (the settings UI),
+`main_window.rs`/`popover_view.rs` (`theme::follow_theme`),
+`tests/tray.rs` (mounting `settings` and `theme`) and a new
+`tests/packaging.rs`; `docs/CHANGES.md` and this file are updated per AGENTS.md.

@@ -99,7 +99,7 @@ pub fn open_main_window(
     let result = cx.open_window(options, move |window, cx| {
         let view = cx.new(|cx| MainWindow::new(pn.clone(), it.clone(), cx));
         window.focus(&view.focus_handle(cx), cx);
-        crate::settings_window::follow_system_theme(window, cx);
+        crate::theme::follow_theme(window, cx);
         cx.new(|cx| Root::new(view, window, cx))
     });
 

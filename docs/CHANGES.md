@@ -2,6 +2,59 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Client palettes, settings and packaging (task 2.3.7)
+
+### Added
+- `tidepool-client/src/theme.rs` — the five Clawffice palettes from
+  `clawffice-design` at `995b41606e65` (Biolume default, Boiled, Deep Tide,
+  Phosphor, Sea Glass) and their mapping into a component-library
+  `ThemeConfig`. Every role the library paints with is set explicitly, `tide`
+  drives focus/selection/links, and `apply` stores the choice in a global and
+  repaints every window. `Sea Glass` carries the light scheme; the other four
+  are dark.
+- `tidepool-client/src/settings.rs` — the store now persists the palette, the
+  notification-kind keys, the project directories the person works in and the
+  default agent, alongside the pool URL and host credentials. A corrupt file is
+  moved to `settings.json.corrupt-<timestamp>` and reported with that path
+  instead of being silently replaced; `open_default_or_empty` keeps the app
+  running with empty settings. `SettingsState`, `install`, `settings`,
+  `palette`, `problem` and `update` make the store a GPUI global so every
+  surface reads and writes one copy.
+- `tidepool-client/src/settings_window.rs` — the settings window now edits the
+  palette, pool URL, notification kinds, project directories and default agent;
+  changes are written atomically through the store, and a load/save problem is
+  shown at the top of the window.
+- `tidepool-client/scripts/package.sh` — macOS `Tidepool.app` in a zip (drag to
+  Applications, `LSUIElement`), Windows zip with `tidepool-client.exe` and icon,
+  and a Linux tarball with `usr/bin`, a `.desktop` entry and hicolor icons at
+  16–512px. Every run ends with a per-platform smoke check.
+- `tidepool-client/scripts/render_app_icons.py` — deterministic PNGs and ICNS
+  from the pinned cell sprite, standard library only.
+- `tidepool-client/scripts/test-packaging.sh` and
+  `tidepool-client/tests/packaging.rs` — package a stub executable for all three
+  platforms and assert each archive's shape; runs under `cargo test` on Unix.
+- Tests for every palette's role colours, the complete component mapping, all
+  five surfaces rendering under every palette, the settings round-trip for the
+  new fields, and the corrupt-file set-aside path.
+
+### Changed
+- `tidepool-client/src/main.rs` — declares `theme`, loads the settings store and
+  applies the saved palette before the first window opens. The template's
+  System/Light/Dark choice is replaced by the palette (the palette's own scheme
+  decides light or dark). `main_window.rs` and `popover_view.rs` call
+  `theme::follow_theme` when a window opens (outside the task's owned paths,
+  required to compile and ship the new code).
+- `tidepool-client/tests/tray.rs` mounts `settings` and `theme` so the
+  integration test compiles the settings window against them.
+- `tidepool-client/README.md` — documents the five palettes, the settings
+  fields, the atomic and set-aside behaviour, the packaging commands and
+  artifacts, the Zoid 9.0.0 pin and that `src/ui/` is generated.
+
+### Notes
+- The palette choice round-trips through the settings file and all five
+  surfaces render under every palette in a headless GPUI test. Watching a real
+  restart repaint the menu bar and popover is the owner's human check.
+
 ## [Unreleased] — 2026-10-29 — Menu bar and tray surfaces (task 2.3.6)
 
 ### Added

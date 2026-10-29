@@ -359,7 +359,7 @@ pub fn open_popover_window(
     let it: SharedString = icon_tooltip.into();
     let result = cx.open_window(options, move |window, cx| {
         let view = cx.new(|_cx| PopoverView::new(pn.clone(), it.clone()));
-        crate::settings_window::follow_system_theme(window, cx);
+        crate::theme::follow_theme(window, cx);
         cx.new(|cx| Root::new(view, window, cx))
     });
 
