@@ -9,11 +9,14 @@
  * `tidepool-pool-origin` marker and the pool's own origin becomes the base URL:
  * one origin, no build-time URL and no CORS. A standalone deployment has no
  * marker and keeps using `VITE_POOL_URL` or the URL saved in settings.
+ *
+ * A container deployment can also set the URL at start: `/config.json`, written
+ * from `POOL_URL`, wins on a fresh load and is never saved to storage.
  */
 
 import { mount } from 'svelte';
 import Root from './Root.svelte';
-import { isServedByPool, resolvePoolConfig } from './routes/settings/preferences';
+import { isServedByPool, loadRuntimePoolUrl, resolvePoolConfig } from './routes/settings/preferences';
 
 /** `localStorage`, or null where it is unavailable (private mode, tests). */
 function browserStorage(): Storage | null {
@@ -39,6 +42,7 @@ function servedByPool(): boolean {
 const storage = browserStorage();
 const servedFromPool = servedByPool();
 const pool = resolvePoolConfig({
+  runtime: await loadRuntimePoolUrl(),
   env: import.meta.env as Record<string, string | undefined>,
   storage,
   sameOrigin: servedFromPool,

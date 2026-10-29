@@ -26,6 +26,7 @@ import {
   TIME_ZONE_STORAGE_KEY,
   applyPoolUrl,
   densityStyle,
+  loadRuntimePoolUrl,
   formatTime,
   readPreferences,
   resolvePoolConfig,
@@ -350,5 +351,51 @@ describe('the settings page exposes the preferences in the shell', () => {
     expect(rendered.text).toContain('https://saved.example.com');
     expect(rendered.html).toContain('data-served-by="pool"');
     expect(rendered.html).toContain('data-density="compact"');
+  });
+});
+
+describe('runtime pool URL from /config.json', () => {
+  const reply = (body: string, status = 200): typeof fetch =>
+    (async () => new Response(body, { status })) as unknown as typeof fetch;
+
+  it('wins over the saved and build-time URLs and is not stored', async () => {
+    const storage = memoryStorage({ [POOL_URL_STORAGE_KEY]: 'https://saved.example.com' });
+    const runtime = await loadRuntimePoolUrl(reply('{"poolUrl":"https://run.example.com"}'));
+    expect(runtime).toBe('https://run.example.com');
+    expect(
+      resolvePoolConfig({ runtime, env: { VITE_POOL_URL: 'https://built.example.com' }, storage }),
+    ).toEqual({ baseUrl: 'https://run.example.com' });
+    expect(storage.getItem(POOL_URL_STORAGE_KEY)).toBe('https://saved.example.com');
+  });
+
+  it('falls through on a missing file, an empty value or an empty object', async () => {
+    const storage = memoryStorage({ [POOL_URL_STORAGE_KEY]: 'https://saved.example.com' });
+    for (const fetchImpl of [reply('', 404), reply('{"poolUrl":""}'), reply('{}')]) {
+      const runtime = await loadRuntimePoolUrl(fetchImpl);
+      expect(runtime).toBeNull();
+      expect(resolvePoolConfig({ runtime, env: {}, storage })).toEqual({
+        baseUrl: 'https://saved.example.com',
+      });
+    }
+  });
+
+  it('falls through on invalid JSON or a failed request', async () => {
+    expect(await loadRuntimePoolUrl(reply('<html>spa fallback</html>'))).toBeNull();
+    expect(
+      await loadRuntimePoolUrl((async () => {
+        throw new Error('offline');
+      }) as unknown as typeof fetch),
+    ).toBeNull();
+  });
+
+  it('rejects a non-http(s) poolUrl and falls through', async () => {
+    const storage = memoryStorage({ [POOL_URL_STORAGE_KEY]: 'https://saved.example.com' });
+    for (const bad of ['ftp://pool.example.com', 'javascript:alert(1)', 'pool.example.com', 42]) {
+      const runtime = await loadRuntimePoolUrl(reply(JSON.stringify({ poolUrl: bad })));
+      expect(runtime).toBeNull();
+      expect(resolvePoolConfig({ runtime, env: {}, storage })).toEqual({
+        baseUrl: 'https://saved.example.com',
+      });
+    }
   });
 });

@@ -8,6 +8,9 @@
 #
 # Set in the VPS .env (not committed):
 #   CONTROL_PLANE_HOSTNAME  the hostname the UI is served on, e.g. tidepool-control.example.com
+#   TIDEPOOL_PUBLIC_ORIGIN  optional; the pool's public origin, e.g. https://tidepool.example.com
+#                           (scheme and host[:port] only). Passed as POOL_URL at container
+#                           start, never at build time; empty leaves the pool URL to Settings.
 #   TIDEPOOL_CORS_ORIGINS   must be https://${CONTROL_PLANE_HOSTNAME} (exact origin, no slash)
 #   TIDEPOOL_PROXY_NETWORK  the network Traefik watches
 #   TRAEFIK_ENTRYPOINT / TRAEFIK_CERTRESOLVER as already set for the pool
@@ -19,6 +22,8 @@ services:
       dockerfile: tidepool-control-plane/Dockerfile
     image: tidepool-control-plane:local
     restart: unless-stopped
+    environment:
+      POOL_URL: "${TIDEPOOL_PUBLIC_ORIGIN:-}"
     networks:
       - proxy
     labels:

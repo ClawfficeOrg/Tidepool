@@ -191,24 +191,53 @@ export function applyPoolUrl(preferences: ControlPlanePreferences, raw: string):
 /**
  * Resolve the pool this build talks to.
  *
- * Order: a build-time `VITE_POOL_URL`, then the URL saved here, then — only when
+ * Order: the runtime `/config.json` value (a fresh load only; see
+ * `loadRuntimePoolUrl`), then a build-time `VITE_POOL_URL`, then the URL saved
+ * here, then — only when
  * the page says it was served by a pool — that same origin. The last step is
  * what lets a self-hosted pool serve its own control plane with no build-time
  * URL and no CORS, while a standalone deployment with no marker stays
  * unconfigured instead of calling its static host.
  */
 export function resolvePoolConfig(sources: {
+  runtime?: string | null;
   env?: Record<string, string | undefined>;
   storage?: PreferenceStorage | null;
   sameOrigin?: boolean;
   origin?: string | null;
 }): PoolConfig {
+  const runtime = normalisePoolUrl(sources.runtime);
+  if (runtime) return { baseUrl: runtime };
   const configured = normalisePoolUrl(sources.env?.['VITE_POOL_URL']);
   if (configured) return { baseUrl: configured };
   const saved = normalisePoolUrl(read(sources.storage ?? null, POOL_URL_STORAGE_KEY));
   if (saved) return { baseUrl: saved };
   if (!sources.sameOrigin) return { baseUrl: null };
   return { baseUrl: normalisePoolUrl(sources.origin ?? null) };
+}
+
+/**
+ * Fetch the pool URL a deployment set at container start.
+ *
+ * The container writes `/config.json` (same origin, relative URL, never cached)
+ * from its `POOL_URL` variable. A missing file, a failed request, invalid JSON,
+ * a non-string or empty `poolUrl`, or anything that is not an absolute http(s)
+ * URL is "no source" and the existing precedence applies unchanged. The value
+ * is returned, never stored: it is not copied into localStorage.
+ */
+export async function loadRuntimePoolUrl(
+  fetchImpl: typeof fetch | undefined = typeof fetch === 'undefined' ? undefined : fetch,
+): Promise<string | null> {
+  if (!fetchImpl) return null;
+  try {
+    const response = await fetchImpl('config.json', { cache: 'no-store' });
+    if (!response.ok) return null;
+    const body: unknown = await response.json();
+    if (typeof body !== 'object' || body === null) return null;
+    return normalisePoolUrl((body as { poolUrl?: unknown }).poolUrl as string | undefined);
+  } catch {
+    return null;
+  }
 }
 
 /** True when the page was served by the pool itself, per its meta marker. */

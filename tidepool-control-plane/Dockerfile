@@ -3,7 +3,9 @@
 # Build from the REPOSITORY ROOT (the app aliases ../sdk/ts at build time):
 #   docker build -f tidepool-control-plane/Dockerfile -t tidepool-control-plane:local .
 #
-# No secrets and no pool URL are baked in; the pool URL is entered in the app.
+# No secrets and no pool URL are baked in. Each deployment sets POOL_URL at
+# container start; docker-entrypoint.d/40-pool-config.sh writes /config.json
+# from it, and the app reads that file on load.
 
 # Node 24 LTS ships npm 11; npm 10.x crashes resolving this package.json.
 FROM node:24.11.0-alpine3.22 AS build
@@ -25,6 +27,7 @@ RUN npm run build
 
 FROM nginx:1.27.3-alpine3.20
 COPY tidepool-control-plane/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chmod=755 tidepool-control-plane/docker-entrypoint.d/40-pool-config.sh /docker-entrypoint.d/40-pool-config.sh
 COPY --from=build /repo/tidepool-control-plane/dist /usr/share/nginx/html
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
