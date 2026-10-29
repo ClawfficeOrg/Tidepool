@@ -1846,6 +1846,63 @@ proves the client half against a local pool that implements the route.
 
 ---
 
+## 2026-10-29 — Hosts view: connection and execution are separate (task 2.1.3)
+
+**Decision: the hosts page renders two independent facts per host — lifecycle
+status and the `host.execute` grant — and never folds one into the other.** The
+status badge answers "what is the pool's relationship with this machine";
+the execution chip answers "may the pool dispatch runs to it". A connected host
+without the grant is labelled *connected only*, in the protocol's own words, and
+the grant action sits beside it. A revoked host shows no execution action at
+all. This is why the page has two chips rather than one combined state: an
+operator debugging "why did nothing run" must be able to see that the machine is
+reachable and still not permitted.
+
+**Decision: granting and revoking execution is a labelled action with its
+consequence printed before the confirm step, not a toggle.** `executionAction`
+produces the consequence sentence, the restated confirm sentence naming the
+host's slug, and the confirm button label; the component prints the consequence
+beside the button and opens the confirm step on the first click. Revoking keeps
+the host enrolled and connected, which the copy says explicitly; granting says
+the pool may start agents from then on. A toggle with a hover tooltip would let
+a person change dispatch behaviour without reading what changed.
+
+**Decision: the one-time token lives in the controller's state and is dropped
+the moment it is dismissed or the page reloads.** The pool stores only a hash,
+so the token cannot be fetched again; showing it in a permanent panel would
+imply it could be. The enrolment panel builds the command from the token and the
+pool URL at that moment and replaces the form, so it cannot be minted twice by
+accident.
+
+**Decision: the enrolment command is the reference agent's real invocation.**
+It derives the WebSocket URL from the pool URL (`http`→`ws`, `https`→`wss`,
+`/ws/host`), shell-quotes the token, generates the relationship credential on
+the host and keeps it in `~/.tidepool/host-credential`, then runs
+`cargo run -p tidepool-host-agent`. The host protocol requires the host to hold
+its own credential, so a command that passed a fresh credential inline each run
+would be wrong; this one keeps it.
+
+**Open: the contract has no last-seen timestamp.** `HostView` carries
+`created_at` and `revoked_at` only. The page still renders Last seen for every
+host, reads `last_seen_at` if a pool starts sending it, and otherwise says the
+pool did not report it. It does not substitute `created_at` or `updated_at`,
+which would be a different fact. Adding `last_seen_at` is a pool/contract task;
+until then the hosts view is honest about the gap rather than approximating it.
+
+**Consequences:**
+- Any future status word for hosts belongs in `HOST_STATUS_DESCRIPTORS`, not in
+  a component, so the icon-plus-word rule and the distinct-word test keep
+  covering it.
+- The hosts route now needs the session token and role from the shell; the
+  route wrapper and `App.svelte` pass them through. A future page-level data
+  layer should replace that prop threading rather than adding another ad hoc
+  controller in a component.
+- The repository's `npm test` suite requires `npm install` in
+  `tidepool-control-plane` (no `node_modules` is checked in); CI has no frontend
+  job yet, so a control-plane change is verified locally.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

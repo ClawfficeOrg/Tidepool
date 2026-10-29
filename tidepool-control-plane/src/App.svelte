@@ -158,7 +158,11 @@
                 organization={session?.organization?.name ?? null}
               />
             {:else if current.found && current.route.id === 'hosts'}
-              <Hosts />
+              <Hosts
+                pool={pool}
+                token={session?.token ?? null}
+                role={session?.user.role ?? null}
+              />
             {:else if current.found && current.route.id === 'runs'}
               <Runs />
             {:else if current.found && current.route.id === 'settings'}

@@ -2,6 +2,71 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane hosts view (task 2.1.3)
+
+### Added
+- `tidepool-control-plane/src/lib/hosts.ts` — the hosts model, kept out of
+  Svelte so every word and every branch is testable without a DOM:
+  - the four host statuses (`pending_approval`, `connected`, `offline`,
+    `revoked`) each with its own word, icon, description and colour role, plus a
+    readable `Unknown` fallback;
+  - `executionState`: granted hosts "may run agents", a connected host without
+    the grant is labelled **connected only**, and a pending/offline/revoked host
+    is not mislabelled as connected-only;
+  - the last-seen field, which reads `last_seen_at` when a pool sends one and
+    says plainly that the contract revision does not report it when it does not;
+  - `executionAction`: grant and revoke actions, each naming the contract
+    operation and restating its consequence at the confirm step;
+  - the enrolment command builder: the pool's HTTP and WebSocket URLs derived
+    from the pool URL, a host-generated credential kept in a file, the
+    single-use token shell-quoted, and the reference agent invocation —
+    the exact command, not a description of one;
+  - `HostsController`, which lists, enrols (create then mint), grants and
+    revokes execution, holds the one-time token until dismissed, and turns every
+    failure into readable problem details.
+- `tidepool-control-plane/src/routes/hosts/` — the page:
+  - `HostsPage.svelte` renders the summary, the enrolment panel and the host
+    list, loads itself from the shell's pool and token, and handles empty,
+    loading, unconfigured and failed states;
+  - `HostCard.svelte` renders slug, display name, hostname, status, last seen
+    and the execution grant for one host;
+  - `HostStatusBadge.svelte` and `ExecutionChip.svelte` keep status and
+    permission apart: status is a lifecycle state, execution is a grant;
+  - `HostActionControl.svelte` is the labelled grant/revoke action with its
+    consequence printed before confirmation and a second, host-named confirm
+    step;
+  - `EnrollHostPanel.svelte` registers a host and shows the token once with the
+    command to run, replacing the form so it cannot be minted twice by accident.
+
+### Changed
+- `src/routes/Hosts.svelte` — now a thin route that renders `hosts/HostsPage`
+  and passes pool, token and role through. The page itself lives in the task's
+  owned directory.
+- `src/App.svelte` — passes the configured pool and the signed-in token/role to
+  the hosts route so the page can load real hosts. Two lines, outside the
+  task's owned paths, without which the view could not reach the pool.
+
+### Notes
+- The contract (`HostView`) has no last-seen timestamp. The page always renders
+  a Last seen field and, against a pool that does not send `last_seen_at`, says
+  so rather than deriving a time from `created_at`. A future pool field is read
+  as soon as it appears.
+- Tests: status descriptor and view-model unit tests, a component test for each
+  of the four statuses plus both action states and the enrolment result, and an
+  end-to-end test that walks enrolment → token exchange → connected → grant →
+  revoke through the real SDK against an in-memory pool transport. Suite: 173
+  tests, 20 files, no DOM and no network.
+
+### Fixed
+- `cli/tests/support/mod.rs` and `sdk/rust/tests/support/mod.rs` — the recorded
+  HTTP server now clears the non-blocking flag on each accepted connection. A
+  non-blocking listener hands its flag to the accepted socket on macOS and BSD,
+  so a request that had not arrived yet read as `WouldBlock` and the fixture
+  dropped the connection under the client; the CLI's `run watch` poll loop
+  surfaced that as a rare `Connection reset by peer` gate failure. The new
+  `cli/tests/recording_server.rs` pins the wait with a request sent after the
+  accept.
+
 ## [Unreleased] — 2026-10-29 — Control plane sign-in, setup and sessions (task 2.1.2)
 
 ### Added

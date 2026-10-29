@@ -205,7 +205,17 @@ impl Drop for TempDir {
 fn accept(listener: &TcpListener, deadline: Instant) -> Option<TcpStream> {
     while Instant::now() < deadline {
         match listener.accept() {
-            Ok((stream, _)) => return Some(stream),
+            Ok((stream, _)) => {
+                // On BSD and macOS the accepted socket inherits the listener's
+                // non-blocking flag, so a request that has not arrived yet would
+                // read as `WouldBlock` and the connection would be dropped under
+                // the client. The request reader wants a blocking socket with
+                // the read timeout it sets itself.
+                if stream.set_nonblocking(false).is_err() {
+                    continue;
+                }
+                return Some(stream);
+            }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(5));
             }
