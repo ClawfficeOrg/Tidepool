@@ -2,6 +2,37 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Machine-readable hub API contract (task 2.0.1)
+
+### Added
+- The OpenAPI 3.1 document now covers the whole hub surface: 60 operations
+  across setup, identity, API keys, hosts, connections, projects, triggers,
+  runs, activity, chatrooms, session relay and webhooks, each with its request
+  body, response body, access model, required scope and required role.
+- `docs/API_CONTRACT.md` states what is stable within `v1`, what may change
+  additively, what counts as breaking, and how a breaking change is announced
+  (major bump, both documents served, `Deprecation`/`Sunset`, changelog).
+  It also records the resource-versus-command decision and its reasoning.
+- `docs/API_REFERENCE.md` is generated from the same route and schema tables.
+- `docs/api/openapi-v1.json` is the committed, pinnable release copy; the
+  document is served at `/openapi.json` and at the stable major-version path
+  `/openapi/v1.json`.
+- CI publishes the contract as an `openapi-v1` workflow artifact and validates
+  the served document against the OpenAPI 3.1 meta-schema.
+
+### Changed
+- Hub operations now carry `x-surface`, `x-auth`, `x-required-scope`,
+  `x-required-role` and `x-contract-version`; `x-auth` gained
+  `member_or_api_key` and `signature`. Operation ids are now codegen-safe
+  (`get_v1_players_id` instead of `get_/v1/players/{id}`).
+- The drift gate is now three-way: hub route registrations must match the
+  route table, and the served document and human-readable reference must
+  match their committed copies byte for byte. An undocumented or regenerated-
+  less route change fails `cargo test openapi` and CI.
+- The OpenAPI CI job validates the pinned path, diffs it against the committed
+  artifact and validates both against the 3.1 meta-schema instead of only
+  checking a prefix list of paths.
+
 ## [Unreleased] — 2026-10-22 — Makefile and per-proxy deploy layers
 
 ### Added

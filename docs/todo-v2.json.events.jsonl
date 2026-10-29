@@ -1,0 +1,2 @@
+{"at": "2026-10-29T05:44:14Z", "event": "start", "task": "2.0.1", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T13:44:14Z"}
+{"at": "2026-10-29T06:01:45Z", "event": "done", "task": "2.0.1", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Machine-readable hub API contract", "filed_under": "2.3"}

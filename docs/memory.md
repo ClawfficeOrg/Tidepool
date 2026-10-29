@@ -1457,6 +1457,77 @@ retroactively loosen or tighten what an earlier arrival was allowed to emit.
 
 ---
 
+## 2026-10-29 — Hub API contract: one route+schema table, versioned artifacts, resource-first with explicit commands (task 2.0.1)
+
+**Context:** the hub surface grew to 60 operations across identity, hosts,
+connections, projects, triggers, runs, activity, chatrooms, relay and
+webhooks, but the OpenAPI document only covered 45 of them and described every
+body as an opaque object. The SDK tasks (2.0.2–2.0.6) need one contract they
+can generate from, and a contract that changes silently is worse than no
+contract.
+
+**Options considered:**
+- `#[utoipa::path]` + `ToSchema` derives on every handler and every DTO. The
+  most idiomatic route, but it touches ~20 module files (outside this task's
+  owned paths), splits the contract across the codebase, and still needs a
+  separate inventory check to catch an undocumented route.
+- Hand-written prose reference only. Cheap, but not machine-readable and not
+  enforceable; SDK drift becomes a review problem.
+- One `ROUTES` table plus one `SCHEMAS` table in `src/api/openapi.rs`, with
+  generated artifacts checked byte for byte (chosen). One place to update, one
+  place to review, and the route-registration parser in the existing drift
+  test already had the mechanism.
+
+**Decision:**
+- **Document generation is table-driven.** `ROUTES` now carries `surface`,
+  `access`, `required_scope`, `required_role`, request and response component
+  names, success status, alternative success statuses (idempotent replay) and
+  per-route error statuses. `SCHEMAS` describes every hub request/response
+  body field by field, including nullability. Hub operations carry
+  `x-surface`, `x-auth`, `x-required-scope`, `x-required-role` and
+  `x-contract-version`.
+- **Three drift gates.** The hub module registration parser must equal the
+  table (`every_registered_hub_route_is_in_the_table`); the served document
+  and generated reference must equal the committed copies
+  (`published_contract_matches_generated_document`,
+  `api_reference_matches_generated_document`); CI boots the degraded server,
+  diffs the served document against the artifact and validates it against the
+  OpenAPI 3.1 meta-schema. Adding a route without documenting it, or
+  documenting it without regenerating, fails.
+- **Stable, pinnable paths.** `/openapi.json` and `/openapi/v1.json` serve the
+  same bytes; `docs/api/openapi-v1.json` is the committed release copy, and
+  `docs/API_REFERENCE.md` is generated from the same tables. The 3.1
+  meta-schema validation caught a real defect during development (path
+  parameters lacked `required: true`), so CI runs it rather than only the
+  in-repo structural checks.
+- **Resource-first, commands by exception.** Resources (hosts, connections,
+  projects, revisions, keys, members, invitations, rooms, relay state) keep
+  CRUD verbs and ids. Operations with no addressable resource or that are
+  transitions (validate, install, dispatch, mint/exchange enrollment, password
+  change, publish) are explicit `POST` commands under a verb path; retry-safe
+  commands carry `deliveryKey` or `execution_id`. The reasoning and the full
+  command table are in `docs/API_CONTRACT.md`.
+- **Stability policy is written down.** `docs/API_CONTRACT.md` lists what is
+  stable in `v1`, what may change additively, what is breaking, and the
+  announce-and-overlap process (major bump, both documents served,
+  `deprecated`/`Deprecation`/`Sunset`, `⚠️ BREAKING` changelog, at least one
+  minor release or 90 days).
+
+**Consequences:**
+- `cargo test openapi` is now a contract gate, not just a route inventory.
+  Regeneration is explicit: two ignored tests write the artifact and the
+  reference.
+- The game surface is unchanged on the wire; its documentation stays loose
+  (no per-route schemas) because existing players are already shipping against
+  it and the contract's job is the hub.
+- The `x-auth` vocabulary gained `member_or_api_key` and `signature`; the old
+  CI check inferred `api_key` from the presence of a scope, which was wrong
+  for routes that accept either a member or a key.
+- Adding a hub route is a two-file change (table + regeneration) and CI
+  rejects anything less.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

@@ -64,7 +64,7 @@
         {
           "id": "2.0.1",
           "title": "Machine-readable hub API contract",
-          "status": "pending",
+          "status": "done",
           "goal": "Extend the pool's OpenAPI document to cover the hub surface with the same discipline the game routes already use: one route table, drift failing CI. Publish it as a versioned artifact at a stable path, generate a human-readable reference from it, and write docs/API_CONTRACT.md stating what is stable, what may change within a major version, and how a breaking change is announced. The contract is the single input for every SDK, so it decides the resource-versus-command shape and records that decision.",
           "touches": [
             "src/api/openapi.rs",
@@ -81,11 +81,12 @@
           "tests": "cargo test openapi; boot the server in degraded mode and validate the served document against the OpenAPI 3.1 meta-schema.",
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Published the machine-readable hub API contract",
+          "changelog": "Machine-readable hub API contract",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.1.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T06:01:45Z"
         },
         {
           "id": "2.0.2",
@@ -853,7 +854,9 @@
         "version": "0.6.0",
         "tag_on_complete": true,
         "release_notes": "Tidepool 0.6.0 ships the clients: the machine-readable hub contract, TypeScript, Rust and Python SDKs with one conformance suite, the tidepool CLI, the Svelte control plane, the ratatui control console, and the reference human client as a Zoid tray application. Rhumb federation and the hosted multi-tenant pool are deferred to v3.",
-        "changelog_entries": []
+        "changelog_entries": [
+          "Machine-readable hub API contract"
+        ]
       }
     }
   ]
