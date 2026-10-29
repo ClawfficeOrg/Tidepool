@@ -1950,6 +1950,60 @@ the running app needs a human.
 
 ---
 
+## 2026-10-29 — Projects and the configuration editor (task 2.1.5)
+
+**Decision: the editor is a text editor over authored files, not a model that
+renders a document.** A `Bundle` is an ordered list of `{path, content}` pairs;
+`editBundleFile` replaces the one path's content and returns every untouched
+file object unchanged, and `requestFromBundle` sends those bytes verbatim. No
+parse/stringify cycle sits between the textarea and the validate/install body,
+so an unedited file cannot be reindented, reordered or have its trailing
+whitespace normalised. Tests assert untouched content byte-for-byte (including
+CRLF, tabs and a missing final newline) and unchanged file identity.
+
+**Decision: field errors are located by parsing the authored manifest, not by
+searching strings.** The pool names a field path; the editor parses the
+manifest with byte offsets, indexes both name and `[index]` spellings (plus the
+value of string-array items, which is how `hosts.studio-mac` resolves), and
+shortens the path to the nearest authored ancestor when a property is missing.
+Unresolvable paths are reported at line 1 with `located: false` rather than
+pointed at a guessed line. This is why a field error can be shown beside the
+line instead of beside a name.
+
+**Decision: a save validates first and installs only a valid bundle.** The
+validate call is the pool's own endpoint. A refusal never reaches install, so
+the active revision cannot move; the draft and its broken text stay in the
+editor with the issues attached. If install returns `activated: false` the
+controller treats it as a refusal too, reloads the history and states that the
+previously active revision is unchanged. A transport failure is `failed`, also
+leaving the active revision alone.
+
+**Decision: the active revision is resolved from the history and never
+inferred.** `resolveActiveRevision` accepts exactly one `active` flag. Zero
+active revisions with a non-empty history, more than one active, or a served
+active revision the history does not mark active all produce an explicit
+problem; the page disables saving rather than editing on top of an ambiguous
+configuration.
+
+**Decision: diffs are over authored files.** `diffBundles` walks the bundles in
+authored order (base order, then files new to the target), reports added,
+removed, changed or unchanged, and aligns changed files line by line. A file
+above the alignment cap summarizes by line counts instead of freezing the page.
+`compare` takes an optional base revision; with none it compares against the
+active revision, which is what the history's compare control asks for.
+
+**Consequences:**
+- Any new configuration field the pool validates needs no editor change for
+  display: the issue list renders whatever path the pool names, located by the
+  same parser. A field naming a *different* authored file would need the locator
+  extended, and the contract currently names only manifest fields.
+- The route wiring lives in `src/lib/router.ts` and `src/App.svelte`, outside
+  the task's owned paths; the page cannot be reached without those edits.
+- The project-create flow is not part of this page; projects are created
+  through the pool's existing endpoint and appear in the list.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { ROUTES, normalisePath, resolveRoute, routeHref } from './router';
 
 describe('routes', () => {
-  it('has the five top-level pages, with unique ids and paths', () => {
+  it('has the six top-level pages, with unique ids and paths', () => {
     expect(ROUTES.map((route) => route.id)).toEqual([
       'overview',
       'hosts',
       'connections',
+      'projects',
       'runs',
       'settings',
     ]);

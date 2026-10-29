@@ -2,6 +2,48 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane projects and configuration editor (task 2.1.5)
+
+### Added
+- `tidepool-control-plane/src/lib/configuration.ts` — the authored bundle model:
+  - `Bundle`/`AuthoredFile` and the edit operations (`editBundleFile`,
+    `addBundleFile`, `removeBundleFile`) that replace or add exactly one path,
+    keep authored order, and share untouched file objects so nothing can be
+    reordered or reformatted behind the author's back;
+  - `requestFromBundle` — the validate/install body, sent with exact authored
+    content and no normalisation;
+  - `locateField` / `locateIssues` — an offset-preserving JSON parse of the
+    manifest that maps the pool's field paths (`hosts.studio-mac`,
+    `environments.nightly.directory`, `workflows.build.steps[2].agent`) to the
+    offending line and column, falling back to the nearest authored object for a
+    missing property and to `located: false` line 1 when it cannot resolve;
+  - `diffBundles` / `alignLines` — a file-by-file, line-level diff over the
+    authored files, with whole-file added/removed lines and a bounded alignment;
+  - `resolveActiveRevision` — exactly one active revision or an explicit problem
+    (zero with a history, several, or a served active that the history disagrees
+    with); the page never guesses;
+  - `ProjectsController` — list/open projects, edit files, validate-then-install
+    through the pool, compare any two revisions, and keep the active revision
+    and the author's draft intact on refusal or call failure.
+- `tidepool-control-plane/src/routes/projects/` — the page:
+  - `ProjectsPage.svelte` lists projects, shows the active revision, hosts the
+    editor, save controls, field errors, the diff and the history, and loads
+    itself from the shell's pool and token;
+  - `FileEditor.svelte` is the text editor over the exact files, with add and
+    remove for paths;
+  - `IssueList.svelte` puts each pool field error against its file and line and
+    quotes the line;
+  - `RevisionHistory.svelte` marks the active revision and offers a comparison;
+  - `RevisionDiff.svelte` renders authored files with both line numbers and
+    added/removed markers;
+  - component tests for the error-to-line mapping and the rendered states, and
+    an SDK-driven end-to-end that installs, breaks, refuses and fixes a bundle.
+
+### Changed
+- `src/lib/router.ts`, `src/lib/router.test.ts`, `src/App.svelte` and
+  `src/App.test.ts` — route the page at `#/projects`. Outside the task's owned
+  paths; the page cannot be reached without them.
+
 ## [Unreleased] — 2026-10-29 — Control plane connections view (task 2.1.4)
 
 ### Added

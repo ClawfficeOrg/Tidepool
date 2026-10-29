@@ -10,7 +10,7 @@
 /** One top-level page. */
 export interface RouteDefinition {
   /** Stable id, used to pick the page component. */
-  id: 'overview' | 'hosts' | 'connections' | 'runs' | 'settings';
+  id: 'overview' | 'hosts' | 'connections' | 'projects' | 'runs' | 'settings';
   /** Absolute in-app path. */
   path: string;
   /** Navigation label. */
@@ -38,6 +38,12 @@ export const ROUTES: readonly RouteDefinition[] = [
     path: '/connections',
     label: 'Connections',
     description: 'Provider accounts this pool receives events from',
+  },
+  {
+    id: 'projects',
+    path: '/projects',
+    label: 'Projects',
+    description: 'Authored configuration bundles and their revisions',
   },
   {
     id: 'runs',

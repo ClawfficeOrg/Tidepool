@@ -15,7 +15,7 @@ describe('App shell', () => {
 
   it('renders every page in the navigation', () => {
     const { text } = renderComponent(App, {});
-    for (const label of ['Overview', 'Hosts', 'Connections', 'Runs', 'Settings']) {
+    for (const label of ['Overview', 'Hosts', 'Connections', 'Projects', 'Runs', 'Settings']) {
       expect(text).toContain(label);
     }
   });

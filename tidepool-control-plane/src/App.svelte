@@ -18,6 +18,7 @@
   import Hosts from './routes/Hosts.svelte';
   import NotFound from './routes/NotFound.svelte';
   import Overview from './routes/Overview.svelte';
+  import Projects from './routes/projects/ProjectsPage.svelte';
   import Runs from './routes/Runs.svelte';
   import Settings from './routes/Settings.svelte';
   import Setup from './routes/Setup.svelte';
@@ -166,6 +167,12 @@
               />
             {:else if current.found && current.route.id === 'connections'}
               <Connections
+                pool={pool}
+                token={session?.token ?? null}
+                role={session?.user.role ?? null}
+              />
+            {:else if current.found && current.route.id === 'projects'}
+              <Projects
                 pool={pool}
                 token={session?.token ?? null}
                 role={session?.user.role ?? null}

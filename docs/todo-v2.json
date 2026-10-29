@@ -341,7 +341,7 @@
         {
           "id": "2.1.5",
           "title": "Projects and the configuration editor",
-          "status": "pending",
+          "status": "done",
           "goal": "The projects page and the configuration editor: the authored file bundle for a project, editable as files, with validation on save through the same endpoint the pool uses, the named field errors surfaced against the offending line, the revision history with a diff between revisions, and which revision is active. Storing the exact authored files is the point, so the editor is a text editor over real files, never a form that regenerates a normalized document.",
           "touches": [
             "tidepool-control-plane/src/routes/projects/",
@@ -359,11 +359,12 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the control plane projects and configuration editor",
+          "changelog": "Projects and the configuration editor",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.4"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:34:40Z"
         },
         {
           "id": "2.1.6",
@@ -873,7 +874,8 @@
           "TypeScript SDK",
           "Rust SDK",
           "Python SDK",
-          "tidepool CLI"
+          "tidepool CLI",
+          "Projects and the configuration editor"
         ]
       }
     }
