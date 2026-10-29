@@ -59,6 +59,18 @@ mod notify;
 #[path = "../src/host_entry.rs"]
 mod host_entry;
 
+// The main window signs in and enrols through the host module, so the test
+// binary mounts it the same way the app binary does.
+#[path = "../src/host/client.rs"]
+pub mod host_client;
+#[path = "../src/host/enroll.rs"]
+pub mod host_enroll;
+
+mod host {
+    pub use crate::host_client as client;
+    pub use crate::host_enroll as enroll;
+}
+
 use gpui::{AppContext, TestAppContext};
 use tray_icon::TrayIcon;
 
