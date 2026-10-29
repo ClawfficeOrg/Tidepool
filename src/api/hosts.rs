@@ -13,7 +13,7 @@
 
 use crate::api::problem::{Problem, ProblemCode};
 use crate::entities::host::HostView;
-use crate::entities::host_capability::AgentCapability;
+use crate::entities::host_capability::{AgentCapability, AgentSelection};
 use crate::entities::host_execution::HostExecutionView;
 use crate::middleware::auth::OperatorAuth;
 use crate::services::api_keys::{AuditActor, AuditEntry};
@@ -446,6 +446,13 @@ pub struct CreateExecutionRequest {
     /// Prompt text.
     #[validate(length(min = 1, max = 1_000_000))]
     pub prompt: String,
+    /// Optional agent selection, checked against the host's capability report
+    /// and sent in `create_agent`.
+    #[serde(default)]
+    pub agent: Option<AgentSelection>,
+    /// Optional project name sent in `create_agent`; never a path.
+    #[serde(default)]
+    pub project: Option<String>,
 }
 
 /// Create/replay response.
@@ -475,12 +482,30 @@ async fn create_execution(
         return validation_error(&req, &e.to_string());
     }
 
-    match protocol_svc::create_execution(
+    let host_id = path.into_inner();
+    if let Some(agent) = &body.agent
+        && let Err(e) = capability_svc::validate_agent_for_host(
+            pool.get_ref(),
+            auth.organization_id(),
+            &host_id,
+            agent,
+        )
+        .await
+    {
+        return map_capability_error(e, &req);
+    }
+    let options = protocol_svc::CreateAgentOptions {
+        agent: body.agent.clone(),
+        project: body.project.clone(),
+    };
+
+    match protocol_svc::create_execution_with(
         pool.get_ref(),
         auth.organization_id(),
-        &path.into_inner(),
+        &host_id,
         &body.execution_id,
         &body.prompt,
+        &options,
     )
     .await
     {

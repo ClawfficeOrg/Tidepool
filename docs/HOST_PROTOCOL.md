@@ -90,6 +90,29 @@ answer a repeat of the same `executionId` with the existing execution's state
 (including completion) and MUST NOT run the prompt twice. The pool MAY resend
 after a lost response, a reconnect, or a process restart.
 
+Two optional fields may follow. Each is omitted when the pool has nothing to
+send, so a frame without them is the frame above, and a host that ignores
+unknown keys keeps working:
+
+```json
+{"v": 1, "type": "create_agent", "executionId": "<stable id>", "prompt": "<text>",
+ "agent": {"provider": "anthropic", "model": "claude", "execution_mode": "default",
+           "thinking_option": "high"},
+ "project": "<name>"}
+```
+
+- `agent` is the selection the pool asks for, in the shape of a capability
+  report entry without `options`; `thinking_option` may be absent. The
+  operator route checks it against the host's last report before sending.
+- `project` is a name of 1-128 ASCII letters, digits, `.`, `_` or `-` that does
+  not start with `.`. The pool refuses anything else.
+
+Both are requests, not commands. The host maps `agent` through its own
+allowlist and resolves `project` against its own list of projects; it MUST NOT
+treat either as a filesystem path or a command line. It refuses anything it
+will not run with `execution_completed` and `status: "failed"`. The pool does not store the options, and
+run dispatch and its replays do not send them yet.
+
 ### Host → pool: execution_started
 
 ```json

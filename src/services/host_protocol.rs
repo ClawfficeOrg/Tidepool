@@ -13,11 +13,13 @@
 //!
 //! See `docs/HOST_PROTOCOL.md` for the complete frame catalog.
 
+use crate::entities::host_capability::AgentSelection;
 use crate::entities::host_execution::{ExecutionStatus, HostExecution, HostExecutionView};
 use crate::services::host_presence::{self, HostPresenceError};
 use crate::sockets::host_ws::HostWs;
 use actix::{Addr, Message};
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::MySqlPool;
 use std::collections::HashMap;
@@ -87,14 +89,71 @@ pub fn send_frame(host_public_id: &str, frame: Value) -> bool {
     true
 }
 
+/// Optional dispatch hints carried in `create_agent`.
+///
+/// Both fields are omitted from the frame when absent, so a dispatch without
+/// them sends exactly the original v1 frame. A host maps `agent` through its
+/// own allowlist and treats `project` as a name to look up, never as a path.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateAgentOptions {
+    /// The agent the pool asks for (provider, model, execution mode and
+    /// thinking option), as validated against the host's capability report.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<AgentSelection>,
+    /// Project name the host resolves locally.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+}
+
+/// Longest accepted project name.
+pub const MAX_PROJECT_NAME_LEN: usize = 128;
+
+/// Validate a project name sent in `create_agent`.
+///
+/// A name is 1-128 characters of ASCII letters, digits, `.`, `_` and `-`,
+/// and does not start with `.`. Separators, `..` and absolute paths are
+/// therefore refused before they reach a host.
+pub fn validate_project_name(name: &str) -> Result<(), HostProtocolError> {
+    let valid = !name.is_empty()
+        && name.len() <= MAX_PROJECT_NAME_LEN
+        && !name.starts_with('.')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
+    if valid {
+        Ok(())
+    } else {
+        Err(HostProtocolError::Invalid(
+            "project must be a name of 1-128 letters, digits, '.', '_' or '-', not starting with '.'"
+                .into(),
+        ))
+    }
+}
+
 /// Build a `create_agent` frame.
 pub fn create_agent_frame(execution_id: &str, prompt: &str) -> Value {
-    json!({
+    create_agent_frame_with(execution_id, prompt, &CreateAgentOptions::default())
+}
+
+/// Build a `create_agent` frame with optional agent selection and project.
+pub fn create_agent_frame_with(
+    execution_id: &str,
+    prompt: &str,
+    options: &CreateAgentOptions,
+) -> Value {
+    let mut frame = json!({
         "v": PROTOCOL_VERSION,
         "type": "create_agent",
         "executionId": execution_id,
         "prompt": prompt,
-    })
+    });
+    if let Some(agent) = &options.agent {
+        frame["agent"] = json!(agent);
+    }
+    if let Some(project) = &options.project {
+        frame["project"] = json!(project);
+    }
+    frame
 }
 
 /// Build an `interrupt_execution` frame.
@@ -119,6 +178,32 @@ pub async fn create_execution(
     execution_id: &str,
     prompt: &str,
 ) -> Result<(HostExecutionView, bool), HostProtocolError> {
+    create_execution_with(
+        pool,
+        organization_id,
+        host_public_id,
+        execution_id,
+        prompt,
+        &CreateAgentOptions::default(),
+    )
+    .await
+}
+
+/// [`create_execution`] with optional agent selection and project name.
+///
+/// The options travel in the frame only; they are not stored, so a later
+/// replay sends whatever options that call passes.
+pub async fn create_execution_with(
+    pool: &MySqlPool,
+    organization_id: u64,
+    host_public_id: &str,
+    execution_id: &str,
+    prompt: &str,
+    options: &CreateAgentOptions,
+) -> Result<(HostExecutionView, bool), HostProtocolError> {
+    if let Some(project) = &options.project {
+        validate_project_name(project)?;
+    }
     if execution_id.trim().is_empty() || execution_id.len() > 64 {
         return Err(HostProtocolError::Invalid(
             "executionId must be 1-64 characters".into(),
@@ -165,7 +250,10 @@ pub async fn create_execution(
         let _created = result.rows_affected() == 1;
     }
 
-    if !send_frame(&host.public_id, create_agent_frame(execution_id, prompt)) {
+    if !send_frame(
+        &host.public_id,
+        create_agent_frame_with(execution_id, prompt, options),
+    ) {
         return Err(HostProtocolError::SocketGone);
     }
 
@@ -359,6 +447,115 @@ mod tests {
 
         // A replay uses the same frame and execution id.
         assert_eq!(frame, create_agent_frame("exec-1", "do the thing"));
+    }
+
+    fn selection() -> AgentSelection {
+        AgentSelection {
+            provider: "anthropic".into(),
+            model: "claude".into(),
+            execution_mode: "default".into(),
+            thinking_option: Some("high".into()),
+        }
+    }
+
+    #[test]
+    fn create_frame_without_options_is_the_original_v1_frame() {
+        let frame = create_agent_frame("exec-1", "do the thing");
+        let keys: Vec<&str> = frame
+            .as_object()
+            .expect("object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys.len(), 4);
+        for key in ["v", "type", "executionId", "prompt"] {
+            assert!(keys.contains(&key), "missing {key}");
+        }
+        assert_eq!(
+            frame,
+            create_agent_frame_with("exec-1", "do the thing", &CreateAgentOptions::default())
+        );
+    }
+
+    #[test]
+    fn create_frame_carries_agent_selection_and_project() {
+        let options = CreateAgentOptions {
+            agent: Some(selection()),
+            project: Some("tidepool".into()),
+        };
+        let frame = create_agent_frame_with("exec-1", "do the thing", &options);
+        assert_eq!(frame["v"], 1);
+        assert_eq!(frame["type"], "create_agent");
+        assert_eq!(frame["executionId"], "exec-1");
+        assert_eq!(frame["prompt"], "do the thing");
+        assert_eq!(
+            frame["agent"],
+            json!({
+                "provider": "anthropic",
+                "model": "claude",
+                "execution_mode": "default",
+                "thinking_option": "high"
+            })
+        );
+        assert_eq!(frame["project"], "tidepool");
+
+        // A host reads the options back from the frame.
+        let parsed: CreateAgentOptions = serde_json::from_value(frame).expect("parse");
+        assert_eq!(parsed, options);
+    }
+
+    #[test]
+    fn create_frame_may_carry_only_one_option() {
+        let options = CreateAgentOptions {
+            agent: None,
+            project: Some("tidepool".into()),
+        };
+        let frame = create_agent_frame_with("exec-1", "p", &options);
+        assert!(frame.get("agent").is_none());
+        assert_eq!(frame["project"], "tidepool");
+    }
+
+    #[test]
+    fn a_frame_without_options_parses_with_none() {
+        // Backwards compatibility: a v1 frame from before the options existed.
+        let legacy = json!({
+            "v": 1,
+            "type": "create_agent",
+            "executionId": "exec-1",
+            "prompt": "do the thing"
+        });
+        let parsed: CreateAgentOptions = serde_json::from_value(legacy).expect("parse");
+        assert_eq!(parsed, CreateAgentOptions::default());
+
+        // A selection without a thinking option still parses.
+        let partial = json!({
+            "agent": {"provider": "openai", "model": "gpt", "execution_mode": "plan"}
+        });
+        let parsed: CreateAgentOptions = serde_json::from_value(partial).expect("parse");
+        assert_eq!(parsed.agent.expect("agent").thinking_option, None);
+    }
+
+    #[test]
+    fn project_names_refuse_paths() {
+        for ok in ["tidepool", "Zoid", "my_project-2", "a.b"] {
+            assert!(validate_project_name(ok).is_ok(), "{ok}");
+        }
+        let long = "a".repeat(MAX_PROJECT_NAME_LEN + 1);
+        for bad in [
+            "",
+            ".",
+            "..",
+            ".hidden",
+            "a/b",
+            "../etc",
+            "/abs/path",
+            "C:\\x",
+            "a b",
+            "na\0me",
+            long.as_str(),
+        ] {
+            assert!(validate_project_name(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]

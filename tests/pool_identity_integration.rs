@@ -2054,6 +2054,142 @@ async fn create_execution_refuses_a_host_without_the_execution_grant() {
         .expect("disconnect");
 }
 
+// ── create_agent agent selection and project ──────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn create_execution_checks_the_optional_agent_and_project() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "selection-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register");
+    tidepool::services::host_capability::grant_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        AuditActor::System,
+    )
+    .await
+    .expect("grant");
+    tidepool::services::host_capability::report_capabilities(
+        &pool,
+        organization_id,
+        &host.public_id,
+        vec![tidepool::entities::host_capability::AgentCapability {
+            provider: "anthropic".into(),
+            model: "claude".into(),
+            execution_mode: "default".into(),
+            thinking_option: None,
+            options: None,
+        }],
+    )
+    .await
+    .expect("report");
+    host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connect");
+
+    let create = |body: Value| {
+        test::TestRequest::post()
+            .uri(&format!("/v1/hosts/{}/executions", host.public_id))
+            .insert_header(("Authorization", format!("Bearer {owner_token}")))
+            .set_json(body)
+            .to_request()
+    };
+
+    // A model the host did not report is refused with the field named.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-bad-model",
+            "prompt": "hello",
+            "agent": {"provider": "anthropic", "model": "missing", "execution_mode": "default"}
+        })),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["detail"], "model: host cannot run 'missing'");
+
+    // A project that looks like a path is refused before anything is stored.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-path",
+            "prompt": "hello",
+            "project": "../etc"
+        })),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(
+        tidepool::services::host_protocol::find_execution(&pool, "exec-sel-path")
+            .await
+            .expect("find")
+            .is_none()
+    );
+
+    // A valid selection and project pass every check; with no socket
+    // registered in this test the intent is stored and the socket is gone.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-ok",
+            "prompt": "hello",
+            "agent": {"provider": "anthropic", "model": "claude", "execution_mode": "default"},
+            "project": "tidepool"
+        })),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert!(
+        tidepool::services::host_protocol::find_execution(&pool, "exec-sel-ok")
+            .await
+            .expect("find")
+            .is_some()
+    );
+
+    // The request still refuses unknown fields.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-unknown",
+            "prompt": "hello",
+            "harness_path": "/usr/bin/claude"
+        })),
+    )
+    .await;
+    assert!(resp.status().is_client_error());
+
+    host_presence::host_disconnected(&pool, &host.public_id)
+        .await
+        .expect("disconnect");
+}
+
 // ── operator interrupt route ──────────────────────────────────────────────
 
 #[actix_web::test]
