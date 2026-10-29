@@ -29,6 +29,11 @@
   import { presentProblem, type PoolProblem } from '$lib/api/problem';
   import { isPoolConfigured, type PoolConfig } from '$lib/api/pool';
   import { ROUTES, resolveRoute } from '$lib/router';
+  import {
+    DEFAULT_PREFERENCES,
+    densityStyle,
+    type ControlPlanePreferences,
+  } from './routes/settings/preferences';
   import type { AuthState, LoginInput, SetupInput } from './auth/types';
 
   interface Props {
@@ -42,10 +47,22 @@
     problem?: PoolProblem | null;
     /** Who is signed in, or what the next step is. Null means no auth gate. */
     auth?: AuthState | null;
+    /** The settings in effect: clock, spacing and saved pool URL. */
+    preferences?: ControlPlanePreferences;
+    /** True when the pool itself served this page. */
+    servedByPool?: boolean;
+    /** A rejected pool URL, in words. */
+    poolUrlProblem?: string | null;
+    /** A saved pool URL notice. */
+    poolUrlNotice?: string | null;
     /** Called when a palette is chosen. */
     onPaletteSelect?: (name: PaletteName) => void;
     /** Called when a person asks to set the pool URL. */
     onConfigurePool?: () => void;
+    /** Called with a new pool URL from the settings page. */
+    onSavePoolUrl?: (url: string) => void;
+    /** Called with a non-palette preference change. */
+    onPreferenceChange?: (patch: Partial<ControlPlanePreferences>) => void;
     /** Called with credentials from the sign-in form. */
     onSignIn?: (input: LoginInput) => void | Promise<void>;
     /** Called with the first-run setup form. */
@@ -62,8 +79,14 @@
     pool = { baseUrl: null },
     problem = null,
     auth = null,
+    preferences = DEFAULT_PREFERENCES,
+    servedByPool = false,
+    poolUrlProblem = null,
+    poolUrlNotice = null,
     onPaletteSelect,
     onConfigurePool,
+    onSavePoolUrl,
+    onPreferenceChange,
     onSignIn,
     onSetup,
     onSignOut,
@@ -75,6 +98,9 @@
   const scheme = $derived(PALETTES[palette].scheme);
   const session = $derived(auth?.status === 'signed-in' ? auth.session : null);
   const gate = $derived(auth !== null && auth.status !== 'signed-in' ? auth : null);
+  const density = $derived(preferences.density);
+  const spacing = $derived(densityStyle(density));
+  const style = $derived(spacing === '' ? themeStyle(palette) : `${themeStyle(palette)}; ${spacing}`);
 </script>
 
 <svelte:head>
@@ -85,8 +111,11 @@
   class="tp-app"
   data-palette={palette}
   data-scheme={scheme}
+  data-density={density}
+  data-time-format={preferences.timeFormat}
+  data-time-zone={preferences.timeZone}
   data-pool={configured ? 'configured' : 'unconfigured'}
-  style={themeStyle(palette)}
+  style={style}
 >
   <a class="tp-skip-link" href="#main">Skip to content</a>
 
@@ -202,6 +231,14 @@
                 pool={pool}
                 token={session?.token ?? null}
                 role={session?.user.role ?? null}
+                {palette}
+                {preferences}
+                {servedByPool}
+                {poolUrlProblem}
+                {poolUrlNotice}
+                {onSavePoolUrl}
+                {onPaletteSelect}
+                {onPreferenceChange}
               />
             {:else}
               <NotFound path={current.path} />

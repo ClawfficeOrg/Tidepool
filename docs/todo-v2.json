@@ -481,7 +481,7 @@
         {
           "id": "2.1.10",
           "title": "Settings, palettes and self-host serving",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "The settings page: the pool URL, a palette picker across the five Clawffice palettes with Biolume default and the choice remembered, time and density preferences, and about and version. Plus the option to serve the built control plane from the pool itself, so a self-hosted pool can offer its own control plane on one origin with no CORS and no second deployment.",
           "touches": [
             "tidepool-control-plane/src/routes/settings/",
@@ -501,7 +501,9 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added control plane settings, palette picker and pool-served hosting",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T10:32:30Z",
+          "human_look": "The palette choice survives a reload and renders every page (browser reload not observed; storage round-trip and all-route render covered by tests)"
         }
       ]
     },

@@ -9,15 +9,19 @@
    *
    * Everything the page decides lives in `$lib/keys`, including the two rules
    * this task is judged on: the last owner cannot be removed or demoted, and a
-   * key's secret is shown once. The page also keeps the settings placeholder
-   * for the pool URL and preferences, which arrive with task 2.1.10.
+   * key's secret is shown once. The preferences above the members panel — pool
+   * URL, palette, clock, density and version — live in `./preferences` and are
+   * remembered in the browser, so they need no rebuild to change.
    */
   import ProblemDetails from '../../components/ProblemDetails.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
   import ApiKeysPanel from './ApiKeysPanel.svelte';
   import MembersPanel from './MembersPanel.svelte';
+  import PreferencesPanel from './PreferencesPanel.svelte';
   import type { Role } from '../../auth/types';
   import { isPoolConfigured, poolClient, type PoolConfig } from '$lib/api/pool';
+  import type { PaletteName } from '$lib/design/tokens';
+  import { DEFAULT_PREFERENCES, type ControlPlanePreferences } from './preferences';
   import {
     MembersKeysController,
     canLoadMembersKeys,
@@ -41,6 +45,22 @@
     initial?: MembersKeysState;
     /** Transport override, for tests; otherwise built from the pool and token. */
     transport?: MembersKeysTransport | null;
+    /** The palette currently rendered by the shell. */
+    palette?: PaletteName;
+    /** The preferences currently in effect, for the panel. */
+    preferences?: ControlPlanePreferences;
+    /** True when the pool itself served this page. */
+    servedByPool?: boolean;
+    /** Called with a new pool URL. */
+    onSavePoolUrl?: (url: string) => void;
+    /** Called with a palette choice. */
+    onPaletteSelect?: (name: PaletteName) => void;
+    /** Called with any other preference change. */
+    onPreferenceChange?: (patch: Partial<ControlPlanePreferences>) => void;
+    /** A rejected pool URL, in words. */
+    poolUrlProblem?: string | null;
+    /** A saved pool URL notice. */
+    poolUrlNotice?: string | null;
   }
 
   let {
@@ -49,6 +69,14 @@
     role = null,
     initial = emptyMembersKeysState(),
     transport = null,
+    palette = DEFAULT_PREFERENCES.palette,
+    preferences = DEFAULT_PREFERENCES,
+    servedByPool = false,
+    onSavePoolUrl,
+    onPaletteSelect,
+    onPreferenceChange,
+    poolUrlProblem = null,
+    poolUrlNotice = null,
   }: Props = $props();
 
   let view = $state<MembersKeysState>(initial);
@@ -150,9 +178,20 @@
   <h1 class="tp-page__title" id="tp-settings-title">Settings</h1>
   <p class="tp-page__lede">
     The pool URL, the palette, time and density preferences, and the version of
-    this control plane. Members and API keys for this pool are managed below;
-    the rest of the settings arrive with task 2.1.10.
+    this control plane. They are remembered in this browser and apply at once.
+    Members and API keys for the pool are managed below.
   </p>
+
+  <PreferencesPanel
+    preferences={{ ...preferences, palette }}
+    effectivePoolUrl={isPoolConfigured(pool) ? pool.baseUrl : null}
+    {servedByPool}
+    {onSavePoolUrl}
+    {onPaletteSelect}
+    {onPreferenceChange}
+    {poolUrlProblem}
+    {poolUrlNotice}
+  />
 
   {#if !configured}
     <p class="tp-page__state" data-settings-state="unconfigured">

@@ -28,3 +28,5 @@
 {"at": "2026-10-29T10:10:35Z", "event": "done", "task": "2.1.8", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Members and API keys", "filed_under": "2.3"}
 {"at": "2026-10-29T10:10:36Z", "event": "start", "task": "2.1.9", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T18:10:36Z"}
 {"at": "2026-10-29T10:22:41Z", "event": "done", "task": "2.1.9", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Chatrooms in the browser", "filed_under": "2.3"}
+{"at": "2026-10-29T10:22:41Z", "event": "start", "task": "2.1.10", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T18:22:41Z"}
+{"at": "2026-10-29T10:32:30Z", "event": "look_defer", "task": "2.1.10", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "The palette choice survives a reload and renders every page (browser reload not observed; storage round-trip and all-route render covered by tests)"}

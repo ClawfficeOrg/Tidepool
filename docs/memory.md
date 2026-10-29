@@ -2205,6 +2205,49 @@ Everything else is inside `src/lib/rooms.ts` and `src/routes/rooms/`.
 
 ---
 
+## 2026-10-29 — Settings, palettes and pool-served hosting: the browser owns the preferences, the pool marks its own origin (task 2.1.10)
+
+**Decision: user preferences are browser storage, not build-time configuration.**
+The pool URL, palette, clock and density are read from `localStorage` and
+written on change, so pointing the app elsewhere or repainting it needs no
+rebuild and no redeploy. `preferences.ts` is the only place that knows the keys
+and the fallbacks: Biolume for the palette, 24-hour local comfortable for the
+rest, and an empty pool URL means "use what the deployment gave you".
+
+**Decision: the palette has one owner.** `Root` owns the theme store; the
+settings page receives the current palette and a handler rather than writing
+storage behind the shell's back. The choice is remembered under the same key the
+theme store already used, so reload and live switch cannot diverge. Density is
+applied by appending `--tp-space-*` overrides to the shell's inline token style,
+which is why compact spacing reaches every page without touching `app.css`.
+
+**Decision: the pool advertises itself to the app with a served marker, not a
+baked URL.** The static handler in `src/main.rs` injects
+`<meta name="tidepool-pool-origin" content="same-origin">` into the built
+`index.html` and serves every other byte unchanged. The app resolves its pool in
+this order: `VITE_POOL_URL`, then the saved URL, then — only with the marker —
+the origin it was opened from. Consequence: one build runs on the pool's origin
+with no CORS, the same build on a static host stays unconfigured rather than
+calling the static host's API, and an operator can still repoint a pool-served
+copy at another pool from Settings.
+
+**Decision: the pool's static route is a fallback, never a shadow.** Only
+requests no API route matched reach it, and it refuses the reserved first
+segments outright. Pages (`/`, extensionless paths) fall back to `index.html`
+because the router is hash-based; a missing file with an extension is a real
+404. Every resolved path is canonicalised and must stay inside the bundle, so a
+traversal or an escaping symlink cannot read the host. The directory must have
+an `index.html` or startup fails: an empty bundle is a misconfiguration, not a
+degraded mode.
+
+**Consequence: shell wiring is outside the owned paths.**
+`tidepool-control-plane/src/App.svelte`, `src/Root.svelte`, `src/main.ts` and
+`src/routes/Settings.svelte` gained the preference props, the density style and
+the pool-rebuild path; `docs/CHANGES.md` records the same. Everything decidable
+lives in `src/routes/settings/preferences.ts` with tests.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

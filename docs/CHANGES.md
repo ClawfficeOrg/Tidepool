@@ -2,6 +2,74 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane settings, palettes and pool-served hosting (task 2.1.10)
+
+### Added
+- `tidepool-control-plane/src/routes/settings/preferences.ts` — the settings
+  model, kept out of Svelte so every rule is testable without a browser:
+  - the pool URL, palette, 12/24-hour clock, local/UTC and comfortable/compact
+    density, all read from and written to browser storage;
+  - `readPreferences` / `savePreferences` restore the palette from the same key
+    the theme store uses, so a reload and the shell never disagree; an unknown
+    value falls back to Biolume and a blocked storage never leaves the app
+    unstyled or unconfigured;
+  - `applyPoolUrl` accepts an absolute `http`/`https` URL, refuses anything else
+    in words, and treats an empty value as "use the deployment's own value";
+  - `resolvePoolConfig` decides the base URL: a build-time `VITE_POOL_URL`
+    first, then the saved URL, then — only when the page carries the pool's
+    marker — the origin the page was opened from;
+  - `densityStyle` turns compact spacing into `--tp-space-*` overrides so the
+    shell applies it on every page without a stylesheet change, and
+    `formatTime` renders instants for the saved clock;
+  - the control plane version from `package.json` and the hub contract version
+    for the About block.
+- `tidepool-control-plane/src/routes/settings/PreferencesPanel.svelte` — the
+  pool URL form, the five-palette picker (Biolume default, marked), clock, time
+  zone, density, and About with both versions and whether the page was served
+  by the pool or a standalone deployment. It renders even with no pool, because
+  setting the URL is the first thing a fresh control plane needs.
+- `src/main.rs` — `TIDEPOOL_CONTROL_PLANE_DIR` serves a built control plane from
+  the pool's own origin as the default route: `index.html` for `/` and unknown
+  pages, assets byte for byte with their content type and immutable caching, a
+  `tidepool-pool-origin` marker injected before `</head>`, and no shadowing of
+  `/v1`, `/ws`, `/healthz`, `/metrics` or `/openapi`. Paths are resolved inside
+  the canonical bundle: `..`, empty segments and escaping symlinks are 404. A
+  directory without `index.html` refuses startup. Unset means API-only, exactly
+  as before.
+- `docs/SELF_HOSTING.md` — how to build and serve the control plane from the
+  pool, what each path answers, the compose override, and how the marker keeps
+  the standalone deployment unchanged.
+- Tests:
+  - preferences: defaults, all five palettes persisted and restored across a
+    fresh store (a reload), every route rendered in the restored palette, pool
+    URL save/refusal/clear, build-time and saved URL precedence, clock and
+    density round-trips, `formatTime`, and the panel's versions and states;
+  - `self-host.test.ts`: a loopback HTTP server serves a built bundle the way the
+    pool does, the test reads the marker and resolves the pool from the page
+    origin, then calls `/healthz` through the real TypeScript SDK on that
+    origin with no preflight; a standalone origin serving the same files is
+    byte-identical apart from the marker and stays unconfigured; a saved URL
+    moves the app to another pool at run time;
+  - `src/main.rs`: unit and service tests for index at `/`, asset bytes and
+    content types, SPA fallback, 404 for a missing asset, traversal refusal,
+    reserved API paths, marker injection (and no double injection), bundle
+    validation and path resolution. When `tidepool-control-plane/dist` has been
+    built, the suite also serves that real bundle through the handler and
+    compares the entry asset byte for byte with the file on disk.
+
+### Changed
+- `tidepool-control-plane/src/App.svelte`, `src/Root.svelte`, `src/main.ts` and
+  `src/routes/Settings.svelte` pass the preferences and palette handler through
+  the shell, apply density as inline token overrides, rebuild the auth
+  controller when the pool URL changes, and read the served-by-pool marker at
+  boot. These are outside the task's owned paths; without them the settings
+  page cannot change what the shell renders.
+
+### Notes
+- The palette choice is proven by tests as storage round-trip plus a render of
+  every route in that palette. Watching an actual browser reload repaint is the
+  one part left to a human.
+
 ## [Unreleased] — 2026-10-29 — Control plane chatrooms (task 2.1.9)
 
 ### Added
