@@ -369,7 +369,7 @@
         {
           "id": "2.1.6",
           "title": "Trigger editor with host-checked agent selection",
-          "status": "pending",
+          "status": "done",
           "goal": "Author a trigger as a form or as YAML, the two views staying in step. Choose the host and working directory first, then let the pool ask that host which providers, models, execution modes and thinking options it offers, and offer only those. Saving runs the same validation the pool runs and refuses an agent the host cannot run, naming the field. A value already authored that the host no longer reports is marked unavailable without being replaced, so the author chooses. An offline host explains itself and offers a retry, and the rest of the trigger stays editable.",
           "touches": [
             "tidepool-control-plane/src/routes/triggers/",
@@ -387,11 +387,12 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the control plane trigger editor with host-checked agents",
+          "changelog": "Trigger editor with host-checked agent selection",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.3"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:46:18Z"
         },
         {
           "id": "2.1.7",
@@ -875,7 +876,8 @@
           "Rust SDK",
           "Python SDK",
           "tidepool CLI",
-          "Projects and the configuration editor"
+          "Projects and the configuration editor",
+          "Trigger editor with host-checked agent selection"
         ]
       }
     }

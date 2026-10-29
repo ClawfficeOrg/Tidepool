@@ -2004,6 +2004,62 @@ active revision, which is what the history's compare control asks for.
 
 ---
 
+## 2026-10-29 — Trigger editor: one document, host-checked choices (task 2.1.6)
+
+**Decision: the document is canonical and YAML is a projection of it.** The
+editor keeps one `TriggerDocument`; a form edit rewrites it and regenerates the
+YAML, and a YAML edit is parsed and adopted only when it parses. The YAML
+reader is deliberately small and strict: it accepts the trigger's mapping,
+sequence and scalar shapes, refuses tabs, block scalars, inline mappings,
+duplicate keys and unknown keys, and reports the source line. A refusal leaves
+the last parsed document in place and the page refuses to switch to the form
+until the text is fixed, so the form never claims text it does not describe.
+The alternative — a form model that regenerates YAML on every keystroke and a
+YAML model that regenerates the form — lets the two drift, which the success
+criterion forbids.
+
+**Decision: availability is a comparison, never a rewrite.** A host's report is
+narrowed to the pool's `offered_providers`; the cascade offers those providers,
+their models, their modes and their thinking options. `selectionAvailability`
+compares the authored provider/model/mode/thinking to those lists and returns
+`available`, `unavailable`, `unset` or `unknown`. An unavailable value is kept
+in the document and in its select, labelled `(unavailable)`, and `preflightIssues`
+refuses the save at the contract field (`run.agent.model`) with the pool's own
+wording (`host 'swaygent' cannot run 'claude-2'`). No code path chooses a
+fallback: only the author or a host that reports the value again changes it.
+With no report (loading, offline, unknown host) the state is `unknown`, not
+`unavailable`; the editor cannot claim what it has not heard.
+
+**Decision: save is the pool's validation twice.** `preflightIssues` mirrors
+the pool's structural rules, the `from_users` allowlist, the execution grant
+and the agent check, so a host that cannot run the authored agent is refused
+before a request leaves the browser. A preflight pass then calls
+`POST /v1/triggers/validate`; only `valid: true` reaches
+`POST /v1/triggers/install`. A refusal writes nothing, keeps the draft and its
+issues, and never moves a previously installed revision. A pool error is a
+failure state, not a silent success.
+
+**Decision: host and directory changes reload the choices, and stale answers
+lose.** Both `setHost` and `setDirectory` call `GET /v1/hosts/{id}/capabilities`;
+a monotonically increasing token means an earlier answer cannot overwrite a
+newer one when the author changes twice quickly. An offline host is explained
+in words and offered a retry; the rest of the trigger stays editable. A host
+the pool already lists as offline is not asked at all.
+
+**Consequence: the working directory is editor context, not document state.**
+`TriggerRun` is `{ host, agent }`; the contract has no directory field and
+denies unknown fields. The editor therefore keeps the directory in its own
+state (it is what a host is asked about, and changing it must reload), and
+does not write it into either view or the install body. Adding it to the
+contract would be a server task, not one this page can invent.
+
+**Consequence: route wiring is outside the owned paths.** The page is at
+`#/triggers` through edits to `src/lib/router.ts` and `src/App.svelte` (and the
+router test), plus the thin `src/routes/Triggers.svelte` wrapper. Without those
+the route cannot be reached.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

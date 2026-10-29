@@ -2,6 +2,59 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane trigger editor (task 2.1.6)
+
+### Added
+- `tidepool-control-plane/src/lib/triggers.ts` — the trigger editor's model,
+  kept out of Svelte so every rule is testable without a DOM or a pool:
+  - one canonical `TriggerDocument` with typed `TriggerEdit`s and
+    `applyTriggerEdit`, plus `triggerYaml` / `documentFromYaml`: a small
+    block-YAML reader and writer for exactly this document shape, with clear
+    line-numbered syntax errors and a refusal of unknown keys (the pool denies
+    unknown fields, so accepting them would make the two views describe
+    different documents);
+  - `agentOptionsFromReport`, `selectionAvailability` and
+    `unavailableAgentIssues`: the cascade narrows a host's report to the pool's
+    `offered_providers`, and an authored value the host no longer reports is
+    marked `unavailable` at its contract field (`run.agent.model`) and **kept**,
+    never silently replaced;
+  - `preflightIssues`: the local half of save validation, with the pool's own
+    field names and messages (shape, `from_users` allowlist, host execution
+    grant, and the agent check), so a host that cannot run the agent is refused
+    before a request leaves the browser;
+  - `TriggersController`: load projects and hosts, choose a host and working
+    directory (each reloads the capability report, with a request token so a
+    stale answer cannot overwrite a newer one), edit the form or YAML, retry an
+    offline host, then validate with `POST /v1/triggers/validate` and install
+    only a valid document with `POST /v1/triggers/install`; a refusal or call
+    failure installs nothing and keeps the draft.
+- `tidepool-control-plane/src/routes/triggers/` — the page:
+  - `TriggersPage.svelte` renders the project chooser, host source, form/YAML
+    switch, named issues, save state and the installed revision;
+  - `TriggerForm.svelte` renders the document, the host and directory, and the
+    provider → model → mode → thinking cascade; an authored unavailable value
+    stays in its select, labelled unavailable;
+  - `AgentSourcePanel.svelte` says whether the host is being asked, what it
+    reported, or why it could not answer — with a retry when it is offline;
+  - `YamlTriggerEditor.svelte` keeps the YAML text and states a parse failure
+    without letting the form claim the unparsed text;
+  - component tests for the availability rules, the no-silent-rewrite rule,
+    the named save refusal, the offline/retry state and form/YAML agreement,
+    and an SDK-driven end-to-end against a connected host (host and directory
+    reloads, install order, pool refusal) and an offline one (503, retry,
+    recovery, and a host already listed offline).
+
+### Changed
+- `src/lib/router.ts`, `src/lib/router.test.ts`, `src/App.svelte` and
+  `src/routes/Triggers.svelte` — route the page at `#/triggers`. Outside the
+  task's owned paths; the page cannot be reached without them.
+
+### Notes
+- The trigger contract (`TriggerRun`) stores a host and an agent, not a working
+  directory. The editor still chooses one because the goal asks for it and it
+  reloads the agent choices, but it is deliberately not written into the YAML
+  or the installed document, so both views remain the same trigger document.
+
 ## [Unreleased] — 2026-10-29 — Control plane projects and configuration editor (task 2.1.5)
 
 ### Added

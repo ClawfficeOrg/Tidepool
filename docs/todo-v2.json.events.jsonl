@@ -20,3 +20,5 @@
 {"at": "2026-10-29T09:22:38Z", "event": "look_defer", "task": "2.1.4", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "needs_human_look", "note": "Changing the pool's public origin shows the callback URLs that must change with it"}
 {"at": "2026-10-29T09:22:39Z", "event": "start", "task": "2.1.5", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T17:22:39Z"}
 {"at": "2026-10-29T09:34:40Z", "event": "done", "task": "2.1.5", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Projects and the configuration editor", "filed_under": "2.3"}
+{"at": "2026-10-29T09:34:41Z", "event": "start", "task": "2.1.6", "owner": "tkrun-2026-10-29", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-10-29T17:34:41Z"}
+{"at": "2026-10-29T09:46:18Z", "event": "done", "task": "2.1.6", "owner": "tkrun-2026-10-29", "from": "in_progress", "to": "done", "changelog": "Trigger editor with host-checked agent selection", "filed_under": "2.3"}
