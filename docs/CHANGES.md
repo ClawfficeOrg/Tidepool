@@ -2,6 +2,62 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane runs and activity (task 2.1.7)
+
+### Added
+- `tidepool-control-plane/src/lib/runs.ts` — the activity page's model, kept
+  out of Svelte so every rule is testable without a DOM or a pool:
+  - `ActivityFilters` (`project`, `provider`, `trigger`, `status`, `kind`) and
+    `activityQuery`: only non-empty filters are sent, so "any" and "empty" never
+    become the same request;
+  - `filterActivityEntries` / `entryMatchesFilters`: the page's own guard on
+    every returned page. A missing project or provider never matches a filter,
+    so a union row the pool cannot attribute cannot appear under the chosen
+    project — even when the pool ignores the filter or a stale page arrives;
+  - `failureExplanation` and `FAILURE_SENTENCES`: stable codes become sentences
+    a person understands (`daemon_not_connected` says the host went offline),
+    while the code and the pool's remaining detail stay available; an unknown
+    code is kept, never hidden;
+  - `arrivalSentence`: created, continued (and steered), or restored, in words;
+  - `RunsController`: load projects and the feed, combine filters with a request
+    token that discards stale answers, page with `nextCursor`, dispatch a manual
+    run and select it, and follow a live detail on an injected timer until the
+    run is terminal; `runIsLive` also follows a succeeded run whose last step is
+    still running;
+  - `copyOutput`: copies a step's output exactly as the agent wrote it, with an
+    injectable clipboard writer and a false return (not a page failure) when the
+    browser refuses.
+- `tidepool-control-plane/src/routes/runs/` — the page:
+  - `RunsPage.svelte` renders the manual dispatch form, the combined filters,
+    the feed and the detail side by side, and applies the filter guard again at
+    render time;
+  - `ActivityFilters.svelte` offers project, provider, trigger, status and kind
+    and describes the active combination;
+  - `ActivityList.svelte` says what each receipt, run, step or execution is and
+    opens the run it belongs to;
+  - `RunDetail.svelte` shows the arrival sentence, the run facts, the first
+    step failure as a run-level sentence, and every step in order;
+  - `RunStep.svelte` shows a step's status, host, environment and timestamps,
+    its named failure as a sentence with the code beside it, and its output in
+    a `<pre>` with a copy control;
+  - component tests for the filter combination and project isolation, the
+    code-to-sentence mapping, verbatim output and copy, the live timer, the
+    arrival modes and the manual-input checks; an SDK-driven end-to-end that
+    dispatches a manual run and follows pending → running → succeeded, and
+    checks the filter reaches the request URL.
+
+### Changed
+- `src/routes/Runs.svelte` is now the thin wrapper over `./runs/RunsPage.svelte`,
+  and `src/App.svelte` passes the pool, session token and role to it. Both are
+  outside the task's owned paths; the page cannot be reached or authenticated
+  without them.
+
+### Notes
+- The activity API has no push channel for this view, so "live" is a bounded
+  poll of `GET /v1/activity/runs/{run}` while the run or any step is pending or
+  running. The timer is injected, which is what makes the behaviour testable
+  without a browser or a server.
+
 ## [Unreleased] — 2026-10-29 — Control plane trigger editor (task 2.1.6)
 
 ### Added

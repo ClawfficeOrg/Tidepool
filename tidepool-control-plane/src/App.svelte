@@ -185,7 +185,11 @@
                 role={session?.user.role ?? null}
               />
             {:else if current.found && current.route.id === 'runs'}
-              <Runs />
+              <Runs
+                pool={pool}
+                token={session?.token ?? null}
+                role={session?.user.role ?? null}
+              />
             {:else if current.found && current.route.id === 'settings'}
               <Settings />
             {:else}

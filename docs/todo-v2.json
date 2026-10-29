@@ -397,7 +397,7 @@
         {
           "id": "2.1.7",
           "title": "Runs and activity",
-          "status": "pending",
+          "status": "done",
           "goal": "The activity page and the run detail: what arrived, whether it matched a trigger, and what ran, filtered by project, provider, trigger and status. The run detail follows a running execution live, shows each step's status and output, says whether an arrival created, continued or restored an agent, and offers the operations the step permits. A run that failed because its host went offline says so in those words rather than as a generic error.",
           "touches": [
             "tidepool-control-plane/src/routes/runs/",
@@ -415,11 +415,12 @@
           ],
           "complexity": "High",
           "agent": "pro_dev_agent",
-          "changelog": "Added the control plane runs and activity views",
+          "changelog": "Runs and activity",
           "created_at": "2026-10-19T00:00:00Z",
           "requires_v1": [
             "1.4.7"
-          ]
+          ],
+          "updated_at": "2026-10-29T09:57:24Z"
         },
         {
           "id": "2.1.8",
@@ -877,7 +878,8 @@
           "Python SDK",
           "tidepool CLI",
           "Projects and the configuration editor",
-          "Trigger editor with host-checked agent selection"
+          "Trigger editor with host-checked agent selection",
+          "Runs and activity"
         ]
       }
     }

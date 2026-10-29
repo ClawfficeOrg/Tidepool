@@ -2060,6 +2060,53 @@ the route cannot be reached.
 
 ---
 
+## 2026-10-29 — Runs and activity: filter at the page, follow with a timer (task 2.1.7)
+
+**Decision: the page re-applies its filters to every returned page.** The hub
+already applies `project`, `provider`, `trigger`, `status` and `kind` to the
+whole union (`src/services/activity.rs`), but the success criterion is about
+what a person sees, so `runs.ts` also filters every page before it reaches the
+view and again when the page renders. A missing `project` or `provider` is a
+non-match, not a wildcard: an unattributable union row can never appear under a
+chosen project. The cost is a second, cheap pass over at most 25 rows; the
+benefit is that a stale response or a pool bug cannot leak another project's
+runs into the page.
+
+**Decision: "live" is a bounded poll, not a new stream.** The v1 contract has
+`GET /v1/activity/runs/{run}` and no activity push channel; the session relay is
+for chat, not run state. `RunsController` therefore reads the detail again on a
+`RunsScheduler` timer while `runIsLive` is true, which includes a run whose word
+is `succeeded` but whose last step is still `running`. A terminal detail stops
+the timer; a 404 stops it; a network blip keeps it while the last known detail
+was live. The timer is injected so tests fire the exact callback a browser
+would, with no real delay. If the hub later adds a run stream, only the
+controller's scheduling changes.
+
+**Decision: failure codes are a table, and the code is never dropped.** The
+pool stores stable codes with step failures (`daemon_not_connected: host 'x' is
+offline`, `execution_failed`, `invalid_output`, `step_deadline`). The page does
+not paraphrase the raw string and does not replace it: `FAILURE_SENTENCES`
+maps known codes to a sentence, the remaining detail stays underneath, and the
+code is rendered in a `<code>` element for a bug report. An unknown code still
+shows the pool's text and the code. `daemon_not_connected` is deliberately
+worded as "The host went offline…" rather than as a generic error, which is the
+criterion the runner flagged for human review.
+
+**Decision: output is rendered and copied verbatim.** `stepOutputText` returns
+the stored string unchanged; the component puts it in a `<pre>` (escaped by
+Svelte, never parsed as markdown or JSON) and the copy control writes the same
+string with no trim. The clipboard writer is injectable, so the copy path is
+tested exactly and a refused clipboard is reported beside the text instead of
+failing the page.
+
+**Consequence: routing and auth wiring are outside the owned paths.**
+`src/routes/Runs.svelte` became a thin wrapper and `src/App.svelte` now passes
+`pool`, `token` and `role`; without those the page could not load or gate the
+dispatch control. Everything else is inside `src/lib/runs.ts` and
+`src/routes/runs/`.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve
