@@ -141,7 +141,7 @@
         {
           "id": "2.0.4",
           "title": "Python SDK",
-          "status": "pending",
+          "status": "done",
           "goal": "sdk/python: package `tidepool-client` for the same contract, with an async and a sync client, typed models, and the same retry and error behaviour as the other two. Python is the shortest path for the existing agent tooling in the suite (TideTable, TKRun) to drive a pool, so it stays dependency-light and pip-installable.",
           "touches": [
             "sdk/python/",
@@ -159,8 +159,9 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "changelog": "Added the Python SDK",
-          "created_at": "2026-10-19T00:00:00Z"
+          "changelog": "Python SDK",
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T07:13:31Z"
         },
         {
           "id": "2.0.5",
@@ -859,7 +860,8 @@
         "changelog_entries": [
           "Machine-readable hub API contract",
           "TypeScript SDK",
-          "Rust SDK"
+          "Rust SDK",
+          "Python SDK"
         ]
       }
     }

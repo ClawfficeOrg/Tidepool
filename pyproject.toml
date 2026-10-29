@@ -1,0 +1,46 @@
+# Python packaging for the Tidepool SDK (task 2.0.4).
+#
+# The package source lives in `sdk/python/`; this file sits at the repository
+# root so `pip install .` and `python -m build` work from a clean checkout
+# without a second copy of the metadata. It has no runtime dependencies: the
+# sync and async clients are built on the standard library.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tidepool-client"
+version = "0.1.0"
+description = "Typed synchronous and asynchronous Python client for the Tidepool API v1"
+readme = "sdk/python/README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Clawffice" }]
+keywords = ["tidepool", "clawffice", "sdk", "openapi", "automation"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/clawffice/Tidepool"
+
+[tool.setuptools]
+package-dir = { "" = "sdk/python" }
+
+[tool.setuptools.packages.find]
+where = ["sdk/python"]
+include = ["tidepool_client*"]
+
+[tool.setuptools.package-data]
+tidepool_client = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["sdk/python/tests"]
+pythonpath = ["sdk/python"]
+addopts = "-q"

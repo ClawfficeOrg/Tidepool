@@ -1619,6 +1619,47 @@ same library again, not a second opinion, and it must be usable with no runtime.
 
 ---
 
+### 2026-10-29 — The Python SDK is stdlib-only, with one generated surface
+
+**Context:** task 2.0.4 adds the Python binding for the existing agent tooling
+(TideTable, TKRun). Those tools are dependency-light and often run in a bare
+interpreter; the SDK must be pip-installable from a wheel with no optional
+extra, and it must not become a third opinion about retries or errors.
+
+**Options considered:**
+- **`httpx` for both facades.** One transport and real async, but it becomes a
+  hard dependency and its retry/timeout policy is another thing to align with
+  the other SDKs. Rejected for the "no optional extra" requirement.
+- **`requests` + `aiohttp`.** Two dependencies, two APIs and a larger install
+  for a client that mostly lists hosts and dispatches runs. Rejected.
+- **A thread-pool wrapper as the async client.** No dependencies, but it is not
+  asynchronous under the hood and would mislead a caller that expects
+  concurrency. Rejected.
+- **Chosen: `http.client` for sync and `asyncio` streams for async.** Both
+  transports are in the standard library; only the socket implementation
+  differs. Request assembly, retry policy, refresh-once, problem parsing and
+  decoding are shared, so the two facades cannot drift. The generated modules
+  hold the route table, one dataclass per schema and one resource method per
+  route per facade; `sdk/python/scripts/generate.py --check` is the drift gate.
+
+**Consequences:**
+- The wheel has no `Requires-Dist` and no extras. The packaging test builds it
+  and imports it through `zipimport`, so the claim is checked, not asserted.
+- The async transport owns a small HTTP/1.1 reader (content-length and chunked
+  bodies). It deliberately does not implement HTTP/2 or compression: the pool
+  serves JSON over HTTP/1.1 and the other SDKs send no `Accept-Encoding` either.
+- Models are tolerant on the way in and exact on the way out: unknown response
+  members survive `to_dict`, absent optional members stay absent, and open-enum
+  values stay opaque strings. The model round-trip test runs over every schema.
+- The WebSocket is a typed handle plus frame parsing, not a socket driver, for
+  the same reason as the Rust async facade: a caller can use the library it
+  already has, and the client adds no second async stack.
+- Route coverage is a test, not a checklist: the recorded HTTP server answers
+  every contract route and fails on an unexpected method or path, on both
+  facades.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

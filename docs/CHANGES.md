@@ -2,6 +2,39 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Python SDK (task 2.0.4)
+
+### Added
+- `sdk/python/tidepool_client/` — `tidepool-client`, the Python binding of
+  `docs/api/openapi-v1.json` (API v1, contract 1.0.0): a synchronous client and
+  an asynchronous client over one route table, typed models for all 90 schemas,
+  ambient credentials (`Bearer`, `x-api-key`, `X-Host-Credential`),
+  refresh-once, bounded 429 retries that honour `Retry-After`, and
+  problem-details errors that preserve unknown codes.
+- `sdk/python/tidepool_client/_generated/{models,routes,resources}.py` —
+  generated artifacts: one dataclass per contract schema, the route table with
+  auth model, required scope and role, and one resource method per route for
+  each facade (83 operations).
+- `sdk/python/scripts/generate.py` — the generator. The committed contract is
+  its only input; the explicit `operationId → namespace.method` map fails on an
+  unmapped route, and `--check` compares the committed artifacts byte for byte.
+- `sdk/python/tidepool_client/{paging,stream,transport,problem,retry,model}.py` —
+  cursor iterators (sync and async) over `next`/`nextCursor`, the typed chatroom
+  stream handle with frame parsing, the stdlib HTTP/1.1 transports, and the
+  typed error and retry policies shared by both facades.
+- `sdk/python/examples/enroll_and_activity.py` — creates a host, mints an
+  enrolment token, enrols the host and reads the first activity page.
+- `sdk/python/tests/` — contract parity, model round-trips, every-route coverage
+  on both clients against a recorded HTTP server, retry/refresh/problem cases,
+  paging, stream frames, packaging and the example. The dev-stack checks are
+  opt-in via `TIDEPOOL_BASE_URL`.
+- `pyproject.toml` — PEP 621 metadata for `tidepool-client`; no runtime or
+  optional dependency, source under `sdk/python/`, wheel-importable.
+
+### Changed
+- Nothing outside the Python SDK and the root packaging file; the Rust and
+  TypeScript SDKs are untouched.
+
 ## [Unreleased] — 2026-10-29 — Rust SDK (task 2.0.3)
 
 ### Added
