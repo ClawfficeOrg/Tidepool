@@ -2,6 +2,55 @@
 
 # CHANGES.md
 
+## [Unreleased] — 2026-10-29 — Control plane sign-in, setup and sessions (task 2.1.2)
+
+### Added
+- `tidepool-control-plane/src/auth/` — the browser session layer, kept out of
+  Svelte so the whole lifecycle is testable without a DOM:
+  - `gateway.ts` calls `GET /v1/setup/status`, `POST /v1/setup`,
+    `POST /v1/pool/login`, `GET /v1/pool/me`, and the sign-out route, with
+    problem-details errors normalised for the shell.
+  - `session.ts` remembers the token, operator and lifetime in web storage,
+    rejects an expired or malformed record, and never throws because storage is
+    blocked or full.
+  - `controller.ts` walks first run (setup, then sign-in), restores and verifies
+    a session on reload, returns an expired or rejected session to sign-in, and
+    signs out through the pool before forgetting the token locally.
+  - `roles.ts` maps each control to the contract operation behind it. Allowed
+    controls are offered; a control the role cannot use is absent and listed
+    with its reason. A test cross-checks every mapping against the generated
+    SDK route table.
+- `src/routes/SignIn.svelte`, `Setup.svelte`, `AuthLoading.svelte` — the gate
+  pages. Setup validates the same twelve-character floor the pool applies and
+  ends signed in; failures render `ProblemDetails` with their request id.
+- `src/auth/SessionBar.svelte` — the signed-in person, role and organization,
+  and the sign-out control.
+- `src/auth/RolePanel.svelte` — "what this role can do", with prohibited
+  controls hidden behind a reason rather than rendered as buttons.
+- Tests: unit tests for the role mapping and session storage, controller tests
+  for setup, reload, expiry, revocation and sign-out, and an end-to-end test
+  that runs setup → sign-in → reload → sign-out over a local HTTP pool and
+  proves the old token is rejected afterwards.
+
+### Changed
+- `src/App.svelte` — the shell owns the auth gate when an `auth` state is
+  supplied; signed-in sessions add the session bar and pass the role to the
+  overview. With no auth state the 2.1.1 behaviour is unchanged.
+- `src/Root.svelte` — owns the `AuthController`, restores the session on mount,
+  and routes the sign-in, setup and sign-out actions to it.
+- `src/routes/Overview.svelte` — renders the role panel for a signed-in person.
+- `src/main.ts` — passes the same web storage to the session layer.
+- `src/app.css` — two layout classes for the header tools and a gated (no-nav)
+  shell.
+
+### Notes
+- The hub contract has no logout route. The control plane calls
+  `POST /v1/pool/logout` (the companion of `/v1/pool/login`) and reports a
+  missing route as `session_revocation_unavailable`; it still drops the local
+  token. Sign-out is server-side once the pool implements that route. This is
+  the one success criterion that needs the pool side, and it is recorded in
+  `docs/memory.md`.
+
 ## [Unreleased] — 2026-10-29 — Control plane scaffold and design tokens (task 2.1.1)
 
 ### Added

@@ -107,6 +107,14 @@ a:hover {
   background: var(--tp-surface);
 }
 
+.tp-header__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--tp-space-2);
+}
+
 .tp-brand {
   display: flex;
   align-items: center;
@@ -143,6 +151,11 @@ a:hover {
   gap: var(--tp-space-5);
   padding: var(--tp-space-5);
   align-items: start;
+}
+
+/* A sign-in or setup page has no navigation beside it. */
+.tp-shell[data-gated='true'] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (max-width: 52rem) {

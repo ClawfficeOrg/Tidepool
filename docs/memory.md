@@ -1801,6 +1801,51 @@ build is worse than one with a stale-but-labelled copy of the tokens.
 
 ---
 
+## 2026-10-29 — Control plane sessions and role gating (task 2.1.2)
+
+**Decision: the browser session is the pool JWT, remembered in web storage with
+the lifetime the pool reported.** `AuthSession` stores the token, its
+`expiresAt` instant, the operator and (once `/v1/pool/me` answers) the
+organization. A reload reads the record, rejects it locally when the lifetime
+has passed, and otherwise verifies it with `GET /v1/pool/me`; a 401/403 clears
+the record and returns to sign-in, while a network failure keeps the remembered
+session rather than throwing a person out over a blip. The controller is
+DOM-free and takes the gateway, storage and clock by injection, which is why
+the lifecycle is tested headlessly.
+
+**Decision: controls are gated from the contract, not from a hand-written role
+table.** Every `ControlSpec` names the hub operation it will call and records
+whether that operation mutates and whether it is owner-only. The unit test
+cross-checks every entry, for every role, against the generated SDK's
+`allows()`, so a contract change that narrows a route fails the mapping. A
+prohibited control is not rendered as a button; it appears in a closed
+disclosure with the reason (`owner-only` or `viewer is read-only`).
+
+**Decision: sign-out must be a server request, and the local token is dropped
+even when the request fails.** The controller asks the pool to end the session
+first, then clears storage. If the pool cannot confirm, the person is signed
+out locally and the failure is shown — never silently swallowed.
+
+**Open: the hub contract has no logout route.** The control plane calls
+`POST /v1/pool/logout` with the bearer token, the natural companion of
+`/v1/pool/login`. Against a pool without that route the call fails with
+`session_revocation_unavailable`, the local token is still cleared, and the UI
+says the pool could not confirm. Until a pool task adds the route (and a
+server-side denylist or session record), "sign-out invalidates the session
+server-side" cannot be guaranteed against a live pool; the end-to-end test
+proves the client half against a local pool that implements the route.
+
+**Consequences:**
+- Any future mutating view adds its control to `src/auth/roles.ts`; the
+  contract cross-check test then proves the gate matches the pool.
+- Storing the JWT in `localStorage` means an XSS can read it. The app has no
+  cookie-based session option yet; a pool-set HttpOnly cookie would be the
+  stronger shape and is a contract change, not a client-only one.
+- The session record is versioned (`v: 1`); changing its shape must bump the
+  version so an old record is discarded rather than half-read.
+
+---
+
 ## Open Questions / Assumptions
 
 These mirror the open questions in [`docs/todo.md`](todo.md). Resolve

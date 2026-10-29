@@ -257,7 +257,7 @@
         {
           "id": "2.1.2",
           "title": "Sign in, setup and sessions",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Browser sign-in against the pool, the first-run setup path when the pool has no operator yet, session handling that survives a reload, and a sign-out that actually ends the session. The UI reflects the signed-in member's role: a control the role cannot use is hidden with a reason rather than failing on submit.",
           "touches": [
             "tidepool-control-plane/src/auth/",
@@ -276,7 +276,9 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "changelog": "Added control plane sign-in, setup and sessions",
-          "created_at": "2026-10-19T00:00:00Z"
+          "created_at": "2026-10-19T00:00:00Z",
+          "updated_at": "2026-10-29T08:41:39Z",
+          "human_look": "sign-out invalidates the session server-side (client calls POST /v1/pool/logout and e2e proves it against a local pool, but the hub contract has no logout route yet)"
         },
         {
           "id": "2.1.3",

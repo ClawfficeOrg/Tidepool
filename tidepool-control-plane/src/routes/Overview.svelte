@@ -1,6 +1,19 @@
 <script lang="ts">
   /** The overview page. A placeholder until the pool views land. */
   import StatusBadge from '../components/StatusBadge.svelte';
+  import RolePanel from '../auth/RolePanel.svelte';
+  import type { Role } from '../auth/types';
+
+  interface Props {
+    /** The signed-in operator's role, when there is one. */
+    role?: Role | null;
+    /** The operator's display name. */
+    name?: string;
+    /** The organization name, when known. */
+    organization?: string | null;
+  }
+
+  let { role = null, name = '', organization = null }: Props = $props();
 </script>
 
 <section class="tp-page" aria-labelledby="tp-overview-title">
@@ -15,3 +28,7 @@
     <span>Hosts, runs and rooms appear once their views land.</span>
   </p>
 </section>
+
+{#if role}
+  <RolePanel {role} {name} {organization} />
+{/if}
