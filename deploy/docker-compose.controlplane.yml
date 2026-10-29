@@ -17,9 +17,6 @@ services:
     build:
       context: .
       dockerfile: tidepool-control-plane/Dockerfile
-      args:
-        # The pool's public origin, so the app knows where to sign in.
-        VITE_POOL_URL: "${TIDEPOOL_PUBLIC_ORIGIN:-}"
     image: tidepool-control-plane:local
     restart: unless-stopped
     networks:
