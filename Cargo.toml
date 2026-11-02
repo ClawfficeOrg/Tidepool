@@ -33,6 +33,7 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 validator = { version = "0.20", features = ["derive"] }
+ureq = { version = "2", features = ["json"] }
 
 [workspace]
 members = [".", "crates/tidepool-host-agent"]

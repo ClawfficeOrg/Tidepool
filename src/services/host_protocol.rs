@@ -11,6 +11,12 @@
 //! - The host sends `execution_started`, `execution_output` and
 //!   `execution_completed`; output is appended and completion is recorded.
 //!
+//! Version 2 (task 1.7.1) adds negotiation and typed `tkrun` jobs: the host
+//! sends `hello`, the pool answers `hello.ack` with the intersection, and jobs
+//! travel as `start_job`/`stop_job` frames. Jobs live in
+//! [`crate::services::tidetable_jobs`]; this module owns the frames and the
+//! per-socket feature set.
+//!
 //! See `docs/HOST_PROTOCOL.md` for the complete frame catalog.
 
 use crate::entities::host_execution::{ExecutionStatus, HostExecution, HostExecutionView};
@@ -24,8 +30,20 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use thiserror::Error;
 
-/// Protocol version carried in every frame.
+/// Protocol version carried in every v1 frame.
 pub const PROTOCOL_VERSION: u32 = 1;
+
+/// Protocol version for negotiated v2 frames (typed jobs).
+pub const PROTOCOL_VERSION_V2: u32 = 2;
+
+/// Versions this pool speaks, in preference order.
+pub const SUPPORTED_VERSIONS: [u32; 2] = [PROTOCOL_VERSION, PROTOCOL_VERSION_V2];
+
+/// Features this pool offers to a v2 host.
+pub const SUPPORTED_FEATURES: [&str; 1] = [JOBS_TKRUN_FEATURE];
+
+/// Feature name for typed `tkrun` jobs.
+pub const JOBS_TKRUN_FEATURE: &str = "jobs.tkrun";
 
 /// Frame the pool sends to start one execution.
 #[derive(Debug, Message)]
@@ -34,6 +52,10 @@ pub struct SendFrame(pub String);
 
 /// Registry of live host sockets, keyed by the host's public id.
 static SOCKETS: Lazy<Mutex<HashMap<String, Addr<HostWs>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Features each live host negotiated on its current socket.
+static FEATURES: Lazy<Mutex<HashMap<String, Vec<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Errors for protocol/execution operations.
@@ -69,6 +91,88 @@ pub fn register_socket(host_public_id: &str, addr: Addr<HostWs>) {
 pub fn unregister_socket(host_public_id: &str) {
     let mut sockets = SOCKETS.lock().unwrap_or_else(|e| e.into_inner());
     sockets.remove(host_public_id);
+    drop(sockets);
+    let mut features = FEATURES.lock().unwrap_or_else(|e| e.into_inner());
+    features.remove(host_public_id);
+}
+
+/// Record the features negotiated on a host's current socket.
+pub fn set_features(host_public_id: &str, features: Vec<String>) {
+    let mut map = FEATURES.lock().unwrap_or_else(|e| e.into_inner());
+    map.insert(host_public_id.to_string(), features);
+}
+
+/// True when the host's current socket negotiated `feature`.
+pub fn has_feature(host_public_id: &str, feature: &str) -> bool {
+    let map = FEATURES.lock().unwrap_or_else(|e| e.into_inner());
+    map.get(host_public_id)
+        .is_some_and(|features| features.iter().any(|f| f == feature))
+}
+
+/// Pick the protocol version and feature set for a host's `hello`.
+///
+/// The version is the highest one both sides speak; features are the
+/// intersection with [`SUPPORTED_FEATURES`], in the host's order. A host that
+/// offers no common version is answered with version 1.
+pub fn negotiate(versions: &[u64], features: &[String]) -> (u32, Vec<String>) {
+    let version = SUPPORTED_VERSIONS
+        .iter()
+        .rev()
+        .copied()
+        .find(|supported| versions.contains(&u64::from(*supported)))
+        .unwrap_or(PROTOCOL_VERSION);
+    if version < PROTOCOL_VERSION_V2 {
+        // Features are a v2 concept; a v1 socket negotiates none.
+        return (version, Vec::new());
+    }
+    let agreed = features
+        .iter()
+        .filter(|feature| SUPPORTED_FEATURES.contains(&feature.as_str()))
+        .cloned()
+        .collect();
+    (version, agreed)
+}
+
+/// Build the `hello.ack` answer to a v2 `hello`.
+pub fn hello_ack_frame(version: u32, features: &[String]) -> Value {
+    json!({
+        "v": PROTOCOL_VERSION_V2,
+        "type": "hello.ack",
+        "version": version,
+        "features": features,
+    })
+}
+
+/// Build a v2 `start_job` frame.
+///
+/// The frame carries typed fields only: the slug, the server origin, the
+/// checkout name and bounded options. No command line, path or credential.
+pub fn start_job_frame(
+    job_id: &str,
+    slug: &str,
+    server: &str,
+    checkout: &str,
+    options: &Value,
+) -> Value {
+    json!({
+        "v": PROTOCOL_VERSION_V2,
+        "type": "start_job",
+        "jobId": job_id,
+        "kind": "tkrun",
+        "project": {"slug": slug, "server": server},
+        "checkout": checkout,
+        "options": options,
+    })
+}
+
+/// Build a v2 `stop_job` frame. `mode` is `stop` or `kill`.
+pub fn stop_job_frame(job_id: &str, mode: &str) -> Value {
+    json!({
+        "v": PROTOCOL_VERSION_V2,
+        "type": "stop_job",
+        "jobId": job_id,
+        "mode": mode,
+    })
 }
 
 /// Send one frame to a connected host. Returns false when there is no socket.
@@ -286,6 +390,51 @@ fn map_presence_error(error: HostPresenceError) -> HostProtocolError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn negotiation_picks_v2_and_intersects_features() {
+        let (version, features) = negotiate(
+            &[1, 2],
+            &["jobs.tkrun".to_string(), "agent.cwd".to_string()],
+        );
+        assert_eq!(version, 2);
+        assert_eq!(features, vec!["jobs.tkrun".to_string()]);
+    }
+
+    #[test]
+    fn host_without_v2_negotiates_no_features() {
+        let (version, features) = negotiate(&[1], &["jobs.tkrun".to_string()]);
+        assert_eq!(version, 1);
+        assert!(features.is_empty());
+    }
+
+    #[test]
+    fn start_job_frame_is_typed_and_has_no_secret_fields() {
+        let options = json!({"hours": 2, "minutes": 0, "tasks": [], "jobs": 1, "dryRun": true});
+        let frame = start_job_frame(
+            "job-1",
+            "chiton",
+            "https://tk.example",
+            "chiton-main",
+            &options,
+        );
+        assert_eq!(frame["v"], 2);
+        assert_eq!(frame["type"], "start_job");
+        assert_eq!(frame["kind"], "tkrun");
+        assert_eq!(frame["project"]["slug"], "chiton");
+        assert_eq!(frame["project"]["server"], "https://tk.example");
+        assert_eq!(frame["checkout"], "chiton-main");
+        assert!(frame.get("token").is_none());
+        assert!(frame.get("command").is_none());
+    }
+
+    #[test]
+    fn feature_registry_is_cleared_on_unregister() {
+        set_features("host-x", vec!["jobs.tkrun".to_string()]);
+        assert!(has_feature("host-x", "jobs.tkrun"));
+        unregister_socket("host-x");
+        assert!(!has_feature("host-x", "jobs.tkrun"));
+    }
 
     #[test]
     fn create_frame_is_versioned_and_stable() {

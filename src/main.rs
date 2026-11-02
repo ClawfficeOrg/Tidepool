@@ -146,6 +146,9 @@ async fn main() -> std::io::Result<()> {
             .configure(api::api_keys::config)
             .configure(api::hosts::config)
             .configure(api::connections::config)
+            // Registered before `projects`: its `/v1/projects` scope would answer
+            // `/v1/projects/{id}/tidetable` with 404 instead of falling through.
+            .configure(api::jobs::config)
             .configure(api::projects::config)
             .configure(api::triggers::config)
             .configure(api::manual_runs::config)

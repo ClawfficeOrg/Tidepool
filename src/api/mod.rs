@@ -11,6 +11,7 @@ pub mod feedback;
 pub mod game_settings;
 pub mod healthz;
 pub mod hosts;
+pub mod jobs;
 pub mod leaderboards;
 pub mod manual_runs;
 pub mod metrics;

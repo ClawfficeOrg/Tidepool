@@ -1,6 +1,15 @@
 # Playzoid-Server — Learnings
 
 Per-task learnings: what worked, what bit, what to do differently.
+
+- Route registration order matters in actix: a `projects` scope that captures
+  `/v1/projects/{id}` shadows a sibling `/v1/projects/{id}/tidetable` route and
+  returns 404. Register the more specific scope first.
+- Windows `cargo test` can fail with LNK1207 "incompatible PDB format" after a
+  toolchain change. Delete the stale `target/debug/deps/*.pdb` for that test
+  binary and rebuild; it is build output, not source.
+- Clippy `nonminimal_bool` fails on `src/services/connections/discord.rs:429`
+  on main. It is pre-existing and not part of the tidetable work.
 One `## X.Y.Z — Title` section per task, newest first. Keep entries short —
 bullets over prose. Read the last few sections before starting a similar task.
 

@@ -32,7 +32,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 /// Caller authenticated as either an API key or a member.
-enum HubAuth {
+pub(crate) enum HubAuth {
     /// API key.
     Key(ApiKeyAuth),
     /// Operator member.
@@ -41,10 +41,26 @@ enum HubAuth {
 
 impl HubAuth {
     /// Organization id both principals carry.
-    fn organization_id(&self) -> u64 {
+    pub(crate) fn organization_id(&self) -> u64 {
         match self {
             HubAuth::Key(auth) => auth.organization_id(),
             HubAuth::Member(auth) => auth.organization_id(),
+        }
+    }
+
+    /// Write access: a non-viewer member, or an API key with `scope`.
+    pub(crate) fn require_write(&self, scope: ApiKeyScope) -> Result<(), Error> {
+        match self {
+            HubAuth::Key(auth) => auth.require_scope(scope),
+            HubAuth::Member(auth) => auth.require_mutating(),
+        }
+    }
+
+    /// Read access: any member, or an API key with `scope`.
+    pub(crate) fn require_read(&self, scope: ApiKeyScope) -> Result<(), Error> {
+        match self {
+            HubAuth::Key(auth) => auth.require_scope(scope),
+            HubAuth::Member(_) => Ok(()),
         }
     }
 

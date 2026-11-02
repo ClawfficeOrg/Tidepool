@@ -2,7 +2,28 @@
 
 # CHANGES.md
 
-## [Unreleased] — 2026-10-22 — Makefile and per-proxy deploy layers
+## [Unreleased] — 2026-11-02 — TideTable job dispatch (phase 1)
+
+### Added
+- Host protocol v2 (`docs/HOST_PROTOCOL.md` §5a): `hello`/`hello.ack` feature
+  negotiation and typed `tkrun` jobs (`start_job`, `stop_job`, `job_accepted`,
+  `job_refused`, `job_output`, `job_completed`, `jobs_snapshot`). Sent over the
+  existing host WebSocket; no queue.
+- Project ↔ TideTable slug binding (`GET/PUT /v1/projects/{id}/tidetable`).
+  Only slugs the hub already lists are accepted.
+- Job API: `POST /v1/projects/{id}/jobs`, `GET /v1/jobs/{id}`,
+  `POST /v1/jobs/{id}/stop`. Offline host returns 409 and writes no row.
+- Migration `20261031000001_create_tidetable_jobs` (`project_tidetable_bindings`,
+  `host_jobs`).
+- Reference host agent: typed job handling, bounded options, host-local
+  checkout allowlist, token passed only to the child process.
+- `tidetable_jobs_e2e` (ignored): dispatches a dry-run job against a local
+  `tidetable serve`. Runs in the new `tidetable-e2e` CI job.
+
+### Not done
+- No real VPS run. Grants for `jobs.tkrun`, the checkouts report, manifest
+  `tidetable` block, `tkrun --events`, schedules and status join are open.
+
 
 ### Added
 - Added a `Makefile` with `env`, `config`, `up`, `down`, `logs`, `health`,

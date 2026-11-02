@@ -1,5 +1,15 @@
 # Playzoid-Server — Memory Index
 
+## Decision: TideTable jobs ride the host WebSocket, pool holds only read tokens (2026-11-02)
+
+- Typed `tkrun` jobs go over the existing host WebSocket (protocol v2), no
+  queue. Offline host = refused, not queued.
+- Pool stores a read-scoped TideTable token only. The host-local write token is
+  passed to the child process by file or env, never sent over the socket.
+- Projects bind to hub-listed TideTable slugs only; Tidepool never registers
+  slugs.
+- Source: `docs/SWAYGENT_TIDETABLE_DESIGN.md` §8 (decisions accepted).
+
 Master memory file. High-level architectural decisions that apply across
 milestones live here; per-milestone detail lives in the versioned files below.
 Do not rewrite history — supersede entries with new dated ones.

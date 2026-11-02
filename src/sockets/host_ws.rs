@@ -19,6 +19,7 @@
 use crate::services::enrollment::{self, EnrollmentError};
 use crate::services::host_presence::{self, HEARTBEAT_TIMEOUT_SECS};
 use crate::services::host_protocol::{self, SendFrame};
+use crate::services::tidetable_jobs;
 use actix::{ActorContext, AsyncContext};
 use actix_web::{Error, HttpRequest, HttpResponse, error::ErrorUnauthorized, web};
 use actix_web_actors::ws;
@@ -83,6 +84,107 @@ impl actix::Actor for HostWs {
     }
 }
 
+impl HostWs {
+    /// Handle the v2 frames: negotiation and typed jobs. Returns false for any
+    /// other frame, which then takes the v1 path.
+    fn handle_v2(
+        &mut self,
+        frame_type: &str,
+        frame: &serde_json::Value,
+        ctx: &mut ws::WebsocketContext<Self>,
+    ) -> bool {
+        let pool = self.pool.clone();
+        let host = self.host_public_id.clone();
+        let job_id = frame["jobId"].as_str().unwrap_or_default().to_string();
+        match frame_type {
+            "hello" => {
+                let versions: Vec<u64> = frame["versions"]
+                    .as_array()
+                    .map(|items| items.iter().filter_map(|v| v.as_u64()).collect())
+                    .unwrap_or_default();
+                let features: Vec<String> = frame["features"]
+                    .as_array()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let (version, agreed) = host_protocol::negotiate(&versions, &features);
+                host_protocol::set_features(&host, agreed.clone());
+                ctx.text(host_protocol::hello_ack_frame(version, &agreed).to_string());
+            }
+            "jobs_snapshot" => {
+                let jobs = frame["jobs"].as_array().cloned().unwrap_or_default();
+                actix::spawn(async move {
+                    if let Err(error) = tidetable_jobs::record_snapshot(&pool, &host, &jobs).await {
+                        tracing::warn!(error = %error, "failed to re-adopt host jobs");
+                    }
+                });
+            }
+            "job_accepted" => {
+                let pid = frame["pid"].as_i64();
+                let owner = frame["owner"].as_str().map(str::to_string);
+                actix::spawn(async move {
+                    if let Err(error) =
+                        tidetable_jobs::record_accepted(&pool, &job_id, pid, owner.as_deref()).await
+                    {
+                        tracing::warn!(error = %error, "failed to record job start");
+                    }
+                });
+            }
+            "job_refused" => {
+                let code = frame["code"]
+                    .as_str()
+                    .unwrap_or("invalid_request")
+                    .to_string();
+                let detail = frame["detail"].as_str().unwrap_or_default().to_string();
+                actix::spawn(async move {
+                    if let Err(error) =
+                        tidetable_jobs::record_refused(&pool, &job_id, &code, &detail).await
+                    {
+                        tracing::warn!(error = %error, "failed to record job refusal");
+                    }
+                });
+            }
+            "job_output" => {
+                let seq = frame["seq"].as_u64().unwrap_or(0);
+                let text = frame["text"].as_str().unwrap_or_default().to_string();
+                actix::spawn(async move {
+                    if let Err(error) =
+                        tidetable_jobs::record_output(&pool, &job_id, seq, &text).await
+                    {
+                        tracing::warn!(error = %error, "failed to record job output");
+                    }
+                });
+            }
+            "job_completed" => {
+                let status = frame["status"].as_str().unwrap_or("failed").to_string();
+                let exit_code = frame["exitCode"]
+                    .as_i64()
+                    .and_then(|c| i32::try_from(c).ok());
+                let summary = frame["summary"].as_str().map(str::to_string);
+                actix::spawn(async move {
+                    if let Err(error) = tidetable_jobs::record_completed(
+                        &pool,
+                        &job_id,
+                        &status,
+                        exit_code,
+                        summary.as_deref(),
+                    )
+                    .await
+                    {
+                        tracing::warn!(error = %error, "failed to record job completion");
+                    }
+                });
+            }
+            _ => return false,
+        }
+        true
+    }
+}
+
 impl actix::Handler<SendFrame> for HostWs {
     type Result = ();
 
@@ -114,6 +216,12 @@ impl actix::StreamHandler<Result<ws::Message, ws::ProtocolError>> for HostWs {
                         }
                     });
                     ctx.text(json!({"type": "heartbeat.ack"}).to_string());
+                    return;
+                }
+
+                if let Some(value) = frame.as_ref()
+                    && self.handle_v2(frame_type, value, ctx)
+                {
                     return;
                 }
 

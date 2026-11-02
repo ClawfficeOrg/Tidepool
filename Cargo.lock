@@ -2588,6 +2588,7 @@ dependencies = [
  "tracing",
  "tracing-actix-web",
  "tracing-subscriber",
+ "ureq",
  "url",
  "utoipa",
  "uuid",
@@ -2598,11 +2599,15 @@ dependencies = [
 name = "tidepool-host-agent"
 version = "0.1.0"
 dependencies = [
+ "actix-web",
  "anyhow",
  "serde",
  "serde_json",
+ "sqlx",
+ "tidepool",
  "tungstenite",
  "ureq",
+ "uuid",
 ]
 
 [[package]]

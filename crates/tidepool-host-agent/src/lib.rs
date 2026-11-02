@@ -4,6 +4,8 @@
 //! returns the stored completion instead of running the prompt again. This
 //! library is shared by the binary and its tests.
 
+pub mod jobs;
+
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
