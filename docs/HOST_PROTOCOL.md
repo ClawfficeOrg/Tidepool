@@ -77,8 +77,24 @@ Re-reporting after a model disappears is how the host withdraws it.
 
 ## 4. Frames
 
-All frames carry `"v": 1`. Unknown versions and unknown types are refused with
-an error frame; the connection stays open unless authentication failed.
+Frames are JSON text messages. The frames below carry `"v": 1`, and a host
+should send it, but the pool reads only `type` and does not check `v` today.
+The pool's own `heartbeat.ack` and `error` frames carry no `v`.
+
+What the pool accepts from a host is exactly this list:
+
+| Host → pool `type` | Pool action |
+|---|---|
+| `heartbeat` (or the bare text `heartbeat`) | Refresh presence; answer `{"type":"heartbeat.ack"}` |
+| `execution_started` | Move the execution from `queued` to `running` |
+| `execution_output` | Append `text` while the execution is `queued` or `running` |
+| `execution_completed` | Record the terminal status and output; advance the run step |
+
+Anything else, including a text message that is not JSON, a frame with no
+`type`, and a host-sent `error` frame, is answered with the pool's `error`
+frame (see Errors) and otherwise ignored. The connection stays open. Binary
+messages are ignored and a ping is answered with a pong. A frame whose
+`executionId` matches no execution changes nothing and is not answered.
 
 ### Pool → host: create_agent
 
@@ -90,6 +106,29 @@ an error frame; the connection stays open unless authentication failed.
 answer a repeat of the same `executionId` with the existing execution's state
 (including completion) and MUST NOT run the prompt twice. The pool MAY resend
 after a lost response, a reconnect, or a process restart.
+
+Two optional fields may follow. Each is omitted when the pool has nothing to
+send, so a frame without them is the frame above, and a host that ignores
+unknown keys keeps working:
+
+```json
+{"v": 1, "type": "create_agent", "executionId": "<stable id>", "prompt": "<text>",
+ "agent": {"provider": "anthropic", "model": "claude", "execution_mode": "default",
+           "thinking_option": "high"},
+ "project": "<name>"}
+```
+
+- `agent` is the selection the pool asks for, in the shape of a capability
+  report entry without `options`; `thinking_option` may be absent. The
+  operator route checks it against the host's last report before sending.
+- `project` is a name of 1-128 ASCII letters, digits, `.`, `_` or `-` that does
+  not start with `.`. The pool refuses anything else.
+
+Both are requests, not commands. The host maps `agent` through its own
+allowlist and resolves `project` against its own list of projects; it MUST NOT
+treat either as a filesystem path or a command line. It refuses anything it
+will not run as described under Refusals. The pool does not store the options,
+and run dispatch and its replays do not send them yet.
 
 ### Host → pool: execution_started
 
@@ -117,8 +156,12 @@ the host should send each delta once and rely on `executionId` for the intent.
 ```
 
 Terminal. The pool records the status, optional final output and completion
-time. A repeated completed frame for the same execution is accepted (it makes
-replay safe).
+time. A missing or unknown `status` is recorded as `failed`; a missing `output`
+keeps the output appended so far. A repeated completed frame for the same
+execution is accepted (it makes replay safe). The pool does not compare it with
+the first one: it rewrites the execution's status and output, but a run step
+that already finished stays as it was. A host therefore sends the same status
+every time.
 
 ### Pool → host: interrupt_execution
 
@@ -126,19 +169,51 @@ replay safe).
 {"v": 1, "type": "interrupt_execution", "executionId": "<id>"}
 ```
 
+An operator sends it with
+`POST /v1/hosts/{id}/executions/{execution_id}/interrupt` (member token, a
+viewer is refused). The execution must belong to that host. A running
+execution is answered `202` with `"sent": true`; an execution that is already
+terminal is answered `200` with `"sent": false` and nothing is sent; a host
+with no live socket fails with `daemon_not_connected`. The grant is not
+required, so work can still be stopped after `host.execute` is revoked. The
+route does not change the recorded status: the host's `execution_completed`
+does.
+
 The host stops the execution and answers with `execution_completed` and
-`status: "interrupted"`. Interrupting an unknown or already-completed
-execution is answered with the existing completion or a no-op error frame.
+`status: "interrupted"`. For an execution that already completed, the host
+answers with the existing completion and its recorded status, never a second,
+different terminal state. For an execution it does not know, the host does
+nothing: it MUST NOT answer with an `error` frame, because the pool has no
+handler for one (see the table above).
+
+### Refusals
+
+A host that will not run a `create_agent` (its grant or local switch is off,
+the selection or project is not on its allowlist, the prompt is invalid)
+answers with a failed completion, not with an `error` frame:
+
+```json
+{"v": 1, "type": "execution_completed", "executionId": "<id>",
+ "status": "failed", "output": "refused: <reason>"}
+```
+
+The pool records that as a failed execution and fails the run step. The host
+should remember the refusal under the `executionId`, so a resent intent gets
+the same answer.
 
 ### Errors
 
+`error` is a pool → host frame only. The pool sends one when it receives a
+frame it does not handle:
+
 ```json
-{"v": 1, "type": "error", "code": "invalid_request", "detail": "<text>"}
+{"type": "error", "code": "invalid_request", "detail": "unknown frame"}
 ```
 
-The pool uses the same `code` taxonomy as the hub API
-(`docs/HUB_API_ERRORS.md`), including `daemon_not_connected` when dispatch is
-attempted with no live socket. Protocol errors never include credentials.
+The host should log it and carry on; the connection stays open. `code` uses
+the hub API taxonomy (`docs/HUB_API_ERRORS.md`). Dispatch failures such as
+`daemon_not_connected` are not frames: they are returned to the HTTP caller
+that tried to dispatch. Protocol errors never include credentials.
 
 ## 5. Replay and recovery
 

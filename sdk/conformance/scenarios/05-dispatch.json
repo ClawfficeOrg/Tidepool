@@ -1,0 +1,147 @@
+{
+  "scenarios": [
+    {
+      "id": "dispatch.offline",
+      "title": "Dispatch to an offline host fails with daemon_not_connected and writes nothing",
+      "goal": "The preflight refuses before a run row exists; the failure is a 409 with the documented code on every binding.",
+      "steps": [
+        {
+          "id": "offline-host",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "{{project_id}}",
+              "trigger": "{{trigger_offline}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-offline-{{binding}}",
+              "input": "conformance"
+            }
+          },
+          "auth": { "apiKey": "{{api_key}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 409,
+            "code": "daemon_not_connected",
+            "detail": { "$contains": "offline" },
+            "type": { "$regex": "^https://tidepool.dev/problems/" },
+            "title": { "$type": "string" }
+          },
+          "agree": ["status", "code", "type", "title"]
+        },
+        {
+          "id": "unknown-project",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "00000000-0000-4000-8000-000000000000",
+              "trigger": "{{trigger_offline}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-unknown-project-{{binding}}"
+            }
+          },
+          "auth": { "apiKey": "{{api_key}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 404,
+            "code": "not_found"
+          },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "actor-not-allowed",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "{{project_id}}",
+              "trigger": "{{trigger_forbidden}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-actor-{{binding}}"
+            }
+          },
+          "auth": { "apiKey": "{{api_key}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 403,
+            "code": "forbidden",
+            "detail": { "$contains": "not allowed" }
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    },
+    {
+      "id": "dispatch.idempotent",
+      "title": "A manual dispatch deduplicates on its delivery key",
+      "goal": "The first dispatch creates a run; replaying the same key returns the same run with deduplicated:true and 200 instead of 201.",
+      "steps": [
+        {
+          "id": "dispatch",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "{{project_id}}",
+              "trigger": "{{trigger_online}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-online-{{binding}}",
+              "input": "conformance"
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.deduplicated": false,
+            "body.run.id": { "$type": "string" },
+            "body.run.status": { "$type": "string" },
+            "body.run.triggerName": "{{trigger_online}}"
+          },
+          "capture": { "run_id": "body.run.id" }
+        },
+        {
+          "id": "replay",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "{{project_id}}",
+              "trigger": "{{trigger_online}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-online-{{binding}}",
+              "input": "conformance"
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.deduplicated": true,
+            "body.run.id": "{{run_id}}"
+          }
+        },
+        {
+          "id": "revision-mismatch",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "{{project_id}}",
+              "trigger": "{{trigger_online}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-revision-{{binding}}",
+              "revision": "00000000-0000-4000-8000-000000000000"
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 409,
+            "code": "conflict"
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    }
+  ]
+}

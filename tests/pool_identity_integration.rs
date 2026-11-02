@@ -12,6 +12,7 @@
 //! two identity tables before each case.
 
 use actix_web::{App, http::StatusCode, test, web};
+use redis::aio::ConnectionManager;
 use serde_json::Value;
 use sqlx::MySqlPool;
 use tidepool::{
@@ -27,12 +28,27 @@ use tidepool::{
     },
 };
 
-const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_dev";
+// A database of its own: these tests clear the identity tables, so they must
+// never point at the dev stack's data. Create it once with
+// `CREATE DATABASE tidepool_test` and grant the `tidepool` user on it.
+const DEFAULT_DB_URL: &str = "mysql://tidepool:password@127.0.0.1:3306/tidepool_test";
+// The dev stack publishes Redis on 6380 (see config/docker-compose.dev.override.yml).
+const DEFAULT_REDIS_URL: &str = "redis://127.0.0.1:6380";
 const JWT_SECRET: &str = "integration-test-jwt-secret-min-32-chars";
 const BOOTSTRAP_PASSWORD: &str = "temporary-bootstrap-1";
 const NEW_PASSWORD: &str = "replacement-password-1";
 
 static DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// The session store operator routes require: they fail closed without one.
+async fn sessions() -> web::Data<ConnectionManager> {
+    let url = std::env::var("REDIS_URL").unwrap_or_else(|_| DEFAULT_REDIS_URL.into());
+    web::Data::new(
+        tidepool::services::redis::connect(&url)
+            .await
+            .expect("Redis unavailable; start the dev stack or set REDIS_URL"),
+    )
+}
 
 async fn pool() -> MySqlPool {
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DB_URL.into());
@@ -75,6 +91,7 @@ fn config(pool_bootstrap: Option<PoolBootstrapConfig>) -> Config {
         rate_limit: RateLimitConfig::default(),
         pool_bootstrap,
         public_origin: None,
+        cors_origins: Vec::new(),
     }
 }
 
@@ -107,6 +124,7 @@ async fn browser_setup_creates_one_owner_and_refuses_a_second_organization() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -171,6 +189,7 @@ async fn browser_setup_rejects_short_password() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -303,6 +322,7 @@ async fn operator_login_and_password_change_over_http() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -370,6 +390,82 @@ async fn operator_login_and_password_change_over_http() {
 }
 
 #[actix_web::test]
+#[ignore = "requires live MySQL and Redis (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn logout_revokes_the_token_and_operator_routes_fail_closed_without_a_session_store() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let cfg = bootstrap_config();
+    pool_identity::bootstrap_from_env(&pool, &cfg)
+        .await
+        .expect("bootstrap");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
+            .configure(api::pool_identity::config),
+    )
+    .await;
+
+    let login = test::TestRequest::post()
+        .uri("/v1/pool/login")
+        .set_json(serde_json::json!({
+            "email": cfg.owner_email,
+            "password": BOOTSTRAP_PASSWORD
+        }))
+        .to_request();
+    let resp = test::call_service(&app, login).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    let token = body["token"].as_str().expect("token").to_string();
+
+    let me = test::TestRequest::get()
+        .uri("/v1/pool/me")
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    assert_eq!(test::call_service(&app, me).await.status(), StatusCode::OK);
+
+    let logout = test::TestRequest::post()
+        .uri("/v1/pool/logout")
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, logout).await.status(),
+        StatusCode::NO_CONTENT
+    );
+
+    // The token is still signed and unexpired, so only the revocation list
+    // can refuse it.
+    let me_again = test::TestRequest::get()
+        .uri("/v1/pool/me")
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, me_again).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    // Fail closed: an app with no session store refuses even a live token.
+    let no_store = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .configure(api::pool_identity::config),
+    )
+    .await;
+    let fresh = test::TestRequest::get()
+        .uri("/v1/pool/me")
+        .insert_header(("Authorization", format!("Bearer {token}")))
+        .to_request();
+    assert_eq!(
+        test::call_service(&no_store, fresh).await.status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+}
+
+#[actix_web::test]
 #[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
 async fn player_token_is_not_an_operator_token() {
     let _guard = DB_LOCK.lock().await;
@@ -380,6 +476,7 @@ async fn player_token_is_not_an_operator_token() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -456,6 +553,7 @@ async fn invitation_flow_is_owner_only_and_single_use() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -594,6 +692,7 @@ async fn viewer_is_refused_every_mutating_pool_route() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config)
             .configure(api::hosts::config),
     )
@@ -693,6 +792,7 @@ async fn last_owner_cannot_be_removed_or_demoted() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -735,6 +835,7 @@ async fn removing_a_member_invalidates_their_token_immediately() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config),
     )
     .await;
@@ -801,6 +902,7 @@ async fn api_key_secret_is_shown_once_scopes_are_enforced_and_revocation_is_imme
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::api_keys::config),
     )
     .await;
@@ -905,6 +1007,7 @@ async fn non_owner_cannot_manage_api_keys() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config)
             .configure(api::api_keys::config),
     )
@@ -952,6 +1055,7 @@ async fn hub_mutations_are_attributable_in_the_audit_trail() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config)
             .configure(api::api_keys::config),
     )
@@ -1044,6 +1148,7 @@ async fn hub_failures_use_problem_details_with_a_request_id() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::pool_identity::config)
             .configure(api::api_keys::config)
             .wrap(HubProblem)
@@ -1118,6 +1223,7 @@ async fn hosts_register_with_unique_slugs_and_rename_without_changing_id() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::hosts::config),
     )
     .await;
@@ -1188,6 +1294,7 @@ async fn revoked_hosts_disappear_and_unknown_slugs_fail_activation() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::hosts::config),
     )
     .await;
@@ -1270,6 +1377,7 @@ async fn host_enrollment_is_single_use_and_stores_only_hashes() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::hosts::config)
             .configure(api::api_keys::config)
             .configure(api::pool_identity::config),
@@ -1475,6 +1583,7 @@ async fn enrollment_token_requires_the_daemons_enroll_scope() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::hosts::config)
             .configure(api::api_keys::config)
             .configure(api::pool_identity::config),
@@ -1629,6 +1738,7 @@ async fn host_execution_grant_and_capability_validation() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::hosts::config),
     )
     .await;
@@ -1926,6 +2036,379 @@ async fn host_execution_output_completion_and_terminal_replay() {
     assert_eq!(count, 1);
 }
 
+// ── dispatch re-checks the execution grant ────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn create_execution_refuses_a_host_without_the_execution_grant() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "grant-dispatch-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register");
+    let (_, token) = enrollment_svc::mint_enrollment_token(
+        &pool,
+        organization_id,
+        &host.public_id,
+        None,
+        AuditActor::System,
+    )
+    .await
+    .expect("mint");
+    enrollment_svc::enroll_host(&pool, &token, "grant-dispatch-credential-0123456789abcdef")
+        .await
+        .expect("enroll");
+    // Connected (presence is live) but execution was never granted.
+    host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connect");
+
+    let create = |execution_id: &str| {
+        test::TestRequest::post()
+            .uri(&format!("/v1/hosts/{}/executions", host.public_id))
+            .insert_header(("Authorization", format!("Bearer {owner_token}")))
+            .set_json(serde_json::json!({
+                "execution_id": execution_id,
+                "prompt": "hello"
+            }))
+            .to_request()
+    };
+
+    // The operator route refuses with the hub problem shape and stores nothing.
+    let resp = test::call_service(&app, create("exec-ungranted")).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["code"], "forbidden");
+    assert_eq!(
+        body["detail"],
+        "host.execute: execution has not been granted for this host"
+    );
+    assert!(
+        tidepool::services::host_protocol::find_execution(&pool, "exec-ungranted")
+            .await
+            .expect("find")
+            .is_none()
+    );
+
+    // The service refuses the same way for run dispatch.
+    assert!(matches!(
+        tidepool::services::host_protocol::create_execution(
+            &pool,
+            organization_id,
+            &host.public_id,
+            "exec-ungranted",
+            "hello",
+        )
+        .await,
+        Err(tidepool::services::host_protocol::HostProtocolError::NotGranted)
+    ));
+
+    // Once granted, the grant check passes; with no socket registered in this
+    // test the intent is stored and the socket is reported gone.
+    tidepool::services::host_capability::grant_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        AuditActor::System,
+    )
+    .await
+    .expect("grant");
+    let resp = test::call_service(&app, create("exec-granted")).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let stored = tidepool::services::host_protocol::find_execution(&pool, "exec-granted")
+        .await
+        .expect("find")
+        .expect("stored before send");
+    assert_eq!(
+        stored.status,
+        tidepool::entities::host_execution::ExecutionStatus::Queued
+    );
+
+    // Revoking the grant also stops a replay of the non-terminal intent.
+    tidepool::services::host_capability::revoke_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        AuditActor::System,
+    )
+    .await
+    .expect("revoke");
+    let resp = test::call_service(&app, create("exec-granted")).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    host_presence::host_disconnected(&pool, &host.public_id)
+        .await
+        .expect("disconnect");
+}
+
+// ── create_agent agent selection and project ──────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn create_execution_checks_the_optional_agent_and_project() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let host = host_svc::register_host(
+        &pool,
+        organization_id,
+        host_svc::NewHost {
+            hostname: "selection-host".into(),
+            display_name: None,
+        },
+        AuditActor::System,
+    )
+    .await
+    .expect("register");
+    tidepool::services::host_capability::grant_execution(
+        &pool,
+        organization_id,
+        &host.public_id,
+        AuditActor::System,
+    )
+    .await
+    .expect("grant");
+    tidepool::services::host_capability::report_capabilities(
+        &pool,
+        organization_id,
+        &host.public_id,
+        vec![tidepool::entities::host_capability::AgentCapability {
+            provider: "anthropic".into(),
+            model: "claude".into(),
+            execution_mode: "default".into(),
+            thinking_option: None,
+            options: None,
+        }],
+    )
+    .await
+    .expect("report");
+    host_presence::host_connected(&pool, organization_id, &host.public_id)
+        .await
+        .expect("connect");
+
+    let create = |body: Value| {
+        test::TestRequest::post()
+            .uri(&format!("/v1/hosts/{}/executions", host.public_id))
+            .insert_header(("Authorization", format!("Bearer {owner_token}")))
+            .set_json(body)
+            .to_request()
+    };
+
+    // A model the host did not report is refused with the field named.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-bad-model",
+            "prompt": "hello",
+            "agent": {"provider": "anthropic", "model": "missing", "execution_mode": "default"}
+        })),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["detail"], "model: host cannot run 'missing'");
+
+    // A project that looks like a path is refused before anything is stored.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-path",
+            "prompt": "hello",
+            "project": "../etc"
+        })),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(
+        tidepool::services::host_protocol::find_execution(&pool, "exec-sel-path")
+            .await
+            .expect("find")
+            .is_none()
+    );
+
+    // A valid selection and project pass every check; with no socket
+    // registered in this test the intent is stored and the socket is gone.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-ok",
+            "prompt": "hello",
+            "agent": {"provider": "anthropic", "model": "claude", "execution_mode": "default"},
+            "project": "tidepool"
+        })),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert!(
+        tidepool::services::host_protocol::find_execution(&pool, "exec-sel-ok")
+            .await
+            .expect("find")
+            .is_some()
+    );
+
+    // The request still refuses unknown fields.
+    let resp = test::call_service(
+        &app,
+        create(serde_json::json!({
+            "execution_id": "exec-sel-unknown",
+            "prompt": "hello",
+            "harness_path": "/usr/bin/claude"
+        })),
+    )
+    .await;
+    assert!(resp.status().is_client_error());
+
+    host_presence::host_disconnected(&pool, &host.public_id)
+        .await
+        .expect("disconnect");
+}
+
+// ── operator interrupt route ──────────────────────────────────────────────
+
+#[actix_web::test]
+#[ignore = "requires live MySQL (docker compose -f config/docker-compose.dev.yml up -d)"]
+async fn interrupt_route_is_scoped_to_the_host_and_skips_terminal_executions() {
+    let _guard = DB_LOCK.lock().await;
+    let pool = pool().await;
+    reset(&pool).await;
+    let (_owner_id, owner_token) = bootstrap_owner(&pool).await;
+    let organization_id: u64 = sqlx::query_scalar("SELECT id FROM organizations LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("org id");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(config(None)))
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
+            .configure(api::hosts::config),
+    )
+    .await;
+
+    let mut hosts = Vec::new();
+    for hostname in ["interrupt-host", "other-interrupt-host"] {
+        let host = host_svc::register_host(
+            &pool,
+            organization_id,
+            host_svc::NewHost {
+                hostname: hostname.into(),
+                display_name: None,
+            },
+            AuditActor::System,
+        )
+        .await
+        .expect("register");
+        let internal: u64 = sqlx::query_scalar("SELECT id FROM hosts WHERE public_id = ?")
+            .bind(&host.public_id)
+            .fetch_one(&pool)
+            .await
+            .expect("host id");
+        hosts.push((host.public_id, internal));
+    }
+    let (host_id, host_internal) = hosts[0].clone();
+    let (other_host_id, _) = hosts[1].clone();
+    for (execution_id, status) in [
+        ("exec-int-running", "running"),
+        ("exec-int-done", "succeeded"),
+    ] {
+        sqlx::query(
+            "INSERT INTO host_executions (public_id, host_id, prompt, status) \
+             VALUES (?, ?, 'hello', ?)",
+        )
+        .bind(execution_id)
+        .bind(host_internal)
+        .bind(status)
+        .execute(&pool)
+        .await
+        .expect("insert execution");
+    }
+
+    let interrupt = |host: &str, execution_id: &str| {
+        test::TestRequest::post()
+            .uri(&format!(
+                "/v1/hosts/{host}/executions/{execution_id}/interrupt"
+            ))
+            .insert_header(("Authorization", format!("Bearer {owner_token}")))
+            .to_request()
+    };
+
+    // Unknown host and unknown execution are not found.
+    let resp = test::call_service(&app, interrupt("no-such-host", "exec-int-running")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let resp = test::call_service(&app, interrupt(&host_id, "exec-missing")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["code"], "not_found");
+
+    // An execution is only reachable through the host that runs it.
+    let resp = test::call_service(&app, interrupt(&other_host_id, "exec-int-running")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    // A terminal execution is returned as recorded; nothing is sent.
+    let resp = test::call_service(&app, interrupt(&host_id, "exec-int-done")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["sent"], false);
+    assert_eq!(body["execution"]["status"], "succeeded");
+
+    // A running execution needs the host's live socket.
+    let resp = test::call_service(&app, interrupt(&host_id, "exec-int-running")).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body: Value = test::read_body_json(resp).await;
+    assert_eq!(body["code"], "daemon_not_connected");
+
+    // The route does not change the recorded state; only the host's
+    // completion frame does.
+    let execution = tidepool::services::host_protocol::find_execution(&pool, "exec-int-running")
+        .await
+        .expect("find")
+        .expect("exists");
+    assert_eq!(
+        execution.status,
+        tidepool::entities::host_execution::ExecutionStatus::Running
+    );
+}
+
 // ── connections registry (task 1.3.1) ─────────────────────────────────────
 
 #[actix_web::test]
@@ -1949,6 +2432,7 @@ async fn connections_crud_redacts_credentials_and_environment_wins() {
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::connections::config),
     )
     .await;
@@ -2088,6 +2572,7 @@ async fn github_webhook_verifies_signature_deduplicates_and_resolves_repository(
         App::new()
             .app_data(web::Data::new(config(None)))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(sessions().await)
             .configure(api::connections::config)
             .configure(api::webhooks::github::config),
     )

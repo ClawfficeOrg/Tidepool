@@ -151,6 +151,7 @@ fn mint_tokens(python: &str, script: &Path, tokens_db: &Path) -> (String, String
 fn test_config() -> Config {
     Config {
         host: "127.0.0.1".into(),
+        cors_origins: Vec::new(),
         port: 8080,
         database_url: env_or("DATABASE_URL", DEFAULT_DB_URL),
         redis_url: "redis://127.0.0.1:6379".into(),

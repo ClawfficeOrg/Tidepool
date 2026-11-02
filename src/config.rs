@@ -291,6 +291,12 @@ pub struct Config {
     /// reverse proxy's `Host` all derive from it. It is validated as an
     /// absolute `http`/`https` origin with no path, query or fragment.
     pub public_origin: Option<String>,
+    /// Browser origins allowed to call the pool cross-origin
+    /// (`TIDEPOOL_CORS_ORIGINS`, comma-separated). Empty means no CORS headers.
+    ///
+    /// Every entry is an exact `http`/`https` origin (scheme, host, optional
+    /// port); wildcards are refused.
+    pub cors_origins: Vec<String>,
 }
 
 impl Config {
@@ -327,6 +333,10 @@ impl Config {
         let rate_limit = RateLimitConfig::from_env()?;
         let pool_bootstrap = PoolBootstrapConfig::from_env()?;
         let public_origin = public_origin_from_env()?;
+        let cors_origins = match std::env::var("TIDEPOOL_CORS_ORIGINS") {
+            Ok(raw) => parse_cors_origins(&raw)?,
+            Err(_) => Vec::new(),
+        };
 
         Ok(Self {
             host,
@@ -338,6 +348,7 @@ impl Config {
             rate_limit,
             pool_bootstrap,
             public_origin,
+            cors_origins,
         })
     }
 
@@ -374,6 +385,42 @@ fn parse_public_origin(raw: &str) -> Result<Option<String>> {
         ));
     }
     Ok(Some(trimmed.to_string()))
+}
+
+/// Parse `TIDEPOOL_CORS_ORIGINS`: a comma-separated list of exact origins.
+///
+/// Each entry must be an absolute `http` or `https` origin with no path, query,
+/// fragment, userinfo or trailing slash. `*` is refused: the pool never allows
+/// every origin. Empty entries are skipped and duplicates collapse.
+fn parse_cors_origins(raw: &str) -> Result<Vec<String>> {
+    let mut origins: Vec<String> = Vec::new();
+    for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        if entry == "*" {
+            return Err(anyhow!(
+                "TIDEPOOL_CORS_ORIGINS must list exact origins; `*` is not allowed"
+            ));
+        }
+        let rest = entry
+            .strip_prefix("https://")
+            .or_else(|| entry.strip_prefix("http://"))
+            .ok_or_else(|| {
+                anyhow!("TIDEPOOL_CORS_ORIGINS entry `{entry}` must start with http:// or https://")
+            })?;
+        if rest.is_empty() || rest.starts_with(':') {
+            return Err(anyhow!(
+                "TIDEPOOL_CORS_ORIGINS entry `{entry}` must name a host"
+            ));
+        }
+        if rest.contains(['/', '?', '#', '@', '*']) || rest.chars().any(char::is_whitespace) {
+            return Err(anyhow!(
+                "TIDEPOOL_CORS_ORIGINS entry `{entry}` must be an origin only: scheme, host and optional port, with no path, trailing slash, query or wildcard"
+            ));
+        }
+        if !origins.iter().any(|o| o == entry) {
+            origins.push(entry.to_string());
+        }
+    }
+    Ok(origins)
 }
 
 #[cfg(test)]
@@ -673,5 +720,39 @@ mod tests {
         assert!(parse_public_origin("https://pool.example.com/path").is_err());
         assert!(parse_public_origin("https://pool.example.com?x=1").is_err());
         assert!(parse_public_origin("https://").is_err());
+    }
+
+    #[test]
+    fn cors_origins_accept_exact_origins() {
+        assert_eq!(parse_cors_origins("").expect("empty"), Vec::<String>::new());
+        assert_eq!(
+            parse_cors_origins(
+                " https://control.example.com , http://localhost:5173,,https://control.example.com"
+            )
+            .expect("origins"),
+            vec![
+                "https://control.example.com".to_string(),
+                "http://localhost:5173".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn cors_origins_reject_anything_but_an_exact_origin() {
+        for bad in [
+            "*",
+            "https://a.example.com,*",
+            "https://control.example.com/",
+            "https://control.example.com/app",
+            "control.example.com",
+            "//control.example.com",
+            "ftp://control.example.com",
+            "https://",
+            "https://*.example.com",
+            "https://control.example.com?x=1",
+            "https://user@control.example.com",
+        ] {
+            assert!(parse_cors_origins(bad).is_err(), "{bad} should be rejected");
+        }
     }
 }

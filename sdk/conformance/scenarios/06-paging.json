@@ -1,0 +1,173 @@
+{
+  "scenarios": [
+    {
+      "id": "paging.relay",
+      "title": "Relay backfill follows the sequence cursor page by page",
+      "goal": "`after` is exclusive, `next` names the last delivered sequence, and the SDK iterator walks every page. A binding that returns a different cursor or drops an event fails.",
+      "steps": [
+        {
+          "id": "start-execution",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_id_executions",
+            "pathParams": { "id": "{{online_host_id}}" },
+            "body": {
+              "execution_id": "conformance-{{binding}}-exec-1",
+              "prompt": "conformance paging"
+            }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.replayed": false,
+            "body.execution.id": { "$type": "string" }
+          },
+          "capture": { "session": "body.execution.id" }
+        },
+        {
+          "id": "enable-relay",
+          "command": "call",
+          "params": {
+            "operation": "put_v1_sessions_session_relay",
+            "pathParams": { "session": "{{session}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body.enabled": true }
+        },
+        {
+          "id": "publish-1",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_sessions_session_relay_events",
+            "pathParams": { "session": "{{session}}" },
+            "body": { "kind": "status", "payload": { "step": "one" } }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body.sequence": 1 }
+        },
+        {
+          "id": "publish-2",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_sessions_session_relay_events",
+            "pathParams": { "session": "{{session}}" },
+            "body": { "kind": "output", "payload": { "step": "two" } }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body.sequence": 2 }
+        },
+        {
+          "id": "publish-3",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_sessions_session_relay_events",
+            "pathParams": { "session": "{{session}}" },
+            "body": { "kind": "stopped", "payload": { "step": "three" } }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body.sequence": 3 }
+        },
+        {
+          "id": "first-page",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_sessions_session_relay_events",
+            "pathParams": { "session": "{{session}}" },
+            "query": { "after": 0, "limit": 2 }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.next": 2,
+            "body.events": { "$len": 2 },
+            "body.events.0.sequence": 1,
+            "body.events.1.sequence": 2
+          },
+          "agree": ["body.next", "body.events.0.sequence", "body.events.1.sequence"]
+        },
+        {
+          "id": "second-page",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_sessions_session_relay_events",
+            "pathParams": { "session": "{{session}}" },
+            "query": { "after": 2, "limit": 2 }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.next": null,
+            "body.events": { "$len": 1 },
+            "body.events.0.sequence": 3
+          },
+          "agree": ["body.next", "body.events.0.sequence"]
+        },
+        {
+          "id": "iterator",
+          "command": "page",
+          "params": {
+            "kind": "relay",
+            "id": "{{session}}",
+            "after": 0,
+            "limit": 2
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "items": [
+              { "sequence": 1, "kind": "status" },
+              { "sequence": 2, "kind": "output" },
+              { "sequence": 3, "kind": "stopped" }
+            ]
+          },
+          "agree": ["items"]
+        }
+      ]
+    },
+    {
+      "id": "paging.activity",
+      "title": "The activity feed exposes an opaque cursor and the iterator consumes it",
+      "goal": "`nextCursor`/`hasMore` page the feed; a binding that never advances the cursor or loses the has-more signal fails.",
+      "steps": [
+        {
+          "id": "first-page",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_activity",
+            "query": { "limit": 1 }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.hasMore": true,
+            "body.nextCursor": { "$type": "string" },
+            "body.items": { "$len": 1 }
+          },
+          "capture": { "activity_cursor": "body.nextCursor" }
+        },
+        {
+          "id": "second-page",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_activity",
+            "query": { "limit": 1, "cursor": "{{activity_cursor}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.items": { "$len": 1 }
+          }
+        },
+        {
+          "id": "iterator",
+          "command": "page",
+          "params": { "kind": "activity", "limit": 1 },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "items": { "$len": { "$gte": 2 } },
+            "items.0.kind": { "$type": "string" }
+          }
+        }
+      ]
+    }
+  ]
+}

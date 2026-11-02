@@ -1,0 +1,59 @@
+{
+  "name": "@clawffice/tidepool-sdk",
+  "version": "0.1.0",
+  "description": "Typed TypeScript client for the Tidepool hub and game API, generated from docs/api/openapi-v1.json",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "browser": "./src/browser.js",
+      "node": "./src/node.js",
+      "default": "./src/index.js"
+    },
+    "./browser": {
+      "types": "./src/browser.d.ts",
+      "default": "./src/browser.js"
+    },
+    "./node": {
+      "types": "./src/node.d.ts",
+      "default": "./src/node.js"
+    },
+    "./types": {
+      "types": "./src/generated/types.d.ts",
+      "default": "./src/generated/types.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check": "node scripts/generate.mjs --check",
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "smoke": "node scripts/smoke.mjs",
+    "prepublishOnly": "node scripts/generate.mjs --check && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  },
+  "keywords": [
+    "tidepool",
+    "clawffice",
+    "sdk",
+    "openapi",
+    "webhook",
+    "automation"
+  ]
+}

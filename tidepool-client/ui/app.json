@@ -1,0 +1,50 @@
+{
+  "zml_version": "1",
+  "window_title": "Tidepool",
+  "bindings": [
+    { "name": "entries", "value_type": "crate::host_entry::HostEntry", "is_list": true }
+  ],
+  "root": {
+    "component_type": "Window",
+    "props": [
+      { "name": "window_kind", "type": "String", "value": "PopUp" },
+      { "name": "width", "type": "Number", "value": 280 },
+      { "name": "height", "type": "Number", "value": 240 },
+      { "name": "resizable", "type": "Bool", "value": false }
+    ],
+    "children": [
+      {
+        "component_type": "VStack",
+        "children": [
+          {
+            "component_type": "Repeat",
+            "props": [
+              { "name": "item_binding", "type": "String", "value": "entries" },
+              { "name": "key", "type": "String", "value": "line_number" },
+              { "name": "_preview_count", "type": "Number", "value": 3 }
+            ],
+            "children": [
+              {
+                "component_type": "HStack",
+                "children": [
+                  {
+                    "component_type": "Label",
+                    "props": [
+                      { "name": "text", "type": "BindingRef", "value": "entries:hostname" }
+                    ]
+                  },
+                  {
+                    "component_type": "TextInput",
+                    "props": [
+                      { "name": "placeholder", "type": "String", "value": "note" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

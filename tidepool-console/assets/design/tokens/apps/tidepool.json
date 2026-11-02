@@ -1,0 +1,28 @@
+{
+  "name": "Tidepool",
+  "codename": "PlayzoidServer",
+  "role": "Hub and game server; pools federate with other pools",
+  "creature": "Rock pool",
+  "current": "water",
+  "status": "draft",
+  "parts": {
+    "Rhumb": "Hub-to-hub federation link"
+  },
+  "color": {
+    "product": {
+      "hue": "tide",
+      "dark": "#4A9FE0",
+      "light": "#1864AB"
+    }
+  },
+  "logo": {
+    "wordmark": "tidepool",
+    "wordmark-highlight": "tide",
+    "cell": "pool",
+    "mark": "logos/tidepool/tidepool-mark.svg",
+    "mark-mono": "logos/tidepool/tidepool-mark-mono.svg",
+    "icon": "logos/tidepool/tidepool-icon.svg",
+    "lockup": "logos/tidepool/tidepool-lockup.svg",
+    "lockup-dark": "logos/tidepool/tidepool-lockup-dark.svg"
+  }
+}

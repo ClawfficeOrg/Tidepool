@@ -1,0 +1,31 @@
+{
+  "$comment": "Pinned copy of the clawffice-design files this console renders. `the_vendored_design_files_are_byte_identical_to_the_checkout` compares the copies to $CLAWFFICE_DESIGN_DIR or a sibling checkout when one is present. Regenerate with tidepool-console/assets/design/README.md, then rewrite this file's commit and sha256 values.",
+  "source": {
+    "repo": "clawffice-design",
+    "commit": "995b41606e65",
+    "files": [
+      "banners/tidepool/tidepool-banner-static.ans",
+      "banners/tidepool/tidepool-banner-static.txt",
+      "tokens/core.json",
+      "tokens/apps/tidepool.json",
+      "tokens/cells.json",
+      "tokens/palettes/biolume.json",
+      "tokens/palettes/boiled.json",
+      "tokens/palettes/deep-tide.json",
+      "tokens/palettes/phosphor.json",
+      "tokens/palettes/sea-glass.json"
+    ]
+  },
+  "sha256": {
+    "banners/tidepool/tidepool-banner-static.ans": "bc62115f80b579c28fac9b25fe262cd1a15be6df8a1ff5edfb6d316f6e128c88",
+    "tokens/core.json": "482df3888784033bf64e080fdd82b0c8b7daca1a7b5b6f84e9a715366193b4ed",
+    "tokens/apps/tidepool.json": "bd7a1492d04961e47569e4c6c3406c736742507fd469fe8211592cc734236a95",
+    "tokens/cells.json": "171fd9e6e37783cab9e52e8142e7e191373766224970647354c182818dabf8da",
+    "tokens/palettes/biolume.json": "f303c1c609e09143071426a72d29122a76c177a88fd4d416cf26892179f7dc05",
+    "tokens/palettes/boiled.json": "43067efc90e82e9a8d58bc386c731b56ae2004e6fbabb7dbe457b227c62e4cc3",
+    "tokens/palettes/deep-tide.json": "7a9c1278bbf136f702b3f61cbd77034e349cff71a6279dd81fe1efeb3a0aa870",
+    "tokens/palettes/phosphor.json": "daefc02dc023519f58c9c11d0879a0da2c9428bce05fa157badc4235c901fc78",
+    "tokens/palettes/sea-glass.json": "91385f0c9e717de5e38d147a77a91b895d0ecf9e32e6452992670a31d1261096",
+    "banners/tidepool/tidepool-banner-static.txt": "d1d59e63b8bf7fa01977a2ba9ff07859be8696ce11ced18436318a3deeffdcdd"
+  }
+}

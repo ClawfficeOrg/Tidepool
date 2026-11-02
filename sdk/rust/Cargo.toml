@@ -1,0 +1,31 @@
+[package]
+name = "tidepool-client"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Typed Rust client for the Tidepool hub API (v1)"
+license = "MIT"
+repository = "https://github.com/ClawfficeOrg/Tidepool"
+keywords = ["tidepool", "clawffice", "sdk", "openapi", "automation"]
+categories = ["api-bindings"]
+
+[lib]
+name = "tidepool_client"
+path = "src/lib.rs"
+
+[features]
+default = ["blocking"]
+blocking = ["dep:ureq", "dep:tungstenite"]
+async = ["dep:reqwest", "dep:tokio"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+ureq = { version = "2", features = ["json"], optional = true }
+tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+tokio = { version = "1", features = ["time"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

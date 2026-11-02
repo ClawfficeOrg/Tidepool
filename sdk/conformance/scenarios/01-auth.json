@@ -1,0 +1,149 @@
+{
+  "scenarios": [
+    {
+      "id": "auth.contract",
+      "title": "Every binding reports the same contract and the same access model",
+      "goal": "The route table is generated from one document; a binding that drifted is caught here before any request is sent.",
+      "steps": [
+        {
+          "id": "contract",
+          "command": "contract",
+          "expect": {
+            "contract_version": "1.0.0",
+            "operation_count": { "$gte": 60 }
+          },
+          "agree": ["contract_version", "operation_count"]
+        },
+        {
+          "id": "describe-hosts",
+          "command": "describe",
+          "params": { "operation": "get_v1_hosts" },
+          "expect": {
+            "operation_id": "get_v1_hosts",
+            "method": "GET",
+            "path": "/v1/hosts",
+            "auth": "member",
+            "scope": null,
+            "role": null,
+            "surface": "hub",
+            "path_params": [],
+            "query_params": []
+          },
+          "agree": ["method", "path", "auth", "scope", "role", "surface"]
+        },
+        {
+          "id": "describe-whoami",
+          "command": "describe",
+          "params": { "operation": "get_v1_api_keys_whoami" },
+          "expect": {
+            "method": "GET",
+            "path": "/v1/api-keys/whoami",
+            "auth": "api_key",
+            "scope": "projects:read",
+            "surface": "hub"
+          },
+          "agree": ["method", "path", "auth", "scope", "role", "surface"]
+        },
+        {
+          "id": "describe-dispatch",
+          "command": "describe",
+          "params": { "operation": "post_v1_runs" },
+          "expect": {
+            "method": "POST",
+            "path": "/v1/runs",
+            "auth": "member_or_api_key",
+            "scope": "runs:dispatch",
+            "surface": "hub"
+          },
+          "agree": ["method", "path", "auth", "scope", "role", "surface"]
+        }
+      ]
+    },
+    {
+      "id": "auth.credentials",
+      "title": "Anonymous, member and API-key credentials are accepted exactly as documented",
+      "goal": "Missing or bad credentials are 401 unauthorized with the documented problem shape; a scoped key sees only what its scope allows.",
+      "steps": [
+        {
+          "id": "anonymous-me",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_pool_me",
+            "requestId": "conformance-auth-anonymous"
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 401,
+            "code": "unauthorized",
+            "request_id": "conformance-auth-anonymous",
+            "type": { "$regex": "^https://tidepool.dev/problems/" },
+            "title": { "$type": "string" }
+          },
+          "agree": ["status", "code", "type"]
+        },
+        {
+          "id": "bad-token",
+          "command": "call",
+          "params": { "operation": "get_v1_pool_me" },
+          "auth": { "token": "not-a-real-token" },
+          "expect": { "outcome": "error", "status": 401, "code": "unauthorized" },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "member-me",
+          "command": "call",
+          "params": { "operation": "get_v1_pool_me" },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.user.email": "{{operator_email}}",
+            "body.organization.name": { "$type": "string" }
+          }
+        },
+        {
+          "id": "read-key-projects",
+          "command": "call",
+          "params": { "operation": "get_v1_projects" },
+          "auth": { "apiKey": "{{read_key}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.projects": { "$contains": { "id": "{{project_id}}" } }
+          }
+        },
+        {
+          "id": "read-key-whoami",
+          "command": "call",
+          "params": { "operation": "get_v1_api_keys_whoami" },
+          "auth": { "apiKey": "{{read_key}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.scopes": ["projects:read"],
+            "body.status": "active"
+          },
+          "agree": ["body.scopes", "body.status"]
+        },
+        {
+          "id": "read-key-cannot-dispatch",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_runs",
+            "body": {
+              "project": "{{project_id}}",
+              "trigger": "{{trigger_offline}}",
+              "actor": "{{actor}}",
+              "deliveryKey": "conformance-scope-{{binding}}"
+            }
+          },
+          "auth": { "apiKey": "{{read_key}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 403,
+            "code": "missing_scope",
+            "detail": { "$contains": "runs:dispatch" }
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    }
+  ]
+}

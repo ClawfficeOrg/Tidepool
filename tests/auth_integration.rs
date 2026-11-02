@@ -41,6 +41,7 @@ async fn test_fixtures() -> (sqlx::MySqlPool, ConnectionManager, Config) {
         rate_limit: RateLimitConfig::default(),
         pool_bootstrap: None,
         public_origin: None,
+        cors_origins: Vec::new(),
     };
     (pool, mgr, cfg)
 }

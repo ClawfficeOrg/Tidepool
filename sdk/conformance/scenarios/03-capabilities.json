@@ -1,0 +1,191 @@
+{
+  "scenarios": [
+    {
+      "id": "capabilities.report",
+      "title": "A host reports capabilities with its credential and the pool validates them",
+      "goal": "Host authentication is the relationship credential, not the operator token; a malformed report is refused and a good one replaces the set.",
+      "steps": [
+        {
+          "id": "report",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_id_capabilities",
+            "pathParams": { "id": "{{offline_host_id}}" },
+            "headers": { "x-host-id": "{{offline_host_id}}" },
+            "body": {
+              "capabilities": [
+                {
+                  "provider": "anthropic",
+                  "model": "claude",
+                  "execution_mode": "default",
+                  "thinking_option": "high",
+                  "options": { "max_tokens": 8192 }
+                },
+                {
+                  "provider": "local",
+                  "model": "echo",
+                  "execution_mode": "default"
+                }
+              ]
+            }
+          },
+          "auth": { "hostCredential": "{{offline_host_credential}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.host_id": "{{offline_host_id}}",
+            "body.offered_providers": { "$contains": "anthropic" },
+            "body.capabilities": { "$len": 2 }
+          },
+          "agree": ["body.offered_providers"]
+        },
+        {
+          "id": "read-back",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_hosts_id_capabilities",
+            "pathParams": { "id": "{{offline_host_id}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "ok",
+            "body.capabilities": {
+              "$contains": {
+                "provider": "anthropic",
+                "model": "claude",
+                "execution_mode": "default"
+              }
+            }
+          }
+        },
+        {
+          "id": "no-credential",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_id_capabilities",
+            "pathParams": { "id": "{{offline_host_id}}" },
+            "headers": { "x-host-id": "{{offline_host_id}}" },
+            "body": { "capabilities": [] }
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 401,
+            "code": "unauthorized"
+          },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "wrong-credential",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_id_capabilities",
+            "pathParams": { "id": "{{offline_host_id}}" },
+            "headers": { "x-host-id": "{{offline_host_id}}" },
+            "body": { "capabilities": [] }
+          },
+          "auth": { "hostCredential": "wrong-host-credential-value-{{binding}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 401,
+            "code": "unauthorized"
+          },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "invalid-capability",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_id_capabilities",
+            "pathParams": { "id": "{{offline_host_id}}" },
+            "headers": { "x-host-id": "{{offline_host_id}}" },
+            "body": {
+              "capabilities": [
+                { "provider": "", "model": "claude", "execution_mode": "default" }
+              ]
+            }
+          },
+          "auth": { "hostCredential": "{{offline_host_credential}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 400,
+            "code": "invalid_request"
+          },
+          "agree": ["status", "code"]
+        },
+        {
+          "id": "unknown-host",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_hosts_id_capabilities",
+            "pathParams": { "id": "00000000-0000-4000-8000-000000000000" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 404,
+            "code": "not_found"
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    },
+    {
+      "id": "capabilities.requires-grant",
+      "title": "Enrollment does not grant execution, so a report is refused until host.execute is granted",
+      "goal": "The refusal is 403 forbidden naming the missing grant, on every binding.",
+      "steps": [
+        {
+          "id": "register",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts",
+            "body": { "hostname": "conformance-ungranted-{{binding}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok" },
+          "capture": { "ungranted_host_id": "body.id" }
+        },
+        {
+          "id": "mint",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enrollment_tokens",
+            "body": { "host_id": "{{ungranted_host_id}}" }
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": { "outcome": "ok", "body.token": { "$type": "string" } },
+          "capture": { "ungranted_token": "body.token" }
+        },
+        {
+          "id": "enroll",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": {
+              "token": "{{ungranted_token}}",
+              "credential": "conformance-ungranted-credential-{{binding}}"
+            }
+          },
+          "expect": { "outcome": "ok", "body.status": "offline" }
+        },
+        {
+          "id": "report-without-grant",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_id_capabilities",
+            "pathParams": { "id": "{{ungranted_host_id}}" },
+            "headers": { "x-host-id": "{{ungranted_host_id}}" },
+            "body": { "capabilities": [] }
+          },
+          "auth": { "hostCredential": "conformance-ungranted-credential-{{binding}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 403,
+            "code": "forbidden",
+            "detail": { "$contains": "host.execute" }
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    }
+  ]
+}

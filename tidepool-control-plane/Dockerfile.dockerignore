@@ -1,0 +1,9 @@
+# Per-Dockerfile ignore (BuildKit): applies only to this image, leaving any
+# other Dockerfile's context untouched. Send only what the build needs.
+*
+!sdk/ts
+!tidepool-control-plane
+**/node_modules
+**/dist
+**/.git
+**/target

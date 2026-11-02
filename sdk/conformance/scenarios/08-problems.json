@@ -1,0 +1,130 @@
+{
+  "scenarios": [
+    {
+      "id": "problems.shape",
+      "title": "Every hub failure is an RFC 9457 problem document with the same fields",
+      "goal": "Status, code, title, type and requestId are present on validation, conflict, not-found and unauthorized failures, and an incoming request id is echoed rather than replaced.",
+      "steps": [
+        {
+          "id": "validation",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts",
+            "body": {},
+            "requestId": "conformance-problem-validation"
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 422,
+            "code": "validation_failed",
+            "title": "Unprocessable Entity",
+            "type": "https://tidepool.dev/problems/validation_failed",
+            "request_id": "conformance-problem-validation",
+            "detail": { "$type": "string" }
+          },
+          "agree": ["status", "code", "title", "type"]
+        },
+        {
+          "id": "conflict",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_setup",
+            "body": {
+              "organization_name": "Conformance Second Pool",
+              "email": "second-pool@conformance.invalid",
+              "display_name": "Second Owner",
+              "password": "twelve-chars-or-more"
+            },
+            "requestId": "conformance-problem-conflict"
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 409,
+            "code": "conflict",
+            "title": "Conflict",
+            "type": "https://tidepool.dev/problems/conflict",
+            "request_id": "conformance-problem-conflict",
+            "detail": { "$type": "string" }
+          },
+          "agree": ["status", "code", "title", "type"]
+        },
+        {
+          "id": "not-found",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_hosts_id",
+            "pathParams": { "id": "00000000-0000-4000-8000-000000000001" },
+            "requestId": "conformance-problem-not-found"
+          },
+          "auth": { "token": "{{token}}" },
+          "expect": {
+            "outcome": "error",
+            "status": 404,
+            "code": "not_found",
+            "title": "Not Found",
+            "type": "https://tidepool.dev/problems/not_found",
+            "request_id": "conformance-problem-not-found"
+          },
+          "agree": ["status", "code", "title", "type"]
+        },
+        {
+          "id": "unauthorized",
+          "command": "call",
+          "params": {
+            "operation": "get_v1_pool_me",
+            "requestId": "conformance-problem-unauthorized"
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 401,
+            "code": "unauthorized",
+            "title": "Unauthorized",
+            "type": "https://tidepool.dev/problems/unauthorized",
+            "request_id": "conformance-problem-unauthorized"
+          },
+          "agree": ["status", "code", "title", "type"]
+        },
+        {
+          "id": "invalid-request",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_hosts_enroll",
+            "body": {
+              "token": "not-a-token",
+              "credential": "conformance-not-a-secret-credential-{{binding}}"
+            },
+            "requestId": "conformance-problem-invalid-request"
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 400,
+            "code": "invalid_request",
+            "title": "Bad Request",
+            "type": "https://tidepool.dev/problems/invalid_request",
+            "request_id": "conformance-problem-invalid-request"
+          },
+          "agree": ["status", "code", "title", "type"]
+        },
+        {
+          "id": "bad-password",
+          "command": "call",
+          "params": {
+            "operation": "post_v1_pool_login",
+            "body": {
+              "email": "{{operator_email}}",
+              "password": "definitely-not-the-password"
+            }
+          },
+          "expect": {
+            "outcome": "error",
+            "status": 401,
+            "code": "unauthorized",
+            "title": "Unauthorized"
+          },
+          "agree": ["status", "code"]
+        }
+      ]
+    }
+  ]
+}

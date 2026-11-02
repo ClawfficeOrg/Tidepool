@@ -124,6 +124,7 @@ Task ids are `todo-v1.json` unless marked `v2.`
 | A terminal-facing way to run all of it | the ratatui console, with a headless mode that prints the CLI's JSON | 2.2.\*, 2.2.5 |
 | Mobile and desktop apps | the Zoid reference client: menu bar and taskbar, sessions, rooms, runs | 2.3.\* |
 | A CLI (`paseo hub …`) and a TypeScript SDK | the `tidepool` CLI and TypeScript, Rust and Python SDKs with one conformance suite | 2.0.2, 2.0.3, 2.0.4, 2.0.5, 2.0.6 |
+| An API reference generated from the service definition | one OpenAPI 3.1 contract covering the hub surface, served at `/openapi.json` and pinned at `/openapi/v1.json`, with a generated reference and a drift gate | 2.0.1 |
 | MCP tools so an agent inside Paseo can orchestrate other agents | not in v1 or v2; the CLI and the SDKs are the automation surface. Revisit when a harness needs it | — |
 
 ### 3.6 Running it
@@ -184,6 +185,14 @@ run, activity, connection — because those words appear verbatim in the API,
 the OpenAPI document and every SDK, and a client author should not have to
 learn a metaphor to call an endpoint.
 
+The `v1` contract is now frozen by task 2.0.1: the route table, request and
+response schemas, scopes and roles live in `src/api/openapi.rs`, and
+[`API_CONTRACT.md`](API_CONTRACT.md) states what is stable within the major,
+what may change additively, and how a breaking change is announced. It also
+records the resource-versus-command decision that every SDK follows. Renaming
+`trigger`, `workflow` or `run` from here on is a breaking change to three
+languages and needs a new major, not a flavour pass.
+
 Two Tidepool-flavoured names already exist and are used:
 
 - **Rhumb** — the pool-to-pool federation link (clawffice-design, Tidepool's
@@ -194,12 +203,12 @@ Two Tidepool-flavoured names already exist and are used:
 A flavour pass over the remaining words was considered and is **not** in the
 plan, because it is a decision for a human, not an agent: renaming `trigger`,
 `workflow` and `run` after the SDKs ship is a breaking change to three
-languages. If it is wanted, it should be decided before task 2.0.1 freezes the
-contract. Suggestions that fit the water family, none of them approved:
-`hook` for trigger, `rig` for workflow, `catch` for run, `logbook` for
-activity. `Trawl`, `Tacklebox`, `Fathom` and `Capstan` were scanned and dropped
-as names already (clawffice-design README, "Open → Name checks") and are not
-available.
+languages. The contract now makes that explicit — changing them requires a
+`v2` contract and the deprecation window in `docs/API_CONTRACT.md`.
+Suggestions that fit the water family, none of them approved: `hook` for
+trigger, `rig` for workflow, `catch` for run, `logbook` for activity. `Trawl`,
+`Tacklebox`, `Fathom` and `Capstan` were scanned and dropped as names already
+(clawffice-design README, "Open → Name checks") and are not available.
 
 ## 6. Reading list, with what each page contributed
 

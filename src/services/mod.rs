@@ -30,5 +30,6 @@ pub mod relay;
 pub mod runs;
 pub mod saves;
 pub mod tidetable_jobs;
+pub mod token_revocation;
 pub mod triggers;
 pub mod workflows;

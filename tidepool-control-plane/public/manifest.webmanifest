@@ -1,0 +1,34 @@
+{
+  "name": "Tidepool control plane",
+  "short_name": "Tidepool",
+  "description": "Operate a Tidepool pool: hosts, projects, triggers, runs and rooms.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06141B",
+  "theme_color": "#4A9FE0",
+  "icons": [
+    {
+      "src": "/tidepool-cell.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/tidepool-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/tidepool-icon-256.png",
+      "type": "image/png",
+      "sizes": "256x256",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/tidepool-icon-1024.png",
+      "type": "image/png",
+      "sizes": "1024x1024"
+    }
+  ]
+}

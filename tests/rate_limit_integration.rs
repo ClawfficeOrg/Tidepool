@@ -95,6 +95,7 @@ macro_rules! limited_app {
                     rate_limit: RateLimitConfig::default(),
                     pool_bootstrap: None,
                     public_origin: None,
+                    cors_origins: Vec::new(),
                 }))
                 .route("/ws", web::get().to(|| async { "ws-ok" }))
                 .route("/v1/auth/ping", web::get().to(|| async { "auth-ok" }))

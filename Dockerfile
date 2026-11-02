@@ -8,9 +8,12 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock ./
-# The workspace declares the reference host agent; copy its manifest/source so
+# The workspace declares every member; copy each one's manifest and source so
 # Cargo can resolve the workspace, then build only the server package.
 COPY crates ./crates
+COPY sdk/rust ./sdk/rust
+COPY cli ./cli
+COPY tidepool-console ./tidepool-console
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release -p tidepool && rm -rf src
 

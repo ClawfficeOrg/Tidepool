@@ -97,7 +97,9 @@ mod tests {
 
         // Insert a root account, then a subaccount under it. Unique usernames
         // and public ids avoid collisions across runs on the shared dev DB.
-        let root_public_id = format!("root-{}-group", Uuid::new_v4());
+        // `public_id` is CHAR(36), so it holds a bare UUID; the readable
+        // prefix only goes on the username, which is VARCHAR(64).
+        let root_public_id = Uuid::new_v4().to_string();
         let root_username = format!("root-{}-group", Uuid::new_v4());
         sqlx::query(
             "INSERT INTO players (public_id, username, password_hash, status) \
@@ -117,7 +119,7 @@ mod tests {
             .expect("read root player id");
         let root_id = root.id as i64;
 
-        let sub_public_id = format!("sub-{}-group", Uuid::new_v4());
+        let sub_public_id = Uuid::new_v4().to_string();
         let sub_username = format!("sub-{}-group", Uuid::new_v4());
         sqlx::query(
             "INSERT INTO players (public_id, username, password_hash, parent_account_id, status) \

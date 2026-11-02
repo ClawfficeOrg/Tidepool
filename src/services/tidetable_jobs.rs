@@ -100,6 +100,8 @@ impl From<HostProtocolError> for JobError {
     fn from(error: HostProtocolError) -> Self {
         match error {
             HostProtocolError::NotFound => JobError::NotFound,
+            HostProtocolError::ExecutionNotFound => JobError::NotFound,
+            HostProtocolError::NotGranted => JobError::GrantMissing("host.execute".into()),
             HostProtocolError::DaemonNotConnected { slug } => JobError::DaemonNotConnected { slug },
             HostProtocolError::SocketGone => JobError::DaemonNotConnected {
                 slug: String::new(),

@@ -1,0 +1,26 @@
+[package]
+name = "tidepool-console"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "The operator's terminal: a ratatui console over the Tidepool Rust SDK"
+license = "MIT"
+repository = "https://github.com/ClawfficeOrg/Tidepool"
+keywords = ["tidepool", "clawffice", "tui", "ratatui", "operator"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "tidepool-console"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tidepool-client = { path = "../sdk/rust" }
+tidepool-cli = { path = "../cli" }
+
+[dev-dependencies]
+sha2 = "0.10"

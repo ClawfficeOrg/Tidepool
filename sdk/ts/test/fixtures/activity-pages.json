@@ -1,0 +1,56 @@
+{
+  "name": "activity feed paging follows nextCursor while hasMore",
+  "steps": [
+    {
+      "request": { "method": "GET", "path": "/v1/activity", "query": { "limit": "2" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "hasMore": true,
+          "nextCursor": "c2",
+          "items": [
+            {
+              "id": "act_01",
+              "kind": "run",
+              "at": "2026-10-29T05:00:00Z",
+              "project": "proj_01",
+              "run": "run_01",
+              "status": "succeeded",
+              "actor": "operator_01"
+            },
+            {
+              "id": "act_02",
+              "kind": "receipt",
+              "at": "2026-10-29T05:00:01Z",
+              "project": "proj_01",
+              "provider": "github",
+              "matched": true,
+              "duplicates": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": { "method": "GET", "path": "/v1/activity", "query": { "cursor": "c2", "limit": "2" } },
+      "response": {
+        "status": 200,
+        "body": {
+          "hasMore": false,
+          "nextCursor": null,
+          "items": [
+            {
+              "id": "act_03",
+              "kind": "step",
+              "at": "2026-10-29T05:00:02Z",
+              "project": "proj_01",
+              "run": "run_01",
+              "step": "build",
+              "status": "succeeded"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
