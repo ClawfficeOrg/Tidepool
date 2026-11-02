@@ -449,8 +449,35 @@ async fn a_typed_tkrun_job_runs_end_to_end_against_a_local_hub() {
     assert_eq!(status, 200, "bind: {body}");
     assert_eq!(body["slug"], SLUG);
 
-    // Dry-run job: the agent checks the hub, runs tkrun, streams output and exits.
+    // Without the jobs.tkrun grant, dispatch is 403 and stores nothing.
     let jobs_url = format!("{base}/v1/projects/{project_public_id}/jobs");
+    let (status, body) = call(
+        "POST",
+        jobs_url.clone(),
+        key.clone(),
+        Some(json!({
+            "host": host_public_id,
+            "checkout": CHECKOUT,
+            "options": {"dryRun": true},
+        })),
+    )
+    .await;
+    assert_eq!(status, 403, "dispatch without grant: {body}");
+
+    let grant_url =
+        format!("{base}/v1/projects/{project_public_id}/hosts/{host_public_id}/grants/jobs.tkrun");
+    let config_hash = "a".repeat(64);
+    let (status, body) = call(
+        "PUT",
+        grant_url.clone(),
+        key.clone(),
+        Some(json!({"configHash": config_hash})),
+    )
+    .await;
+    assert_eq!(status, 200, "grant: {body}");
+    assert_eq!(body["capability"], "jobs.tkrun");
+
+    // Dry-run job: the agent checks the hub, runs tkrun, streams output and exits.
     let (status, created) = call(
         "POST",
         jobs_url.clone(),

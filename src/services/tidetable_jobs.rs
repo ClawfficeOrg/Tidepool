@@ -13,6 +13,7 @@ use crate::entities::project::Project;
 use crate::services::host_presence::{self, HostPresenceError};
 use crate::services::host_protocol::{self, HostProtocolError, JOBS_TKRUN_FEATURE};
 use crate::services::projects::{self as project_svc, ProjectServiceError};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{FromRow, MySqlPool};
@@ -59,6 +60,9 @@ pub enum JobError {
         /// Host slug.
         slug: String,
     },
+    /// The operator has not granted this host the capability for this project.
+    #[error("grant '{0}' is missing for this host and project")]
+    GrantMissing(String),
     /// The job is not in a state that accepts this action.
     #[error("job is not live")]
     NotLive,
@@ -104,6 +108,38 @@ impl From<HostProtocolError> for JobError {
             HostProtocolError::Database(e) => JobError::Database(e),
         }
     }
+}
+
+/// Grant a host may hold for a project so it can run tkrun jobs.
+pub const TKRUN_GRANT: &str = "jobs.tkrun";
+
+/// Body of a grant PUT. The hash pins the checkout's tkrun config.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GrantRequest {
+    /// SHA-256 of the checkout's tkrun config, lowercase hex.
+    pub config_hash: String,
+}
+
+/// One grant as the API returns it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantView {
+    /// Host public id.
+    pub host: String,
+    /// Granted capability, e.g. `jobs.tkrun`.
+    pub capability: String,
+    /// Config hash the grant is pinned to.
+    pub config_hash: String,
+    /// When the grant was last written.
+    pub granted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, FromRow)]
+struct GrantRow {
+    capability: String,
+    config_hash: String,
+    granted_at: DateTime<Utc>,
 }
 
 /// A project's TideTable binding.
@@ -457,6 +493,9 @@ pub async fn dispatch(
         .ok_or(JobError::NotBound)?;
 
     let host = host_presence::require_connected(pool, organization_id, &request.host).await?;
+    if !has_grant(pool, project.id, host.id, TKRUN_GRANT).await? {
+        return Err(JobError::GrantMissing(TKRUN_GRANT.into()));
+    }
     if !host_protocol::has_feature(&host.public_id, JOBS_TKRUN_FEATURE) {
         return Err(JobError::FeatureMissing(JOBS_TKRUN_FEATURE.into()));
     }
@@ -506,6 +545,124 @@ pub async fn dispatch(
         .await?
         .ok_or(JobError::NotFound)?;
     Ok(JobView::from(row))
+}
+
+/// Grant a host one capability for one project, pinned to a config hash.
+/// Granting again replaces the hash and the timestamp.
+pub async fn put_grant(
+    pool: &MySqlPool,
+    organization_id: u64,
+    project_public_id: &str,
+    host_ref: &str,
+    capability: &str,
+    request: GrantRequest,
+) -> Result<GrantView, JobError> {
+    if capability != TKRUN_GRANT {
+        return Err(JobError::Invalid(format!("unknown grant '{capability}'")));
+    }
+    if !is_config_hash(&request.config_hash) {
+        return Err(JobError::Invalid(
+            "configHash must be 64 lowercase hex characters (sha-256)".into(),
+        ));
+    }
+    let project = find_project(pool, organization_id, project_public_id).await?;
+    let (host_id, host_public_id) = find_host(pool, organization_id, host_ref).await?;
+    sqlx::query(
+        "INSERT INTO project_host_grants (project_id, host_id, capability, config_hash) \
+         VALUES (?, ?, ?, ?) \
+         ON DUPLICATE KEY UPDATE config_hash = VALUES(config_hash), granted_at = CURRENT_TIMESTAMP",
+    )
+    .bind(project.id)
+    .bind(host_id)
+    .bind(capability)
+    .bind(&request.config_hash)
+    .execute(pool)
+    .await?;
+    let row: GrantRow = sqlx::query_as(
+        "SELECT capability, config_hash, granted_at FROM project_host_grants \
+         WHERE project_id = ? AND host_id = ? AND capability = ?",
+    )
+    .bind(project.id)
+    .bind(host_id)
+    .bind(capability)
+    .fetch_one(pool)
+    .await?;
+    Ok(GrantView {
+        host: host_public_id,
+        capability: row.capability,
+        config_hash: row.config_hash,
+        granted_at: row.granted_at,
+    })
+}
+
+/// Revoke a grant. Dispatch needs it again before the next job.
+pub async fn delete_grant(
+    pool: &MySqlPool,
+    organization_id: u64,
+    project_public_id: &str,
+    host_ref: &str,
+    capability: &str,
+) -> Result<(), JobError> {
+    if capability != TKRUN_GRANT {
+        return Err(JobError::Invalid(format!("unknown grant '{capability}'")));
+    }
+    let project = find_project(pool, organization_id, project_public_id).await?;
+    let (host_id, _) = find_host(pool, organization_id, host_ref).await?;
+    let result = sqlx::query(
+        "DELETE FROM project_host_grants WHERE project_id = ? AND host_id = ? AND capability = ?",
+    )
+    .bind(project.id)
+    .bind(host_id)
+    .bind(capability)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(JobError::NotFound);
+    }
+    Ok(())
+}
+
+async fn has_grant(
+    pool: &MySqlPool,
+    project_id: u64,
+    host_id: u64,
+    capability: &str,
+) -> Result<bool, JobError> {
+    let found: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM project_host_grants WHERE project_id = ? AND host_id = ? AND capability = ?",
+    )
+    .bind(project_id)
+    .bind(host_id)
+    .bind(capability)
+    .fetch_optional(pool)
+    .await?;
+    Ok(found.is_some())
+}
+
+/// Resolve a host by public id or slug within the caller's organization.
+async fn find_host(
+    pool: &MySqlPool,
+    organization_id: u64,
+    host_ref: &str,
+) -> Result<(u64, String), JobError> {
+    let row: Option<(u64, String)> = sqlx::query_as(
+        "SELECT id, public_id FROM hosts \
+         WHERE organization_id = ? AND (public_id = ? OR slug = ?) AND revoked_at IS NULL",
+    )
+    .bind(organization_id)
+    .bind(host_ref)
+    .bind(host_ref)
+    .fetch_optional(pool)
+    .await?;
+    row.ok_or(JobError::NotFound)
+}
+
+/// A SHA-256 digest in lowercase hex.
+fn is_config_hash(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Ask a live job's host to stop or kill it. Returns the job as stored.
@@ -763,6 +920,14 @@ fn truncate(value: &str, max_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_hash_is_sha256_lowercase_hex() {
+        assert!(is_config_hash(&"0123456789abcdef".repeat(4)));
+        assert!(!is_config_hash(&"0123456789abcdef".repeat(3)));
+        assert!(!is_config_hash(&"0123456789ABCDEF".repeat(4)));
+        assert!(!is_config_hash(&"g".repeat(64)));
+    }
 
     #[test]
     fn slugs_follow_the_tidetable_rule() {

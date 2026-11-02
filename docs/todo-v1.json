@@ -1063,6 +1063,274 @@
           "human_look": "Deploy assets and docs are committed. Not deployed: needs a hostname with DNS pointed at the VPS, approval to touch production, then first deploy, bootstrap-password removal, one host enrolment, one dispatched run and one performed rollback."
         }
       ]
+    },
+    {
+      "id": "1.7",
+      "title": "Projects meet TideTable: one TKRun job end to end",
+      "goal": "A Tidepool project bound to a TideTable slug can ask one connected host to run `tidetable tkrun run <slug> --repo <checkout>`, see it start, stream its output, stop it, and record its exit, with no TideTable token on the pool wire and none reachable by an agent or a gate.",
+      "prerequisites": [
+        "1.4"
+      ],
+      "tasks": [
+        {
+          "id": "1.7.1",
+          "title": "Host protocol v2: hello and job frames",
+          "status": "pending",
+          "goal": "Add hello negotiation and the start_job, stop_job, job_query, job_accepted, job_refused, job_output (with seq), job_event, job_completed and jobs_snapshot frames. v1 hosts keep working unchanged. create_agent v2 carries optional cwd and branch from the resolved environment.",
+          "touches": [
+            "docs/HOST_PROTOCOL.md",
+            "src/services/host_protocol.rs",
+            "src/sockets/host_ws.rs",
+            "src/services/runs.rs"
+          ],
+          "success": [
+            "A v1 host that never sends hello receives only v1 frames and its tests pass unchanged",
+            "A resent start_job with the same jobId yields the existing job, never a second",
+            "Duplicate job_output seq values are dropped",
+            "create_agent v2 carries the directory dispatch already computes"
+          ],
+          "tests": "Unit tests per frame and for negotiation; replay and reconnect tests against an in-process host.",
+          "prerequisites": [],
+          "complexity": "High",
+          "agent": "pro_dev_agent"
+        },
+        {
+          "id": "1.7.2",
+          "title": "TideTable binding and checkouts in the manifest",
+          "status": "pending",
+          "goal": "tidepool.json gains a validated `tidetable {server, slug}` block and named `checkouts {name, host, directory}`. Activation confirms the slug through the hub's GET /api/projects with the pool's read-only token and fails closed, keeping the previous revision, when the slug is unknown or the hub unreachable. GET /v1/projects/{id}/tidetable shows the binding plus live repo_url, todo_path and default_branch.",
+          "touches": [
+            "src/services/configuration.rs",
+            "src/services/tidetable_client.rs",
+            "src/entities/checkout.rs",
+            "src/api/projects.rs",
+            "src/config.rs"
+          ],
+          "success": [
+            "An unknown slug or checkout host is a named field issue and the previous revision stays active",
+            "The pool's TideTable token is read-only and never appears in a response, log or error",
+            "repo_url and todo_path are read from the hub, not stored"
+          ],
+          "tests": "Unit tests for each validation rule; integration test against a loopback tidetable serve.",
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "security_notes": "The pool holds only a read-scoped TideTable token. Never TK_API_TOKEN."
+        },
+        {
+          "id": "1.7.3",
+          "title": "Jobs: record, manual dispatch, stop, grant",
+          "status": "pending",
+          "goal": "A jobs table and POST /v1/projects/{id}/jobs, GET list and detail, POST /v1/jobs/{id}/stop, plus the per host and project jobs.tkrun grant pinned to the checkout's tkrun config hash. One live job per slug. Offline host refuses with daemon_not_connected and queues nothing.",
+          "touches": [
+            "migrations/",
+            "src/entities/job.rs",
+            "src/services/jobs.rs",
+            "src/api/jobs.rs",
+            "src/api/hosts.rs"
+          ],
+          "success": [
+            "A second dispatch for a slug with a live job is refused with job_already_running",
+            "Dispatch without the jobs.tkrun grant is 403 naming the grant",
+            "A host_offline job becomes running again after jobs_snapshot",
+            "The job row exists before the frame is sent"
+          ],
+          "tests": "Unit tests for state transitions; integration tests for offline dispatch, duplicate dispatch, grant refusal and restart replay.",
+          "prerequisites": [
+            "1.7.1",
+            "1.7.2"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent"
+        },
+        {
+          "id": "1.7.4",
+          "title": "Reference host agent runs tkrun jobs",
+          "status": "pending",
+          "goal": "crates/tidepool-host-agent speaks v2 and implements jobs.tkrun: local checkout allowlist, fixed argv, token from a local file or env passed only to the child, preflight GET /api/<slug>/ready mapping 401/403/unreachable to job_refused codes, detached spawn, stop and kill via tkrun stop|kill, jobs_snapshot on reconnect.",
+          "touches": [
+            "crates/tidepool-host-agent/"
+          ],
+          "success": [
+            "A checkout not on the local allowlist is refused before anything spawns",
+            "The child receives TIDETABLE_TOKEN and the agent's own environment is never printed or sent",
+            "Killing the agent's socket does not stop the child, and reconnecting re-adopts it"
+          ],
+          "tests": "Integration tests with a stub `tidetable` executable that records argv and env and prints scripted lines.",
+          "prerequisites": [
+            "1.7.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent"
+        },
+        {
+          "id": "1.7.5",
+          "title": "End-to-end slice in CI",
+          "status": "pending",
+          "goal": "One test: pool, reference agent and a loopback `tidetable serve` with a temporary registry holding slug chiton-fixture and a token minted with tokens.mint_token for that slug. Dispatch a `--dry-run` job and a `--task` job against a tiny fixture repo whose agent_commands is a script that prints TKRUN_RESULT: DONE. Also the 403 case with a token scoped to another slug.",
+          "touches": [
+            "tests/e2e_tkrun_job.rs",
+            "tests/fixtures/tkrun/"
+          ],
+          "success": [
+            "The task job ends succeeded and the hub shows the task done with the job's owner",
+            "A token scoped to another slug ends in job_refused tidetable_forbidden and claims nothing",
+            "Nothing in the test touches the game API"
+          ],
+          "tests": "This task is the test.",
+          "prerequisites": [
+            "1.7.3",
+            "1.7.4"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent"
+        },
+        {
+          "id": "1.7.6",
+          "title": "TideTable: gate and merge-resolve drop runner credentials",
+          "status": "pending",
+          "goal": "Repository TideTable. Pass AGENT_ENV_DROP plus agent_env_drop to gate and merge_resolve processes, as already done for agents.",
+          "touches": [
+            "TideTable:tidetable/tkrun.py",
+            "TideTable:tests/"
+          ],
+          "success": [
+            "A gate step that prints its environment shows none of TIDETABLE_TOKEN, TIDETABLE_SERVER, TASKERKEEPER_TOKEN, TK_API_TOKEN"
+          ],
+          "tests": "Unit test with a gate step that dumps env.",
+          "prerequisites": [],
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "security_notes": "Blocks 1.7.9: gates run agent-written code."
+        },
+        {
+          "id": "1.7.7",
+          "title": "TideTable: whoami and slug-filtered projects and stream",
+          "status": "pending",
+          "goal": "Repository TideTable. GET /api/whoami returns the presented machine token's slugs, scopes and expiry (never the secret). /api/projects and /api/stream return only the token's slugs for machine tokens.",
+          "touches": [
+            "TideTable:tidetable/serve.py",
+            "TideTable:tests/"
+          ],
+          "success": [
+            "A chiton-only token lists only chiton in /api/projects",
+            "whoami lets a host fill slugs_verified without a write"
+          ],
+          "tests": "Route tests for each token shape.",
+          "prerequisites": [],
+          "complexity": "Low",
+          "agent": "mid_dev_agent"
+        },
+        {
+          "id": "1.7.8",
+          "title": "Swaygent: /ws/host v2 and tkrun jobs",
+          "status": "pending",
+          "goal": "Repository Swaygent. Replace the HTTP session-polling routes with the documented WebSocket (presence, v1 create_agent with cwd, v2 jobs.tkrun), send capabilities in Tidepool's shape, keep the TideTable token in the keychain, spawn tkrun detached and re-adopt it after a restart.",
+          "touches": [
+            "Swaygent:crates/swaygent-core/src/hub.rs",
+            "Swaygent:crates/swaygent-core/src/hub/",
+            "Swaygent:crates/swaygent-cli/src/cli.rs"
+          ],
+          "success": [
+            "Swaygent shows connected in GET /v1/hosts",
+            "A capability report is accepted by Tidepool",
+            "Restarting Swaygent during a job does not stop tkrun and the job is re-adopted"
+          ],
+          "tests": "Headless tests over the existing Http and SessionRunner seams plus a scripted socket.",
+          "prerequisites": [
+            "1.7.1"
+          ],
+          "complexity": "Very High",
+          "agent": "flagship"
+        },
+        {
+          "id": "1.7.9",
+          "title": "Chiton on the VPS hub, one real task",
+          "status": "pending",
+          "goal": "Operator mints a chiton read/write token, installs it on the Swaygent host, binds the Tidepool project to slug chiton, adds the checkout, grants jobs.tkrun and dispatches `--task <one ready id>`.",
+          "touches": [
+            "docs/memory.md"
+          ],
+          "success": [
+            "The task is claimed and closed on the hub by owner tkrun-<date>@<host>",
+            "The job record shows the exit code and the branch",
+            "The agent transcript in .tkrun/<date>/ contains no TideTable credential"
+          ],
+          "tests": "Manual acceptance; a person reviews the branch before merging.",
+          "prerequisites": [
+            "1.7.3",
+            "1.7.6",
+            "1.7.8"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "human_look": "Needs the VPS, a real token and a real agent run."
+        }
+      ]
+    },
+    {
+      "id": "1.8",
+      "title": "Schedules and one status page",
+      "goal": "Schedules fire jobs without a person, and one Tidepool view answers what is bound, what is running where, and what TideTable says about it.",
+      "prerequisites": [
+        "1.7"
+      ],
+      "tasks": [
+        {
+          "id": "1.8.1",
+          "title": "Schedules",
+          "status": "pending",
+          "goal": "Manifest `schedules` with cron, timezone, checkout, options and overlap skip. Each fire has delivery key schedule:<name>:<time>; an offline host or unreachable hub records a missed fire and queues nothing; a checkout whose tkrun config hash changed pauses its schedules.",
+          "touches": [
+            "src/services/schedules.rs",
+            "src/services/configuration.rs",
+            "migrations/"
+          ],
+          "success": [
+            "A fire is dispatched at most once per key across pool restarts",
+            "A missed fire is recorded with its reason"
+          ],
+          "tests": "Clock-injected unit tests; restart test.",
+          "prerequisites": [],
+          "complexity": "High",
+          "agent": "pro_dev_agent"
+        },
+        {
+          "id": "1.8.2",
+          "title": "Project status join",
+          "status": "pending",
+          "goal": "GET /v1/projects/{id}/status joins jobs, host presence, the hub's list claims and sessions by owner string, marking hub facts with their age and claims with no live job as outside Tidepool.",
+          "touches": [
+            "src/services/project_status.rs",
+            "src/api/projects.rs"
+          ],
+          "success": [
+            "A claim from a manual tkrun on another machine is shown, labelled outside Tidepool",
+            "Hub unreachable returns the pool's facts with a stale marker, not an error"
+          ],
+          "tests": "Integration tests with a loopback hub.",
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent"
+        },
+        {
+          "id": "1.8.3",
+          "title": "TideTable: tkrun --events and run id",
+          "status": "pending",
+          "goal": "Repository TideTable. `tkrun run --events PATH --run-id ID` writes one JSON line per task transition and posts the run id in its hub heartbeat, so hosts can send job_event and the hub can show which job holds a claim.",
+          "touches": [
+            "TideTable:tidetable/tkrun.py",
+            "TideTable:docs/tkrun.md"
+          ],
+          "success": [
+            "Every claim, gate result and outcome appears once in the events file"
+          ],
+          "tests": "Runner tests with stub agents.",
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent"
+        }
+      ]
     }
   ]
 }

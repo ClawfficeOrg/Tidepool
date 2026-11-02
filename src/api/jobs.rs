@@ -5,6 +5,8 @@
 //! - `POST /v1/projects/{id}/jobs`      — dispatch one typed `tkrun` job
 //! - `GET  /v1/jobs/{id}`               — one job, with its output so far
 //! - `POST /v1/jobs/{id}/stop`          — ask the host to stop or kill it
+//! - `PUT|DELETE /v1/projects/{id}/hosts/{host}/grants/jobs.tkrun` — grant or
+//!   revoke a host's permission to run tkrun for a project
 //!
 //! Dispatch to an offline host is `409 daemon_not_connected` and stores no live
 //! job. A second live job for the same project is `409 job_already_running`.
@@ -14,7 +16,7 @@ use crate::api::manual_runs::HubAuth;
 use crate::api::problem::{Problem, ProblemCode};
 use crate::entities::api_key::ApiKeyScope;
 use crate::services::tidetable_jobs::{
-    self as jobs_svc, BindingRequest, DispatchRequest, JobError, StopRequest,
+    self as jobs_svc, BindingRequest, DispatchRequest, GrantRequest, JobError, StopRequest,
 };
 use actix_web::{HttpRequest, HttpResponse, http::StatusCode, web};
 use sqlx::MySqlPool;
@@ -25,6 +27,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         web::resource("/v1/projects/{id}/tidetable")
             .route(web::get().to(get_binding))
             .route(web::put().to(put_binding)),
+    )
+    .service(
+        web::resource("/v1/projects/{id}/hosts/{host}/grants/{capability}")
+            .route(web::put().to(put_grant))
+            .route(web::delete().to(delete_grant)),
     )
     .service(web::resource("/v1/projects/{id}/jobs").route(web::post().to(dispatch_job)))
     .service(web::resource("/v1/jobs/{id}").route(web::get().to(get_job)))
@@ -74,6 +81,64 @@ async fn put_binding(
     .await
     {
         Ok(binding) => HttpResponse::Ok().json(binding),
+        Err(error) => map_error(error, &req),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth, body))]
+async fn put_grant(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: HubAuth,
+    path: web::Path<(String, String, String)>,
+    body: web::Json<GrantRequest>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(error) = auth.require_write(ApiKeyScope::ConfigurationInstall) {
+        return error.error_response();
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    let (project, host, capability) = path.into_inner();
+    match jobs_svc::put_grant(
+        pool.get_ref(),
+        auth.organization_id(),
+        &project,
+        &host,
+        &capability,
+        body.into_inner(),
+    )
+    .await
+    {
+        Ok(grant) => HttpResponse::Ok().json(grant),
+        Err(error) => map_error(error, &req),
+    }
+}
+
+#[tracing::instrument(skip(pool, auth))]
+async fn delete_grant(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: HubAuth,
+    path: web::Path<(String, String, String)>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(error) = auth.require_write(ApiKeyScope::ConfigurationInstall) {
+        return error.error_response();
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    let (project, host, capability) = path.into_inner();
+    match jobs_svc::delete_grant(
+        pool.get_ref(),
+        auth.organization_id(),
+        &project,
+        &host,
+        &capability,
+    )
+    .await
+    {
+        Ok(()) => HttpResponse::NoContent().finish(),
         Err(error) => map_error(error, &req),
     }
 }
@@ -192,6 +257,11 @@ fn map_error(error: JobError, req: &HttpRequest) -> HttpResponse {
             StatusCode::CONFLICT,
             ProblemCode::Conflict,
             "job_already_running: the project already has a live job".to_string(),
+        ),
+        JobError::GrantMissing(grant) => (
+            StatusCode::FORBIDDEN,
+            ProblemCode::Forbidden,
+            format!("grant '{grant}' is missing for this host and project"),
         ),
         JobError::FeatureMissing(feature) => (
             StatusCode::CONFLICT,

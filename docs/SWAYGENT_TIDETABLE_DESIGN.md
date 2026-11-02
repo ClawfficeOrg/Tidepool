@@ -460,7 +460,8 @@ report and the `jobs.tkrun` grant.
 ## 8. Open questions
 
 Decided 2026-10-30: all six recommendations below are accepted as written.
-Item 3's `opus/1.2.5` question is still open (section 9).
+Item 3's `opus/1.2.5` question is resolved 2026-11-02: no such branch exists,
+so there is nothing to land. 1.7.8 goes on `pool-ws-jobs` (see section 9).
 
 1. **Swaygent transport: WebSocket, or does Tidepool add HTTP polling?**
    Recommend the WebSocket. It is the documented protocol
@@ -496,6 +497,10 @@ Item 3's `opus/1.2.5` question is still open (section 9).
   drift resolution", unrelated to Tidepool's host protocol. Swaygent's pool
   work is its `docs/todo-v2.json` tasks 2.1.1-2.1.6 (2.1.3 and 2.1.6 are
   `needs_human_look`). This document describes Swaygent from main.
+  **Resolved 2026-11-02:** the `opus/1.2.5` reference was wrong. Nothing to
+  land from it. 1.7.8 is built on a new branch `pool-ws-jobs` off Swaygent
+  main, in its own worktree, leaving the main checkout's uncommitted edits
+  alone.
 - **Grant naming.** `HUB_CAPABILITIES.md:88` says `hub.execute` "granted from
   the machine"; the protocol and code say `host.execute`
   (`HOST_PROTOCOL.md:54`, `src/api/hosts.rs:409`) and the grant is an operator
