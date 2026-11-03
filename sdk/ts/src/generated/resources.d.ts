@@ -267,7 +267,7 @@ export interface Resources {
      */
     list(options?: RequestOptions): Promise<HostsResponse>;
     /**
-     * Mint a ten-minute single-use host enrollment token
+     * Mint a single-use host enrollment token (valid for a day)
      */
     mintEnrollmentToken(body: MintEnrollmentTokenRequest, options?: RequestOptions): Promise<MintEnrollmentTokenResponse>;
     /**

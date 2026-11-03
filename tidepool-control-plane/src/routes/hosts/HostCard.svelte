@@ -13,7 +13,7 @@
   import HostActionControl from './HostActionControl.svelte';
   import { canUseControl, controlById, denialReason } from '../../auth/roles';
   import type { Role } from '../../auth/types';
-  import { executionAction, type HostAction, type HostRow } from '$lib/hosts';
+  import { executionAction, removeAction, type HostAction, type HostRow } from '$lib/hosts';
 
   interface Props {
     /** The host to render. */
@@ -28,6 +28,8 @@
     onGrant?: () => void;
     /** Revoke `host.execute`. */
     onRevoke?: () => void;
+    /** Remove the host from the pool. */
+    onRemove?: () => void;
   }
 
   let {
@@ -37,12 +39,21 @@
     confirmingAction = null,
     onGrant,
     onRevoke,
+    onRemove,
   }: Props = $props();
 
   const action = $derived(executionAction(row));
   const denial = $derived.by((): string | null => {
     if (!action) return null;
     const control = controlById(action.controlId);
+    if (!control || canUseControl(role, control)) return null;
+    return denialReason(role, control);
+  });
+
+  const removal = $derived(removeAction(row));
+  const removalDenial = $derived.by((): string | null => {
+    if (!removal) return null;
+    const control = controlById(removal.controlId);
     if (!control || canUseControl(role, control)) return null;
     return denialReason(role, control);
   });
@@ -108,6 +119,19 @@
       </p>
     {/if}
   </div>
+
+  {#if removal}
+    <div class="tp-host__action">
+      <HostActionControl
+        action={removal}
+        actionKey={`${row.id}-${removal.id}`}
+        {busy}
+        denial={removalDenial}
+        initialConfirming={confirmingAction === removal.id}
+        onConfirm={onRemove}
+      />
+    </div>
+  {/if}
 </article>
 
 <style>

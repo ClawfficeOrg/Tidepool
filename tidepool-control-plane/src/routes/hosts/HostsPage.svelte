@@ -106,6 +106,12 @@
     adopt(await controller.enroll(input));
   }
 
+  /** Remove one host from the pool. */
+  async function removeHost(hostId: string): Promise<void> {
+    if (!controller) return;
+    adopt(await controller.removeHost(hostId));
+  }
+
   /** Grant or revoke the execution grant for one host. */
   async function setExecution(hostId: string, enabled: boolean): Promise<void> {
     if (!controller) return;
@@ -182,6 +188,7 @@
               busy={view.busyHostId === row.id}
               onGrant={() => void setExecution(row.id, true)}
               onRevoke={() => void setExecution(row.id, false)}
+              onRemove={() => void removeHost(row.id)}
             />
           </li>
         {/each}

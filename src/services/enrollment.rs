@@ -21,8 +21,9 @@ use chrono::{Duration, Utc};
 use sqlx::MySqlPool;
 use thiserror::Error;
 
-/// Enrollment tokens live for ten minutes.
-pub const ENROLLMENT_TTL_SECS: i64 = 10 * 60;
+/// Enrollment tokens live for a day. Ten minutes was too short to pick the
+/// token up, copy it to the host and run the enrol command.
+pub const ENROLLMENT_TTL_SECS: i64 = 24 * 60 * 60;
 
 /// Minimum host-generated credential length.
 pub const MIN_CREDENTIAL_LEN: usize = 32;
@@ -351,7 +352,7 @@ mod tests {
 
     #[test]
     fn enrollment_token_is_ten_minutes() {
-        assert_eq!(ENROLLMENT_TTL_SECS, 600);
+        assert_eq!(ENROLLMENT_TTL_SECS, 86_400);
     }
 
     #[test]

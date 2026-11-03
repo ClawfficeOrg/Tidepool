@@ -306,9 +306,9 @@ export function sortHostRows(rows: readonly HostRow[]): HostRow[] {
 /** An action offered on one host row. */
 export interface HostAction {
   /** Stable id, used in markup and tests. */
-  id: 'grant-execution' | 'revoke-execution';
+  id: 'grant-execution' | 'revoke-execution' | 'remove-host';
   /** The role-table control this action is gated by. */
-  controlId: 'grant-host-execution' | 'revoke-host-execution';
+  controlId: 'grant-host-execution' | 'revoke-host-execution' | 'revoke-host';
   /** The operation id from the hub contract. */
   operationId: string;
   /** Button label before confirming. */
@@ -328,6 +328,26 @@ export const GRANT_CONSEQUENCE =
 /** What revoking execution does, in one sentence. */
 export const REVOKE_CONSEQUENCE =
   'Revoking execution stops new agent sessions on this host. It stays enrolled and connected, but the pool will no longer dispatch runs to it until execution is granted again.';
+
+/** What removing a host does, in one sentence. */
+export const REMOVE_CONSEQUENCE =
+  'Removing a host ends its relationship with this pool. Its credential stops working, and the row is gone. Enrol the machine again to add it back.';
+
+/**
+ * The remove action for a row, or null when the relationship already ended.
+ */
+export function removeAction(row: HostRow): HostAction | null {
+  if (row.status.status === 'revoked') return null;
+  return {
+    id: 'remove-host',
+    controlId: 'revoke-host',
+    operationId: 'delete_v1_hosts_id',
+    label: 'Remove host',
+    consequence: REMOVE_CONSEQUENCE,
+    confirmConsequence: `Confirm: ${row.slug} is removed from this pool and its credential stops working.`,
+    confirmLabel: `Remove ${row.slug}`,
+  };
+}
 
 /**
  * The execution action for a row, or null when none applies.
@@ -528,6 +548,8 @@ export interface HostsTransport {
   grantExecution(hostId: string): Promise<ContractHostView>;
   /** Revoke `host.execute`. */
   revokeExecution(hostId: string): Promise<ContractHostView>;
+  /** Remove the host from the pool: its credential stops working. */
+  remove(hostId: string): Promise<void>;
 }
 
 /** Build the transport from the typed SDK client. */
@@ -541,6 +563,7 @@ export function hostsTransport(client: TidepoolClient): HostsTransport {
       client.api.hosts.startExecution(hostId, {}) as Promise<ContractHostView>,
     revokeExecution: (hostId) =>
       client.api.hosts.stopExecution(hostId) as Promise<ContractHostView>,
+    remove: (hostId) => client.api.hosts.remove(hostId),
   };
 }
 
@@ -700,6 +723,28 @@ export class HostsController {
         busy: false,
         busyHostId: null,
         hosts: sortHostRows(hosts),
+      };
+    } catch (error) {
+      this.state = {
+        ...this.state,
+        busy: false,
+        busyHostId: null,
+        problem: presentProblem(error),
+      };
+    }
+    return this.state;
+  }
+
+  /** Remove a host from the pool, then drop its row from the list. */
+  async removeHost(hostId: string): Promise<HostsViewState> {
+    this.state = { ...this.state, busy: true, busyHostId: hostId, problem: null };
+    try {
+      await this.transport.remove(hostId);
+      this.state = {
+        ...this.state,
+        busy: false,
+        busyHostId: null,
+        hosts: this.state.hosts.filter((row) => row.id !== hostId),
       };
     } catch (error) {
       this.state = {
