@@ -1269,6 +1269,47 @@
           "complexity": "High",
           "agent": "pro_dev_agent",
           "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.8",
+          "title": "Backfill repo history at setup",
+          "status": "pending",
+          "goal": "Once GitHub is connected, pull each watched repo's existing history: stargazers with their starred_at dates, forks with created_at, releases and tags with dates, and milestones. Store it with the source and the time it was fetched.",
+          "touches": [
+            "src/services/",
+            "migrations/"
+          ],
+          "success": [
+            "Each repo shows its star and fork history from before the connection.",
+            "A re-run adds nothing it already has."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T12:00:00Z"
+        },
+        {
+          "id": "2.6.9",
+          "title": "Daily snapshots of repo counts",
+          "status": "pending",
+          "goal": "Every day, record each watched repo's star count, fork count, open issues, open PRs and latest release. Keep every snapshot so a timeline can be drawn later. Webhook events are stored too; they are not a substitute for snapshots.",
+          "touches": [
+            "src/services/",
+            "migrations/",
+            "src/api/"
+          ],
+          "success": [
+            "One snapshot per repo per day is stored.",
+            "The snapshot job can be run by hand and is idempotent for a day."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T12:00:00Z"
         }
       ]
     }
