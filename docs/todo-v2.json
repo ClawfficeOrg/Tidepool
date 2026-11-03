@@ -1379,6 +1379,117 @@
           "created_at": "2026-11-03T18:00:00Z"
         }
       ]
+    },
+    {
+      "id": "2.7",
+      "title": "Run control: start and monitor TideTable runs",
+      "goal": "Close the gap where a TideTable tkrun can only be started and watched on the PC that runs it. Start a run from the control plane or Swaygent, see its status and output as it goes, and have runs started from the TideTable CLI show up on the hub.",
+      "prerequisites": [
+        "2.5"
+      ],
+      "tasks": [
+        {
+          "id": "2.7.1",
+          "title": "Start a TKRun job from the control plane",
+          "status": "pending",
+          "goal": "A page where the user picks a project, its tasks, hours, parallel jobs and the host, then dispatches a tkrun job through the existing jobs endpoint. Dry run is the default.",
+          "touches": [
+            "tidepool-control-plane/src/routes/runs/",
+            "tidepool-control-plane/src/lib/"
+          ],
+          "success": [
+            "Dispatch sends the chosen task ids and options to POST /v1/projects/{id}/jobs.",
+            "Dry run is selected by default.",
+            "A refusal shows its refusal code and detail."
+          ],
+          "prerequisites": [
+            "2.5.2"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T22:00:00Z"
+        },
+        {
+          "id": "2.7.2",
+          "title": "Monitor a job's status and output",
+          "status": "pending",
+          "goal": "Show a job's status, owner, pid, summary and output, and refresh while it runs. The output is the tkrun log; it stops refreshing once the job is finished.",
+          "touches": [
+            "tidepool-control-plane/src/routes/runs/",
+            "tidepool-control-plane/src/lib/"
+          ],
+          "success": [
+            "A running job's status and output update without a page reload.",
+            "A finished job shows its exit code and summary.",
+            "A refused job shows why."
+          ],
+          "prerequisites": [
+            "2.7.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T22:00:00Z"
+        },
+        {
+          "id": "2.7.3",
+          "title": "Start a TKRun from Swaygent",
+          "status": "pending",
+          "goal": "A tray or settings action that starts a chosen project and task locally, using the same tkrun command the pool uses. It needs no pool connection.",
+          "touches": [
+            "crates/swaygent-core/src/hub/tkrun.rs",
+            "src/settings/"
+          ],
+          "success": [
+            "The action runs the same tidetable command the pool job runs.",
+            "The run appears in the jobs list in Swaygent."
+          ],
+          "prerequisites": [
+            "2.7.2"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T22:00:00Z"
+        },
+        {
+          "id": "2.7.4",
+          "title": "Configurable console or log file for TKRun",
+          "status": "pending",
+          "goal": "A setting chooses whether a tkrun job opens a console window or writes to a log file. The default is a log file at %USERPROFILE%.swaygentlogs<job-id>.log.",
+          "touches": [
+            "crates/swaygent-core/src/hub/tkrun.rs",
+            "crates/swaygent-core/src/store.rs"
+          ],
+          "success": [
+            "The default writes to the log file and opens no window.",
+            "Setting console keeps the window.",
+            "The log path is shown in the jobs list."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T22:00:00Z"
+        },
+        {
+          "id": "2.7.5",
+          "title": "Report CLI runs to the hub",
+          "status": "pending",
+          "goal": "A tkrun started with the TideTable CLI and --server reports its run to the hub, so Tidepool shows it with its status and output. A run started locally without a hub stays local.",
+          "touches": [
+            "src/services/tidetable_jobs.rs",
+            "src/api/jobs.rs"
+          ],
+          "success": [
+            "A CLI run with --server appears in Tidepool's runs with its status.",
+            "A local run without a hub is unchanged."
+          ],
+          "prerequisites": [
+            "2.7.2"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T22:00:00Z"
+        }
+      ]
     }
   ]
 }
