@@ -1332,6 +1332,51 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "created_at": "2026-11-03T13:00:00Z"
+        },
+        {
+          "id": "2.6.11",
+          "title": "Triage notices from GitHub events",
+          "status": "pending",
+          "goal": "Turn stored GitHub events that need action into triage notices: security advisories, and the other events the user chooses to act on. Each notice shows the repo, what happened, the link, the delivery id and its state (new, triaged, dismissed). It appears on the control plane's home page and can be marked triaged. A redelivered event creates no second notice.",
+          "touches": [
+            "src/services/connections/github.rs",
+            "src/services/",
+            "migrations/",
+            "src/api/",
+            "tidepool-control-plane/src/routes/"
+          ],
+          "success": [
+            "A published security advisory creates one notice, linked to its repo.",
+            "A redelivery of the same event creates no second notice.",
+            "A notice can be marked triaged or dismissed and the change is kept."
+          ],
+          "prerequisites": [
+            "2.6.10"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T18:00:00Z"
+        },
+        {
+          "id": "2.6.12",
+          "title": "Draft a Barnacle Chronicles story from a notice",
+          "status": "pending",
+          "goal": "From a triage notice, create a draft Barnacle Chronicles entry: what happened, which project it touches and what is still open. A person reviews and publishes it; nothing is published automatically. The format depends on the Barnacle Chronicles scope agreed in 2.6.7.",
+          "touches": [
+            "src/services/",
+            "src/api/"
+          ],
+          "success": [
+            "A notice can produce a draft entry in one action.",
+            "No draft is published without a person approving it."
+          ],
+          "prerequisites": [
+            "2.6.11",
+            "2.6.7"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T18:00:00Z"
         }
       ]
     }
