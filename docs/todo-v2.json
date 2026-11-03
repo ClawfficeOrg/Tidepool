@@ -1310,6 +1310,28 @@
           "complexity": "Medium",
           "agent": "mid_dev_agent",
           "created_at": "2026-11-03T12:00:00Z"
+        },
+        {
+          "id": "2.6.10",
+          "title": "Record history from webhook events",
+          "status": "pending",
+          "goal": "Store the history events GitHub sends to the App so the timeline does not depend on the history API: star (created and deleted), fork, release, create and delete (branches and tags), milestone, discussion and discussion comment, repository (created, public, archived), and push. Subscribe in the App to: Star, Fork, Release, Create, Delete, Milestone, Discussion, Discussion comment, Repository, Push. Each event is stored with its delivery time, and typed events map to internal history records.",
+          "touches": [
+            "src/services/connections/github.rs",
+            "src/services/",
+            "migrations/"
+          ],
+          "success": [
+            "A star, fork, release, tag or milestone event creates a history record with its time.",
+            "A repeated delivery creates no second record.",
+            "Unmapped events stay stored as unsupported, as they already are."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T13:00:00Z"
         }
       ]
     }
