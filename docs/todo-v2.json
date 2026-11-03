@@ -914,6 +914,363 @@
           "Menu bar and tray surfaces"
         ]
       }
+    },
+    {
+      "id": "2.4",
+      "title": "Control plane usability pass",
+      "goal": "Make the control plane usable on a phone, make its pages say what they are for, and fix contrast and form consistency. Pure UI work over existing routes; no new backend behaviour except where a task says so.",
+      "prerequisites": [
+        "2.1"
+      ],
+      "tasks": [
+        {
+          "id": "2.4.1",
+          "title": "Responsive shell with a hamburger menu",
+          "status": "pending",
+          "goal": "Below tablet width the sidebar collapses into a hamburger menu that opens the same navigation. Content uses a 16px side gutter and never scrolls horizontally.",
+          "touches": [
+            "tidepool-control-plane/src/components/",
+            "tidepool-control-plane/src/routes/+layout*",
+            "tidepool-control-plane/src/app.css"
+          ],
+          "success": [
+            "At 375px wide there is no horizontal page scroll.",
+            "The menu opens and closes by button and by Escape, with focus returned to the button.",
+            "Every page is reachable from the menu."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.4.2",
+          "title": "Palette chooser as a top-right dropdown",
+          "status": "pending",
+          "goal": "Replace the palette picker that takes a block of the page with one compact dropdown in the header, top right. The choice applies at once and is remembered per viewer.",
+          "touches": [
+            "tidepool-control-plane/src/components/",
+            "tidepool-control-plane/src/lib/theme*"
+          ],
+          "success": [
+            "The header holds one palette control and no palette panel.",
+            "Choosing a palette repaints the page without a reload.",
+            "The choice survives a reload."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.4.3",
+          "title": "Projects page explains manifests in plain words",
+          "status": "pending",
+          "goal": "Replace 'authored files' jargon with a definition of the manifest: the file list that tells Tidepool what a project's run uses, what it reads and what it writes. The empty state says what to do next.",
+          "touches": [
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "A reader who has never seen Tidepool can say what a manifest is from the page alone.",
+            "The empty state names the next step.",
+            "No use of 'authored' remains on the page."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.4.4",
+          "title": "Form consistency pass",
+          "status": "pending",
+          "goal": "One pattern for every form: label above field, help text under the field, required marked the same way, errors under the field, primary action last and on the right.",
+          "touches": [
+            "tidepool-control-plane/src/routes/",
+            "tidepool-control-plane/src/components/"
+          ],
+          "success": [
+            "Every form on the control plane follows the same label, help, error and button layout.",
+            "Form tests cover the shared pattern."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.4.5",
+          "title": "Contrast cleanup",
+          "status": "pending",
+          "goal": "Check every text and control colour in the light and dark palettes against WCAG AA (4.5:1 body text, 3:1 controls and large text) and fix the failures.",
+          "touches": [
+            "tidepool-control-plane/src/app.css",
+            "tidepool-control-plane/src/lib/theme*"
+          ],
+          "success": [
+            "Body text meets 4.5:1 and controls meet 3:1 in every palette, light and dark.",
+            "A contrast check runs in the test suite."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.4.6",
+          "title": "Triggers page that says what a trigger is",
+          "status": "pending",
+          "goal": "Explain what a trigger is, when it fires and what it runs, in plain words. One list shows each trigger's status and next run. The create flow asks for the same things in the same order as the forms pass.",
+          "touches": [
+            "tidepool-control-plane/src/routes/triggers/"
+          ],
+          "success": [
+            "A trigger's card shows what fires it, what it runs and when it runs next.",
+            "Creating a trigger takes the same steps as the other forms."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.4.7",
+          "title": "Chat rooms: create and list",
+          "status": "pending",
+          "goal": "There is no way to create a chat room. Add a create flow and a room list, backed by the existing rooms routes; add the missing route if none exists.",
+          "touches": [
+            "tidepool-control-plane/src/routes/rooms/",
+            "src/api/rooms*"
+          ],
+          "success": [
+            "A user can create a room from the control plane and see it in the list.",
+            "The room list shows each room's name and last activity."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "2.5",
+      "title": "TideTable hub coupling",
+      "goal": "Show the TideTable tasks behind a project, let the user pick tasks to run, and show how the tasks depend on each other. Reads come from the hub's read token; runs use the existing job dispatch.",
+      "prerequisites": [
+        "2.4"
+      ],
+      "tasks": [
+        {
+          "id": "2.5.1",
+          "title": "Show a project's TideTable tasks",
+          "status": "pending",
+          "goal": "On the project page, list the tasks from the project's TideTable todo: id, title, status, phase and agent tier. Read through the hub, not from the repo.",
+          "touches": [
+            "src/services/tidetable_jobs.rs",
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "The project page lists every task from the hub's todo for that slug.",
+            "A task's status matches the hub's todo."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.5.2",
+          "title": "Pick tasks to run",
+          "status": "pending",
+          "goal": "Let the user select tasks, or pick ready ones, and set hours and parallel jobs before dispatching a run. The run page shows which tasks were chosen.",
+          "touches": [
+            "src/api/jobs.rs",
+            "tidepool-control-plane/src/routes/runs/"
+          ],
+          "success": [
+            "Selected task ids are sent in the dispatch request.",
+            "The run page lists the chosen tasks and their state."
+          ],
+          "prerequisites": [
+            "2.5.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.5.3",
+          "title": "Task graph view",
+          "status": "pending",
+          "goal": "Draw the tasks as a graph: edges are prerequisites. Each node shows its success criteria count, the paths it owns (requirements) and whether a human sign-off is still outstanding. Filter by status.",
+          "touches": [
+            "tidepool-control-plane/src/routes/projects/",
+            "tidepool-control-plane/src/components/"
+          ],
+          "success": [
+            "Prerequisite edges match the todo's prereq lists.",
+            "A node marks outstanding human sign-offs.",
+            "The graph is readable at 375px wide, by list fallback if needed."
+          ],
+          "prerequisites": [
+            "2.5.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "2.6",
+      "title": "GitHub and project intelligence",
+      "goal": "Once GitHub is configured, link each project to its repositories and show what needs attention: issues, pull requests, milestones, feature requests and discussions, plus scheduled scans and related news. Needs a GitHub App or token decision first.",
+      "prerequisites": [
+        "2.5"
+      ],
+      "tasks": [
+        {
+          "id": "2.6.1",
+          "title": "Link projects to GitHub repositories",
+          "status": "pending",
+          "goal": "Store each project's repositories and show links to them. Pick the GitHub connection method (App or token) before building, and record the choice in the task's notes.",
+          "touches": [
+            "src/services/",
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "A project lists its repositories with working links.",
+            "The connection method is recorded in docs/ before code lands."
+          ],
+          "prerequisites": [],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.2",
+          "title": "Issue and pull request views",
+          "status": "pending",
+          "goal": "Show open issues and pull requests per repo: labels, age, review state and CI status. Pull requests ready to test are called out.",
+          "touches": [
+            "src/services/",
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "Open issues and PRs list per repo with labels, age and CI status.",
+            "PRs ready to test are marked."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.3",
+          "title": "Milestones and feature requests",
+          "status": "pending",
+          "goal": "Show each repo's milestones with due dates and progress, and its feature-request issues grouped by label.",
+          "touches": [
+            "src/services/",
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "Milestones show due date and progress.",
+            "Feature requests are listed and grouped by label."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.4",
+          "title": "Hot discussions",
+          "status": "pending",
+          "goal": "Show each repo's most active GitHub discussions, ranked by recent comments.",
+          "touches": [
+            "src/services/",
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "The top discussions show title, comment count and last activity."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.5",
+          "title": "Scheduled scans, suggested by Tidepool",
+          "status": "pending",
+          "goal": "Scans run on a schedule: dependency updates, fork drift, and an outstanding-issues digest. Tidepool suggests the scans a project should have and the user accepts or changes them.",
+          "touches": [
+            "src/services/",
+            "src/api/triggers.rs",
+            "tidepool-control-plane/src/routes/triggers/"
+          ],
+          "success": [
+            "Each project shows suggested scans with a reason.",
+            "Accepting a suggestion creates a trigger that runs on schedule.",
+            "Dismissed suggestions do not return."
+          ],
+          "prerequisites": [
+            "2.6.2",
+            "2.4.6"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.6",
+          "title": "Project news: competitors, collaborators and watch list",
+          "status": "pending",
+          "goal": "A news feed per project from a user-set watch list of competitors, collaborators and other sources. Items are grouped by category and marked read.",
+          "touches": [
+            "src/services/",
+            "tidepool-control-plane/src/routes/projects/"
+          ],
+          "success": [
+            "The watch list is editable per project.",
+            "News items are grouped by category and can be marked read."
+          ],
+          "prerequisites": [
+            "2.6.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        },
+        {
+          "id": "2.6.7",
+          "title": "Barnacle Chronicles tie-in",
+          "status": "pending",
+          "goal": "Feed run results, outstanding sign-offs and project news into the Barnacle Chronicles project. The scope of that project is not yet defined: confirm it with the user before building.",
+          "touches": [
+            "src/services/"
+          ],
+          "success": [
+            "The integration point and its data are written down and agreed.",
+            "Run results reach Barnacle Chronicles through that point."
+          ],
+          "prerequisites": [
+            "2.5.2",
+            "2.6.6"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T09:00:00Z"
+        }
+      ]
     }
   ]
 }
