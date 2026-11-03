@@ -20,6 +20,7 @@
   import ActivityFilters from './ActivityFilters.svelte';
   import ActivityList from './ActivityList.svelte';
   import RunDetail from './RunDetail.svelte';
+  import TidetableRunPanel from './TidetableRunPanel.svelte';
   import { canUseControl, controlById, denialReason } from '../../auth/roles';
   import type { Role } from '../../auth/types';
   import { isPoolConfigured, poolClient, type PoolConfig } from '$lib/api/pool';
@@ -227,6 +228,8 @@
     {#if view.problem}
       <ProblemDetails problem={view.problem} onRetry={() => void refresh()} />
     {/if}
+
+    <TidetableRunPanel {pool} {token} {role} />
 
     <section class="tp-runs__dispatch" aria-labelledby="tp-runs-dispatch-title">
       <div class="tp-runs__section-header">
