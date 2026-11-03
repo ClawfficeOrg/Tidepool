@@ -9,6 +9,7 @@ import type {
   ActivityRunDetail,
   ApiKeyView,
   ApiKeysResponse,
+  BindingRequest,
   CapabilityReportRequest,
   ChallengeResponse,
   ChangePasswordRequest,
@@ -22,7 +23,10 @@ import type {
   CreateExecutionResponse,
   CreateHostRequest,
   CreateProjectRequest,
+  DispatchJobRequest,
   EnrollHostRequest,
+  GrantRequest,
+  GrantView,
   HistoryResponse,
   HostCapabilityReport,
   HostView,
@@ -32,6 +36,7 @@ import type {
   InvitationsResponse,
   InviteRequest,
   InviteResponse,
+  JobView,
   JsonObject,
   ManualDispatchRequest,
   ManualDispatchResponse,
@@ -60,6 +65,8 @@ import type {
   SendMessageBody,
   SetupRequest,
   SetupStatusResponse,
+  StopJobRequest,
+  TidetableBinding,
   TriggerDocument,
   TriggerInstallRequest,
   TriggerInstallResponse,
@@ -95,6 +102,9 @@ void delete_v1_pool_members_id;
 
 const delete_v1_projects_id: Promise<void> = client.projects.remove("id-1", );
 void delete_v1_projects_id;
+
+const delete_v1_projects_id_hosts_host_grants_capability: Promise<void> = client.projects.revokeHostCapability({} as { id: string; host: string; capability: string; }, );
+void delete_v1_projects_id_hosts_host_grants_capability;
 
 const delete_v1_saves_player_id_save_id: Promise<void> = client.game.saves.remove({} as { player_id: string; save_id: string; }, );
 void delete_v1_saves_player_id_save_id;
@@ -156,6 +166,9 @@ void get_v1_hosts_id;
 const get_v1_hosts_id_capabilities: Promise<HostCapabilityReport> = client.hosts.capabilities("id-1", );
 void get_v1_hosts_id_capabilities;
 
+const get_v1_jobs_id: Promise<JobView> = client.jobs.get("id-1", );
+void get_v1_jobs_id;
+
 const get_v1_leaderboards_game_id: Promise<JsonObject> = client.game.leaderboards.get("id-1", );
 void get_v1_leaderboards_game_id;
 
@@ -188,6 +201,9 @@ void get_v1_projects_id_revisions;
 
 const get_v1_projects_id_revisions_revision_id: Promise<RevisionView> = client.projects.revision({} as { id: string; revision_id: string; }, );
 void get_v1_projects_id_revisions_revision_id;
+
+const get_v1_projects_id_tidetable: Promise<TidetableBinding> = client.projects.getTidetableBinding("id-1", );
+void get_v1_projects_id_tidetable;
 
 const get_v1_saves_player_id: Promise<JsonObject> = client.game.saves.list("id-1", );
 void get_v1_saves_player_id;
@@ -294,6 +310,11 @@ void post_v1_hosts_id_executions_execution_id_interrupt;
 // @ts-expect-error the request body is typed by the contract
 void client.hosts.interruptExecution("id-1", 42, )
 
+const post_v1_jobs_id_stop: Promise<JobView> = client.jobs.stop("id-1", {} as StopJobRequest, );
+void post_v1_jobs_id_stop;
+// @ts-expect-error the request body is typed by the contract
+void client.jobs.stop("id-1", 42, )
+
 const post_v1_leaderboards_game_id_entries: Promise<JsonObject> = client.game.leaderboards.submitEntry("id-1", {} as JsonObject, );
 void post_v1_leaderboards_game_id_entries;
 // @ts-expect-error the request body is typed by the contract
@@ -343,6 +364,11 @@ const post_v1_projects_id_configuration_validate: Promise<ValidateResponse> = cl
 void post_v1_projects_id_configuration_validate;
 // @ts-expect-error the request body is typed by the contract
 void client.projects.validateConfiguration("id-1", 42, )
+
+const post_v1_projects_id_jobs: Promise<JobView> = client.projects.dispatchJob("id-1", {} as DispatchJobRequest, );
+void post_v1_projects_id_jobs;
+// @ts-expect-error the request body is typed by the contract
+void client.projects.dispatchJob("id-1", 42, )
 
 const post_v1_runs: Promise<ManualDispatchResponse> = client.runs.dispatch({} as ManualDispatchRequest, );
 void post_v1_runs;
@@ -399,6 +425,16 @@ const put_v1_players_id: Promise<JsonObject> = client.game.players.update("id-1"
 void put_v1_players_id;
 // @ts-expect-error the request body is typed by the contract
 void client.game.players.update("id-1", 42, )
+
+const put_v1_projects_id_hosts_host_grants_capability: Promise<GrantView> = client.projects.grantHostCapability({} as { id: string; host: string; capability: string; }, {} as GrantRequest, );
+void put_v1_projects_id_hosts_host_grants_capability;
+// @ts-expect-error the request body is typed by the contract
+void client.projects.grantHostCapability("id-1", 42, )
+
+const put_v1_projects_id_tidetable: Promise<TidetableBinding> = client.projects.setTidetableBinding("id-1", {} as BindingRequest, );
+void put_v1_projects_id_tidetable;
+// @ts-expect-error the request body is typed by the contract
+void client.projects.setTidetableBinding("id-1", 42, )
 
 const put_v1_sessions_session_relay: Promise<RelayState> = client.relay.enable("id-1", {} as JsonObject, );
 void put_v1_sessions_session_relay;
