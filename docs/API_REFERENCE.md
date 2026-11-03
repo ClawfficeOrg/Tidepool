@@ -69,6 +69,28 @@ The machine-readable document is served at `/openapi.json` and at the pinned maj
 
 ## Hub API
 
+### jobs
+
+| Method | Path | Auth | Scope | Request | Success | Response |
+|---|---|---|---|---|---|---|
+| POST | `/v1/jobs/{id}/stop` | member_or_api_key | runs:dispatch | StopJobRequest | 202 | JobView |
+
+### projects
+
+| Method | Path | Auth | Scope | Request | Success | Response |
+|---|---|---|---|---|---|---|
+| GET | `/v1/projects/{id}/tidetable` | member | — | — | 200 | TidetableBinding |
+| PUT | `/v1/projects/{id}/tidetable` | member | — | BindingRequest | 200 | TidetableBinding |
+| PUT | `/v1/projects/{id}/hosts/{host}/grants/{capability}` | member | — | GrantRequest | 200 | GrantView |
+| DELETE | `/v1/projects/{id}/hosts/{host}/grants/{capability}` | member | — | — | 204 | — |
+
+### jobs
+
+| Method | Path | Auth | Scope | Request | Success | Response |
+|---|---|---|---|---|---|---|
+| POST | `/v1/projects/{id}/jobs` | member_or_api_key | runs:dispatch | DispatchJobRequest | 201 | JobView |
+| GET | `/v1/jobs/{id}` | member_or_api_key | — | — | 200 | JobView |
+
 ### pool
 
 | Method | Path | Auth | Scope | Request | Success | Response |
@@ -424,6 +446,81 @@ Key metadata plus the one-time secret
 |---|---|---|---|
 | `api_key` | [ApiKeyView](#apikeyview) | yes |  |
 | `secret` | string | yes | `<prefix>.<secret>`; shown once |
+
+### TidetableBinding
+
+The TideTable hub and slug a project is bound to
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `server` | string | yes |  |
+| `slug` | string | yes |  |
+
+### BindingRequest
+
+Bind a project to a TideTable hub and slug
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `server` | string | yes |  |
+| `slug` | string | yes |  |
+
+### GrantRequest
+
+Grant a host a capability, pinned to the checkout config hash
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `config_hash` | string | yes |  |
+
+### GrantView
+
+A host capability grant for a project
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `host` | string | yes |  |
+| `capability` | string | yes |  |
+| `config_hash` | string | yes |  |
+| `granted_at` | string (date-time) | yes |  |
+
+### StopJobRequest
+
+Stop a running job: stop after the current step, or kill it
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `mode` | `stop` \| `kill` | yes |  |
+
+### DispatchJobRequest
+
+Dispatch one tkrun job to a connected host
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `host` | string | yes |  |
+| `checkout` | string | yes |  |
+| `options` | object | no |  |
+
+### JobView
+
+One TideTable tkrun job on a host
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | yes |  |
+| `host` | string | yes |  |
+| `checkout` | string | yes |  |
+| `status` | string | yes |  |
+| `refusalCode` | string or null | yes |  |
+| `pid` | integer or null | yes |  |
+| `owner` | string or null | yes |  |
+| `exitCode` | integer or null | yes |  |
+| `summary` | string or null | yes |  |
+| `output` | string or null | yes |  |
+| `options` | object | yes |  |
+| `createdAt` | string (date-time) | yes |  |
+| `completedAt` | string (date-time) or null | yes |  |
 
 ### HostView
 

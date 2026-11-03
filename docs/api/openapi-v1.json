@@ -346,6 +346,22 @@
         ],
         "type": "object"
       },
+      "BindingRequest": {
+        "description": "Bind a project to a TideTable hub and slug",
+        "properties": {
+          "server": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "server",
+          "slug"
+        ],
+        "type": "object"
+      },
       "CapabilityReportRequest": {
         "description": "A host's capability report",
         "properties": {
@@ -661,6 +677,23 @@
         ],
         "type": "object"
       },
+      "DispatchJobRequest": {
+        "description": "Dispatch one tkrun job to a connected host",
+        "properties": {
+          "checkout": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "options": {}
+        },
+        "required": [
+          "host",
+          "checkout"
+        ],
+        "type": "object"
+      },
       "EnrollHostRequest": {
         "description": "Exchange an enrollment token for a host credential",
         "properties": {
@@ -743,6 +776,43 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "GrantRequest": {
+        "description": "Grant a host a capability, pinned to the checkout config hash",
+        "properties": {
+          "config_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_hash"
+        ],
+        "type": "object"
+      },
+      "GrantView": {
+        "description": "A host capability grant for a project",
+        "properties": {
+          "capability": {
+            "type": "string"
+          },
+          "config_hash": {
+            "type": "string"
+          },
+          "granted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "capability",
+          "config_hash",
+          "granted_at"
         ],
         "type": "object"
       },
@@ -986,6 +1056,87 @@
         "required": [
           "invitation",
           "token"
+        ],
+        "type": "object"
+      },
+      "JobView": {
+        "description": "One TideTable tkrun job on a host",
+        "properties": {
+          "checkout": {
+            "type": "string"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "host": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "options": {},
+          "output": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pid": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "refusalCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "host",
+          "checkout",
+          "status",
+          "refusalCode",
+          "pid",
+          "owner",
+          "exitCode",
+          "summary",
+          "output",
+          "options",
+          "createdAt",
+          "completedAt"
         ],
         "type": "object"
       },
@@ -2103,6 +2254,38 @@
         "required": [
           "step",
           "limits"
+        ],
+        "type": "object"
+      },
+      "StopJobRequest": {
+        "description": "Stop a running job: stop after the current step, or kill it",
+        "properties": {
+          "mode": {
+            "enum": [
+              "stop",
+              "kill"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "TidetableBinding": {
+        "description": "The TideTable hub and slug a project is bound to",
+        "properties": {
+          "server": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "server",
+          "slug"
         ],
         "type": "object"
       },
@@ -5986,6 +6169,241 @@
         "x-surface": "hub"
       }
     },
+    "/v1/jobs/{id}": {
+      "get": {
+        "operationId": "get_v1_jobs_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "summary": "Read one TideTable job: status, owner, summary and output",
+        "tags": [
+          "jobs"
+        ],
+        "x-auth": "member_or_api_key",
+        "x-contract-version": "1.0.0",
+        "x-surface": "hub"
+      }
+    },
+    "/v1/jobs/{id}/stop": {
+      "post": {
+        "operationId": "post_v1_jobs_id_stop",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "400 — Bad request — malformed input"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "422 — Unprocessable entity — field validation failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "summary": "Stop a running TideTable job: finish the current step, or kill it",
+        "tags": [
+          "jobs"
+        ],
+        "x-auth": "member_or_api_key",
+        "x-contract-version": "1.0.0",
+        "x-required-scope": "runs:dispatch",
+        "x-surface": "hub"
+      }
+    },
     "/v1/leaderboards/{game_id}": {
       "get": {
         "operationId": "get_v1_leaderboards_game_id",
@@ -8587,6 +9005,400 @@
         "x-surface": "hub"
       }
     },
+    "/v1/projects/{id}/hosts/{host}/grants/{capability}": {
+      "delete": {
+        "operationId": "delete_v1_projects_id_hosts_host_grants_capability",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "capability",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Revoke a host capability grant for a project",
+        "tags": [
+          "projects"
+        ],
+        "x-auth": "member",
+        "x-contract-version": "1.0.0",
+        "x-surface": "hub"
+      },
+      "put": {
+        "operationId": "put_v1_projects_id_hosts_host_grants_capability",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "capability",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "400 — Bad request — malformed input"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "422 — Unprocessable entity — field validation failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Grant a host a capability for a project, pinned to a config hash",
+        "tags": [
+          "projects"
+        ],
+        "x-auth": "member",
+        "x-contract-version": "1.0.0",
+        "x-surface": "hub"
+      }
+    },
+    "/v1/projects/{id}/jobs": {
+      "post": {
+        "operationId": "post_v1_projects_id_jobs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "400 — Bad request — malformed input"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "409 — Conflict — already initialized, already used, or the last owner"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "422 — Unprocessable entity — field validation failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "summary": "Dispatch a TideTable tkrun job to a connected host",
+        "tags": [
+          "jobs"
+        ],
+        "x-auth": "member_or_api_key",
+        "x-contract-version": "1.0.0",
+        "x-required-scope": "runs:dispatch",
+        "x-surface": "hub"
+      }
+    },
     "/v1/projects/{id}/revisions": {
       "get": {
         "operationId": "get_v1_projects_id_revisions",
@@ -8798,6 +9610,232 @@
         "x-auth": "member_or_api_key",
         "x-contract-version": "1.0.0",
         "x-required-scope": "projects:read",
+        "x-surface": "hub"
+      }
+    },
+    "/v1/projects/{id}/tidetable": {
+      "get": {
+        "operationId": "get_v1_projects_id_tidetable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TidetableBinding"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Read the TideTable binding of a project",
+        "tags": [
+          "projects"
+        ],
+        "x-auth": "member",
+        "x-contract-version": "1.0.0",
+        "x-surface": "hub"
+      },
+      "put": {
+        "operationId": "put_v1_projects_id_tidetable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TidetableBinding"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "400 — Bad request — malformed input"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "401 — Unauthorized — missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "403 — Forbidden — role or API-key scope does not allow this operation"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "404 — Not found — no such resource in this organization"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "422 — Unprocessable entity — field validation failed"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "429 — Too many requests — rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "500 — Internal error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "503 — Service unavailable — database not configured"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set the TideTable binding of a project",
+        "tags": [
+          "projects"
+        ],
+        "x-auth": "member",
+        "x-contract-version": "1.0.0",
         "x-surface": "hub"
       }
     },
@@ -10472,6 +11510,12 @@
   },
   "tags": [
     {
+      "name": "jobs"
+    },
+    {
+      "name": "projects"
+    },
+    {
       "name": "auth"
     },
     {
@@ -10506,9 +11550,6 @@
     },
     {
       "name": "connections"
-    },
-    {
-      "name": "projects"
     },
     {
       "name": "triggers"

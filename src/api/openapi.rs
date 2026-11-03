@@ -201,6 +201,81 @@ const SYSTEM: RouteSpec = RouteSpec {
 /// endpoints; legacy `/auth`, `/players`, ... aliases are the same handlers and
 /// are omitted for brevity (the canonical mount is authoritative).
 const ROUTES: &[RouteSpec] = &[
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/jobs/{id}/stop",
+        tag: "jobs",
+        summary: "Stop a running TideTable job: finish the current step, or kill it",
+        access: Access::MemberOrApiKey,
+        required_scope: Some("runs:dispatch"),
+        request: Some("StopJobRequest"),
+        response: Some("JobView"),
+        success: "202",
+        errors: &["400", "404"],
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/projects/{id}/tidetable",
+        tag: "projects",
+        summary: "Read the TideTable binding of a project",
+        response: Some("TidetableBinding"),
+        errors: &["404"],
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Put,
+        path: "/v1/projects/{id}/tidetable",
+        tag: "projects",
+        summary: "Set the TideTable binding of a project",
+        request: Some("BindingRequest"),
+        response: Some("TidetableBinding"),
+        errors: &["400", "404"],
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Put,
+        path: "/v1/projects/{id}/hosts/{host}/grants/{capability}",
+        tag: "projects",
+        summary: "Grant a host a capability for a project, pinned to a config hash",
+        request: Some("GrantRequest"),
+        response: Some("GrantView"),
+        errors: &["400", "404"],
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Delete,
+        path: "/v1/projects/{id}/hosts/{host}/grants/{capability}",
+        tag: "projects",
+        summary: "Revoke a host capability grant for a project",
+        success: "204",
+        errors: &["404"],
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/projects/{id}/jobs",
+        tag: "jobs",
+        summary: "Dispatch a TideTable tkrun job to a connected host",
+        access: Access::MemberOrApiKey,
+        required_scope: Some("runs:dispatch"),
+        request: Some("DispatchJobRequest"),
+        response: Some("JobView"),
+        success: "201",
+        errors: &["400", "404", "409"],
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Get,
+        path: "/v1/jobs/{id}",
+        tag: "jobs",
+        summary: "Read one TideTable job: status, owner, summary and output",
+        access: Access::MemberOrApiKey,
+        response: Some("JobView"),
+        errors: &["404"],
+        ..HUB
+    },
+
     // ---------------------------------------------------------------- game
     RouteSpec {
         method: HttpMethod::Post,
@@ -1412,6 +1487,64 @@ const SCHEMAS: &[SchemaSpec] = &[
         ],
     ),
     // --------------------------------------------------------------- hosts
+    s(
+        "TidetableBinding",
+        "The TideTable hub and slug a project is bound to",
+        &[f("server", Kind::Str), f("slug", Kind::Str)],
+    ),
+    s(
+        "BindingRequest",
+        "Bind a project to a TideTable hub and slug",
+        &[f("server", Kind::Str), f("slug", Kind::Str)],
+    ),
+    s(
+        "GrantRequest",
+        "Grant a host a capability, pinned to the checkout config hash",
+        &[f("config_hash", Kind::Str)],
+    ),
+    s(
+        "GrantView",
+        "A host capability grant for a project",
+        &[
+            f("host", Kind::Str),
+            f("capability", Kind::Str),
+            f("config_hash", Kind::Str),
+            f("granted_at", Kind::DateTime),
+        ],
+    ),
+    s(
+        "StopJobRequest",
+        "Stop a running job: stop after the current step, or kill it",
+        &[f("mode", Kind::Enum(&["stop", "kill"]))],
+    ),
+    s(
+        "DispatchJobRequest",
+        "Dispatch one tkrun job to a connected host",
+        &[
+            f("host", Kind::Str),
+            f("checkout", Kind::Str),
+            o("options", Kind::Json),
+        ],
+    ),
+    s(
+        "JobView",
+        "One TideTable tkrun job on a host",
+        &[
+            f("id", Kind::Str),
+            f("host", Kind::Str),
+            f("checkout", Kind::Str),
+            f("status", Kind::Str),
+            f("refusalCode", Kind::NullableStr),
+            f("pid", Kind::NullableInt),
+            f("owner", Kind::NullableStr),
+            f("exitCode", Kind::NullableInt),
+            f("summary", Kind::NullableStr),
+            f("output", Kind::NullableStr),
+            f("options", Kind::Json),
+            f("createdAt", Kind::DateTime),
+            f("completedAt", Kind::NullableDateTime),
+        ],
+    ),
     s(
         "HostView",
         "One enrolled machine",
@@ -2756,22 +2889,22 @@ mod tests {
         const SYSTEM_PATHS: &[&str] =
             &["/healthz", "/metrics", "/openapi.json", "/openapi/v1.json"];
 
-        assert_eq!(ROUTES.len(), 85, "ROUTES must describe all 85 routes");
+        assert_eq!(ROUTES.len(), 92, "ROUTES must describe all 92 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.surface == Surface::Hub)
                 .count(),
-            62,
-            "the hub contract documents 62 operations"
+            69,
+            "the hub contract documents 69 operations"
         );
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            81,
-            "19 game and 62 hub operations must stay under /v1/"
+            88,
+            "19 game and 69 hub operations must stay under /v1/"
         );
 
         let system: BTreeSet<&str> = ROUTES
@@ -2966,7 +3099,7 @@ mod tests {
             .iter()
             .filter(|route| route.required_scope.is_some())
             .count();
-        assert_eq!(scoped, 14, "14 hub operations require an API-key scope");
+        assert_eq!(scoped, 16, "16 hub operations require an API-key scope");
     }
 
     /// Every hub operation documents its request body and every JSON success
@@ -3120,6 +3253,7 @@ mod tests {
         fn parse_scope(source: &str) -> BTreeSet<(String, String)> {
             let mut routes = BTreeSet::new();
             let mut scope: Option<String> = None;
+            let mut top_path: Option<String> = None;
             let mut pending_route: Option<String> = None;
             let mut pending_path_line = false;
             for line in source.lines() {
@@ -3129,7 +3263,21 @@ mod tests {
                 {
                     scope = Some(path.to_string());
                 }
+                // A top-level resource carries its full path on one line, e.g.
+                // `.service(web::resource("/v1/jobs/{id}").route(web::get().to(..)))`.
                 let Some(scope_path) = scope.as_ref() else {
+                    if let Some(rest) = line.split_once("web::resource(\"")
+                        && let Some((path, _)) = rest.1.split_once('"')
+                    {
+                        top_path = Some(path.to_string());
+                    }
+                    if let Some(path) = top_path.clone()
+                        && let Some(method) = ["get", "post", "put", "patch", "delete"]
+                            .into_iter()
+                            .find(|method| line.contains(&format!("web::{method}()")))
+                    {
+                        routes.insert((method.to_string(), path));
+                    }
                     continue;
                 };
                 if pending_route.is_none() {
@@ -3174,6 +3322,7 @@ mod tests {
         registered.extend(parse_scope(include_str!("hosts.rs")));
         registered.extend(parse_scope(include_str!("connections.rs")));
         registered.extend(parse_scope(include_str!("projects.rs")));
+        registered.extend(parse_scope(include_str!("jobs.rs")));
         registered.extend(parse_scope(include_str!("triggers.rs")));
         registered.extend(parse_scope(include_str!("manual_runs.rs")));
         registered.extend(parse_scope(include_str!("activity.rs")));
@@ -3197,7 +3346,7 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 62, "expected 62 hub operations");
+        assert_eq!(registered.len(), 69, "expected 69 hub operations");
     }
 
     /// The published, commit-tracked artifact must be exactly what the tables
