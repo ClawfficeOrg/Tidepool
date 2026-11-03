@@ -41,6 +41,10 @@ services:
     build:
       context: .
     restart: unless-stopped
+    # Passed through from the shell when set (Infisical injects it); otherwise
+    # the value in env_file below is used.
+    environment:
+      - GITHUB_CLAWFFICE_CREDS
     env_file:
       - .env
     environment:

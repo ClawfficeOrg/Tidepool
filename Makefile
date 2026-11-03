@@ -1,5 +1,7 @@
 # make — Tidepool operations
 #
+#   make up                        build and start with Infisical secrets (the redeploy
+#                                  for a config or secret change)
 #   make env                       generate .env with fresh secrets
 #   make config                    validate the compose stack
 #   make up                        build and start where you are
@@ -22,6 +24,15 @@
 
 PROXY    ?= traefik
 PORT     ?= 8080
+
+# Secrets come from Infisical at deploy time, so rotating a value there needs
+# no edit to .env. The project ID lives in .env (INFISICAL_PROJECT_ID), not here.
+# Set INJECT= (empty) to run from .env alone.
+dotenv = $(shell grep -s '^$(1)=' .env | tail -n1 | cut -d= -f2-)
+INFISICAL_PROJECT ?= $(call dotenv,INFISICAL_PROJECT_ID)
+INFISICAL_ENV     ?= $(or $(call dotenv,INFISICAL_ENV),prod)
+INFISICAL_PATH    ?= $(or $(call dotenv,INFISICAL_PATH),/Tidepool)
+INJECT ?= $(if $(INFISICAL_PROJECT),infisical run --projectId=$(INFISICAL_PROJECT) --env=$(INFISICAL_ENV) --path=$(INFISICAL_PATH) --,)
 
 export COMPOSE_PROXY := $(PROXY)
 # Only override the .env value when HOSTNAME is given explicitly.
@@ -60,7 +71,7 @@ config:
 	@echo "compose OK for proxy=$(PROXY) hostname=$(if $(strip $(HOSTNAME)),$(HOSTNAME),from .env) port=$(PORT)"
 
 up:
-	$(COMPOSE) up -d --build
+	$(INJECT) $(COMPOSE) up -d --build
 
 down:
 	$(COMPOSE) down
@@ -72,10 +83,10 @@ health:
 	curl -fsS "http://127.0.0.1:$(PORT)/healthz" && echo
 
 deploy:
-	./deploy/deploy.sh deploy
+	$(INJECT) ./deploy/deploy.sh deploy
 
 redeploy:
-	./deploy/deploy.sh deploy
+	$(INJECT) ./deploy/deploy.sh deploy
 
 rollback:
 	@test -n "$(TAG)" || { echo "usage: make rollback TAG=<tag>" >&2; exit 2; }
