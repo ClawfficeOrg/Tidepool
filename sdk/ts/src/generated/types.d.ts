@@ -126,6 +126,14 @@ export interface ArrivalDetail {
 }
 
 /**
+ * Bind a project to a TideTable hub and slug
+ */
+export interface BindingRequest {
+  server: string;
+  slug: string;
+}
+
+/**
  * A host's capability report
  */
 export interface CapabilityReportRequest {
@@ -268,6 +276,15 @@ export interface CreateProjectRequest {
 }
 
 /**
+ * Dispatch one tkrun job to a connected host
+ */
+export interface DispatchJobRequest {
+  checkout: string;
+  host: string;
+  options?: unknown;
+}
+
+/**
  * Exchange an enrollment token for a host credential
  */
 export interface EnrollHostRequest {
@@ -303,6 +320,23 @@ export interface FieldIssue {
  */
 export interface GameError {
   error: string;
+}
+
+/**
+ * Grant a host a capability, pinned to the checkout config hash
+ */
+export interface GrantRequest {
+  config_hash: string;
+}
+
+/**
+ * A host capability grant for a project
+ */
+export interface GrantView {
+  capability: string;
+  config_hash: string;
+  granted_at: string;
+  host: string;
 }
 
 /**
@@ -400,6 +434,25 @@ export interface InviteResponse {
    * Shown once; not stored in plaintext
    */
   token: string;
+}
+
+/**
+ * One TideTable tkrun job on a host
+ */
+export interface JobView {
+  checkout: string;
+  completedAt: string | null;
+  createdAt: string;
+  exitCode: number | null;
+  host: string;
+  id: string;
+  options: unknown;
+  output: string | null;
+  owner: string | null;
+  pid: number | null;
+  refusalCode: string | null;
+  status: string;
+  summary: string | null;
 }
 
 /**
@@ -828,6 +881,21 @@ export interface SetupStatusResponse {
 export interface StepOutputLimits {
   limits: OutputLimit[];
   step: string;
+}
+
+/**
+ * Stop a running job: stop after the current step, or kill it
+ */
+export interface StopJobRequest {
+  mode: "stop" | "kill";
+}
+
+/**
+ * The TideTable hub and slug a project is bound to
+ */
+export interface TidetableBinding {
+  server: string;
+  slug: string;
 }
 
 /**

@@ -180,6 +180,14 @@ export function buildResources(client) {
         return client._call("delete_v1_hosts_id_execution", options, id, undefined);
       },
     },
+    jobs: {
+      get(id, options) {
+        return client._call("get_v1_jobs_id", options, id, undefined);
+      },
+      stop(id, body, options) {
+        return client._call("post_v1_jobs_id_stop", options, id, body);
+      },
+    },
     pool: {
       acceptInvitation(body, options) {
         return client._call("post_v1_pool_invitations_accept", options, undefined, body);
@@ -222,8 +230,17 @@ export function buildResources(client) {
       create(body, options) {
         return client._call("post_v1_projects", options, undefined, body);
       },
+      dispatchJob(id, body, options) {
+        return client._call("post_v1_projects_id_jobs", options, id, body);
+      },
       get(id, options) {
         return client._call("get_v1_projects_id", options, id, undefined);
+      },
+      getTidetableBinding(id, options) {
+        return client._call("get_v1_projects_id_tidetable", options, id, undefined);
+      },
+      grantHostCapability(params, body, options) {
+        return client._call("put_v1_projects_id_hosts_host_grants_capability", options, params, body);
       },
       installConfiguration(id, body, options) {
         return client._call("post_v1_projects_id_configuration_install", options, id, body);
@@ -242,6 +259,12 @@ export function buildResources(client) {
       },
       revisions(id, options) {
         return client._call("get_v1_projects_id_revisions", options, id, undefined);
+      },
+      revokeHostCapability(params, options) {
+        return client._call("delete_v1_projects_id_hosts_host_grants_capability", options, params, undefined);
+      },
+      setTidetableBinding(id, body, options) {
+        return client._call("put_v1_projects_id_tidetable", options, id, body);
       },
       validateConfiguration(id, body, options) {
         return client._call("post_v1_projects_id_configuration_validate", options, id, body);

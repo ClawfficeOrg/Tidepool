@@ -8,6 +8,7 @@ import type {
   ActivityRunDetail,
   ApiKeyView,
   ApiKeysResponse,
+  BindingRequest,
   CapabilityReportRequest,
   ChallengeResponse,
   ChangePasswordRequest,
@@ -21,7 +22,10 @@ import type {
   CreateExecutionResponse,
   CreateHostRequest,
   CreateProjectRequest,
+  DispatchJobRequest,
   EnrollHostRequest,
+  GrantRequest,
+  GrantView,
   HistoryResponse,
   HostCapabilityReport,
   HostView,
@@ -31,6 +35,7 @@ import type {
   InvitationsResponse,
   InviteRequest,
   InviteResponse,
+  JobView,
   JsonObject,
   ManualDispatchRequest,
   ManualDispatchResponse,
@@ -59,6 +64,8 @@ import type {
   SendMessageBody,
   SetupRequest,
   SetupStatusResponse,
+  StopJobRequest,
+  TidetableBinding,
   TriggerDocument,
   TriggerInstallRequest,
   TriggerInstallResponse,
@@ -291,6 +298,16 @@ export interface Resources {
      */
     stopExecution(id: string, options?: RequestOptions): Promise<HostView>;
   };
+  jobs: {
+    /**
+     * Read one TideTable job: status, owner, summary and output
+     */
+    get(id: string, options?: RequestOptions): Promise<JobView>;
+    /**
+     * Stop a running TideTable job: finish the current step, or kill it
+     */
+    stop(id: string, body: StopJobRequest, options?: RequestOptions): Promise<JobView>;
+  };
   pool: {
     /**
      * Accept an invitation and create the member account
@@ -347,9 +364,21 @@ export interface Resources {
      */
     create(body: CreateProjectRequest, options?: RequestOptions): Promise<ProjectView>;
     /**
+     * Dispatch a TideTable tkrun job to a connected host
+     */
+    dispatchJob(id: string, body: DispatchJobRequest, options?: RequestOptions): Promise<JobView>;
+    /**
      * Fetch a project by id
      */
     get(id: string, options?: RequestOptions): Promise<ProjectView>;
+    /**
+     * Read the TideTable binding of a project
+     */
+    getTidetableBinding(id: string, options?: RequestOptions): Promise<TidetableBinding>;
+    /**
+     * Grant a host a capability for a project, pinned to a config hash
+     */
+    grantHostCapability(params: { id: string; host: string; capability: string; }, body: GrantRequest, options?: RequestOptions): Promise<GrantView>;
     /**
      * Install a configuration bundle as a new immutable revision
      */
@@ -374,6 +403,14 @@ export interface Resources {
      * List a project's configuration revisions
      */
     revisions(id: string, options?: RequestOptions): Promise<RevisionsResponse>;
+    /**
+     * Revoke a host capability grant for a project
+     */
+    revokeHostCapability(params: { id: string; host: string; capability: string; }, options?: RequestOptions): Promise<void>;
+    /**
+     * Set the TideTable binding of a project
+     */
+    setTidetableBinding(id: string, body: BindingRequest, options?: RequestOptions): Promise<TidetableBinding>;
     /**
      * Validate a configuration bundle without writing pool state
      */
