@@ -1391,7 +1391,7 @@
         {
           "id": "2.7.1",
           "title": "Start a TKRun job from the control plane",
-          "status": "pending",
+          "status": "done",
           "goal": "A page where the user picks a project, its tasks, hours, parallel jobs and the host, then dispatches a tkrun job through the existing jobs endpoint. Dry run is the default.",
           "touches": [
             "tidepool-control-plane/src/routes/runs/",
@@ -1407,12 +1407,13 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T22:00:00Z"
+          "created_at": "2026-11-03T22:00:00Z",
+          "updated_at": "2026-11-04T09:13:46Z"
         },
         {
           "id": "2.7.2",
           "title": "Monitor a job's status and output",
-          "status": "pending",
+          "status": "done",
           "goal": "Show a job's status, owner, pid, summary and output, and refresh while it runs. The output is the tkrun log; it stops refreshing once the job is finished.",
           "touches": [
             "tidepool-control-plane/src/routes/runs/",
@@ -1428,7 +1429,8 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T22:00:00Z"
+          "created_at": "2026-11-03T22:00:00Z",
+          "updated_at": "2026-11-04T09:13:46Z"
         },
         {
           "id": "2.7.3",
