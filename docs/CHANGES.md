@@ -2,6 +2,33 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - Projects page explains manifests in plain words (task 2.4.3)
+
+### Changed
+- `tidepool-control-plane/src/routes/projects/ProjectsPage.svelte` - the lede
+  now defines a manifest instead of saying "bundle of files its author wrote":
+  the file list that tells Tidepool what a project's run uses (hosts and
+  connections it may reach, the working directory it reads from and writes to,
+  the agents it may start, the prompt files it reads). `tidepool.json` is named
+  as the manifest itself. The no-projects state now says to create a project
+  first (`POST /v1/projects`), and the no-selection state says what selecting a
+  project shows.
+- `routes/projects/FileEditor.svelte` - the editor heading is now "Files this
+  project's runs use"; the empty state tells the reader to start with the
+  manifest and add `tidepool.json` before the prompt files it names.
+- `routes/projects/RevisionDiff.svelte`, `routes/projects/IssueList.svelte` and
+  `$lib/configuration.ts` - the remaining user-facing "authored files" wording
+  is gone ("Files in v2", "the same files", "identical files").
+
+### Tests
+- `routes/projects/ProjectsPage.test.ts` - a new block pins the plain-words
+  definition: the manifest sentence, the reads/writes list, `tidepool.json` as
+  the manifest, the no-projects next step, the editor's empty-state next step,
+  and a source guard that no `.svelte` file under `routes/projects` contains the
+  word "authored" (case-insensitive).
+- `npx vitest run` in `tidepool-control-plane`: 40 files, 499 tests, all pass.
+  `npx tsc -p tsconfig.json`: clean.
+
 ## [Unreleased] - 2026-11-04 - Palette chooser as a header dropdown (task 2.4.2)
 
 ### Added

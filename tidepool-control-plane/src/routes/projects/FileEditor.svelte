@@ -2,16 +2,17 @@
   /**
    * The bundle as files: pick one, edit its exact text, add or remove a path.
    *
-   * This is a text editor, not a form. The textarea holds the authored bytes
-   * and an edit replaces only that file's content; the page's model guarantees
-   * the other files are sent exactly as they were stored. The only structural
-   * changes offered are adding a path at the end and removing one path.
+   * This is a text editor, not a form. The textarea holds the file's exact
+   * bytes and an edit replaces only that file's content; the page's model
+   * guarantees the other files are sent exactly as they were stored. The only
+   * structural changes offered are adding a path at the end and removing one
+   * path.
    */
   import IssueList from './IssueList.svelte';
   import type { DraftFile, LocatedIssue } from '$lib/configuration';
 
   interface Props {
-    /** The draft files, in authored order. */
+    /** The draft files, in manifest order. */
     files?: readonly DraftFile[];
     /** The file currently open in the editor. */
     selectedPath?: string | null;
@@ -60,12 +61,13 @@
 </script>
 
 <section class="tp-editor" aria-labelledby="tp-editor-title" data-configuration-editor="true">
-  <h3 class="tp-editor__title" id="tp-editor-title">Authored files</h3>
+  <h3 class="tp-editor__title" id="tp-editor-title">Files this project's runs use</h3>
 
   {#if files.length === 0}
     <p class="tp-page__state" data-editor-empty="true">
-      This project has no authored files yet. Add a path, or start with
-      <code>tidepool.json</code> as the manifest.
+      This project has no files yet. Start with the manifest: add
+      <code>tidepool.json</code> to list what a run uses, then add each prompt
+      file it names.
     </p>
   {:else}
     <nav class="tp-editor__files" aria-label="Bundle files">

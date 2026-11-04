@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The pool's field errors, each pinned to the authored line it belongs to.
+   * The pool's field errors, each pinned to the manifest line it belongs to.
    *
    * The pool names a field (`hosts.studio-mac`); this list says that field's
    * file and line, quotes the line, and repeats the pool's own message. An

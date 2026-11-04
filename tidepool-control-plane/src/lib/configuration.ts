@@ -749,7 +749,7 @@ export function diffSummary(files: readonly FileDiff[]): string {
   const added = files.filter((file) => file.status === 'added').length;
   const removed = files.filter((file) => file.status === 'removed').length;
   const changed = files.filter((file) => file.status === 'changed').length;
-  if (added + removed + changed === 0) return 'The two revisions hold identical authored files.';
+  if (added + removed + changed === 0) return 'The two revisions hold identical files.';
   const parts: string[] = [];
   if (changed > 0) parts.push(`${changed} changed`);
   if (added > 0) parts.push(`${added} added`);

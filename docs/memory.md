@@ -2936,3 +2936,23 @@ control brings its own scoped styles.
 `$lib/theme` turns a control's raw string into a `PaletteName` or null, so a
 stale option cannot repaint into a palette that does not exist. The store would
 also refuse it, but the control should not ask.
+
+### 2026-11-04 - Task 2.4.3, the projects page speaks about manifests
+
+**Decision:** the projects page defines its terms instead of assuming them. A
+manifest is described on the page as the file list that tells Tidepool what a
+project's run uses — hosts and connections it may reach, the working directory
+it reads from and writes to, the agents it may start, the prompt files it
+reads — with `tidepool.json` named as the manifest itself. "Authored files" is
+gone from every `.svelte` under `routes/projects`, and a test fails if it
+returns.
+
+**Why:** "authored" described our storage model, not the reader's job. A person
+who has never seen Tidepool could not tell from the page what the files were
+for or what to do first. Empty states now name the next step: create a project
+(`POST /v1/projects`), then add `tidepool.json` before the prompt files it
+lists.
+
+**Consequence: the vocabulary is enforced by a test, not a review.** The guard
+reads the route's `.svelte` files and lowercases them, so jargon cannot drift
+back in one commit at a time.
