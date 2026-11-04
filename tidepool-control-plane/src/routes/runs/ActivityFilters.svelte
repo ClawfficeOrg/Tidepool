@@ -6,7 +6,11 @@
    * narrows the same feed. The project chooser lists the organization's
    * projects by name and sends the project id, which is what the pool's union
    * is scoped by; an empty value means "all".
+   *
+   * Every field is a `FormField`, so the label sits above the control and the
+   * one clear action sits at the end of the row.
    */
+  import FormField from '../../components/FormField.svelte';
   import {
     ACTIVITY_KINDS,
     ACTIVITY_PROVIDERS,
@@ -54,82 +58,97 @@
   </div>
 
   <div class="tp-activity-filters__grid">
-    <label class="tp-field">
-      <span class="tp-field__label">Project</span>
-      <select
-        class="tp-input"
-        value={filters.project}
-        data-filter="project"
-        disabled={busy}
-        onchange={(event) => onFilter('project', (event.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="">All projects</option>
-        {#each projects as project (project.id)}
-          <option value={project.id}>{project.name} ({project.slug})</option>
-        {/each}
-      </select>
-    </label>
+    <FormField form="activity_filters" field="project" label="Project">
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          value={filters.project}
+          aria-describedby={described}
+          data-filter="project"
+          disabled={busy}
+          onchange={(event) => onFilter('project', (event.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">All projects</option>
+          {#each projects as project (project.id)}
+            <option value={project.id}>{project.name} ({project.slug})</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
 
-    <label class="tp-field">
-      <span class="tp-field__label">Provider</span>
-      <select
-        class="tp-input"
-        value={filters.provider}
-        data-filter="provider"
-        disabled={busy}
-        onchange={(event) => onFilter('provider', (event.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="">All providers</option>
-        {#each ACTIVITY_PROVIDERS as provider (provider)}
-          <option value={provider}>{providerLabel(provider)}</option>
-        {/each}
-      </select>
-    </label>
+    <FormField form="activity_filters" field="provider" label="Provider">
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          value={filters.provider}
+          aria-describedby={described}
+          data-filter="provider"
+          disabled={busy}
+          onchange={(event) => onFilter('provider', (event.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">All providers</option>
+          {#each ACTIVITY_PROVIDERS as provider (provider)}
+            <option value={provider}>{providerLabel(provider)}</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
 
-    <label class="tp-field">
-      <span class="tp-field__label">Trigger</span>
-      <input
-        class="tp-input"
-        type="search"
-        value={filters.trigger}
-        placeholder="Trigger name or id"
-        data-filter="trigger"
-        disabled={busy}
-        onchange={(event) => onFilter('trigger', (event.currentTarget as HTMLInputElement).value)}
-      />
-    </label>
+    <FormField form="activity_filters" field="trigger" label="Trigger">
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="search"
+          value={filters.trigger}
+          placeholder="Trigger name or id"
+          aria-describedby={described}
+          data-filter="trigger"
+          disabled={busy}
+          onchange={(event) => onFilter('trigger', (event.currentTarget as HTMLInputElement).value)}
+        />
+      {/snippet}
+    </FormField>
 
-    <label class="tp-field">
-      <span class="tp-field__label">Status</span>
-      <select
-        class="tp-input"
-        value={filters.status}
-        data-filter="status"
-        disabled={busy}
-        onchange={(event) => onFilter('status', (event.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="">Any status</option>
-        {#each ACTIVITY_STATUSES as status (status)}
-          <option value={status}>{statusWord(status)}</option>
-        {/each}
-      </select>
-    </label>
+    <FormField form="activity_filters" field="status" label="Status">
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          value={filters.status}
+          aria-describedby={described}
+          data-filter="status"
+          disabled={busy}
+          onchange={(event) => onFilter('status', (event.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">Any status</option>
+          {#each ACTIVITY_STATUSES as status (status)}
+            <option value={status}>{statusWord(status)}</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
 
-    <label class="tp-field">
-      <span class="tp-field__label">Kind</span>
-      <select
-        class="tp-input"
-        value={filters.kind}
-        data-filter="kind"
-        disabled={busy}
-        onchange={(event) => onFilter('kind', (event.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="">All records</option>
-        {#each ACTIVITY_KINDS as kind (kind)}
-          <option value={kind}>{kindLabel(kind)}</option>
-        {/each}
-      </select>
-    </label>
+    <FormField form="activity_filters" field="kind" label="Kind">
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          value={filters.kind}
+          aria-describedby={described}
+          data-filter="kind"
+          disabled={busy}
+          onchange={(event) => onFilter('kind', (event.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">All records</option>
+          {#each ACTIVITY_KINDS as kind (kind)}
+            <option value={kind}>{kindLabel(kind)}</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
   </div>
 
   <p class="tp-activity-filters__summary" data-filter-summary="true">{summary}</p>
@@ -162,27 +181,6 @@
     display: grid;
     gap: var(--tp-space-2);
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  }
-
-  .tp-field {
-    display: grid;
-    gap: var(--tp-space-1);
-  }
-
-  .tp-field__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .tp-input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-surface);
-    color: var(--tp-text-strong);
-    font: inherit;
   }
 
   .tp-activity-filters__summary {

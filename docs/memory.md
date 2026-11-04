@@ -2956,3 +2956,36 @@ lists.
 **Consequence: the vocabulary is enforced by a test, not a review.** The guard
 reads the route's `.svelte` files and lowercases them, so jargon cannot drift
 back in one commit at a time.
+
+### 2026-11-04 - Task 2.4.4, one form pattern with one owner
+
+**Decision:** every field on the control plane is rendered by
+`components/FormField.svelte`, which takes its class names and marker words from
+`components/form.ts`. The order is fixed inside that one component: the label
+with a `Required` or `Optional` chip, the control, the help text, the error as
+`role="alert"`. A form ends in a `tp-field__actions` row justified right, with
+quiet actions before the primary one.
+
+**Why:** the forms had drifted into five spellings — an uppercase `<span>` label
+here, a `<label>` wrapping the control there, `tp-field__hint` beside
+`tp-field__help`, a single error banner at the top of the form — so the same act
+looked different on every page and the pattern could not be learned once. The
+duplicated CSS also meant a fix on one page never reached the others.
+
+**Consequence: the caller supplies only the control.** `FormField` owns the
+markup around it and passes the control id and its `aria-describedby` down, so a
+select, input or textarea keeps its own props without the form re-deciding where
+the label goes. A checkbox or radio set uses `group`, which turns the label into
+a `role="group"` name instead of a `for` attribute pointing at one element.
+
+**Consequence: validators name a field, not a form.** `errorsFor` turns the one
+`{ field, message }` a validator returns into the list a form hands its fields;
+`EnrollHostPanel` and `ConnectionForm` render the message under the field it
+names instead of in a banner, so the error sits where the fix is.
+
+**Consequence: the pattern is enforced by a test, not by review.**
+`components/form-pattern.test.ts` scans every `.svelte` file and fails if a
+component redefines `.tp-field*`, if any of the twenty retired local class
+names come back, if a `routes/` component writes a bare `<label>` beside a field
+span, or if a `<form>` lacks a `data-form` name or an actions row holding its
+submit button.

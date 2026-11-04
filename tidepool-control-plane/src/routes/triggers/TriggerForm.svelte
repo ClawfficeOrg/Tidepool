@@ -7,7 +7,11 @@
    * choices; every other field is a plain edit. An authored agent value the
    * host no longer reports stays in the select, labelled unavailable, so the
    * author chooses the replacement rather than the page choosing silently.
+   *
+   * Every field is a `FormField`, so the label, requirement marker and any
+   * named issue sit in the one place, in the one order.
    */
+  import FormField from '../../components/FormField.svelte';
   import type {
     AgentOptions,
     SelectionAvailability,
@@ -133,271 +137,407 @@
   function fieldInvalid(field: string): boolean {
     return invalid.has(field);
   }
+
+  /** The message for a field, when the page named one against it. */
+  function fieldError(field: string): string | null {
+    return issues.find((issue) => issue.field === field)?.message ?? null;
+  }
 </script>
 
 <fieldset class="tp-trigger-form" disabled={disabled} data-trigger-form="true">
   <legend class="tp-trigger-form__legend">Trigger</legend>
 
-  <label class="tp-field">
-    <span class="tp-field__label">Name</span>
-    <input
-      class="tp-input"
-      type="text"
-      value={document.name}
-      data-field="name"
-      aria-invalid={fieldInvalid('name')}
-      oninput={(event) => onEdit({ field: 'name', value: valueOf(event) })}
-    />
-  </label>
+  <FormField form="trigger" field="name" label="Name" required error={fieldError('name')}>
+    {#snippet children(id, described)}
+      <input
+        class="tp-field__control"
+        {id}
+        type="text"
+        value={document.name}
+        aria-invalid={fieldInvalid('name')}
+        aria-describedby={described}
+        data-field="name"
+        oninput={(event) => onEdit({ field: 'name', value: valueOf(event) })}
+      />
+    {/snippet}
+  </FormField>
 
   <div class="tp-trigger-form__row">
-    <label class="tp-field">
-      <span class="tp-field__label">Event provider</span>
-      <select
-        class="tp-input"
-        value={document.event.provider}
-        data-field="event.provider"
-        aria-invalid={fieldInvalid('event.provider')}
-        onchange={(event) => onEdit({ field: 'event.provider', value: valueOf(event) })}
-      >
-        {#each EVENT_PROVIDERS as provider (provider)}
-          <option value={provider}>{provider}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="tp-field">
-      <span class="tp-field__label">Event type</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.event.type}
-        placeholder="issue.comment_created"
-        data-field="event.type"
-        aria-invalid={fieldInvalid('event.type')}
-        oninput={(event) => onEdit({ field: 'event.type', value: valueOf(event) })}
-      />
-    </label>
+    <FormField
+      form="trigger"
+      field="event.provider"
+      label="Event provider"
+      required
+      error={fieldError('event.provider')}
+    >
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          value={document.event.provider}
+          aria-invalid={fieldInvalid('event.provider')}
+          aria-describedby={described}
+          data-field="event.provider"
+          onchange={(event) => onEdit({ field: 'event.provider', value: valueOf(event) })}
+        >
+          {#each EVENT_PROVIDERS as provider (provider)}
+            <option value={provider}>{provider}</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
+
+    <FormField
+      form="trigger"
+      field="event.type"
+      label="Event type"
+      required
+      error={fieldError('event.type')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.event.type}
+          placeholder="issue.comment_created"
+          aria-invalid={fieldInvalid('event.type')}
+          aria-describedby={described}
+          data-field="event.type"
+          oninput={(event) => onEdit({ field: 'event.type', value: valueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
   </div>
 
-  <label class="tp-field">
-    <span class="tp-field__label">Connection slug</span>
-    <input
-      class="tp-input"
-      type="text"
-      value={document.filters.connection}
-      data-field="filters.connection"
-      aria-invalid={fieldInvalid('filters.connection')}
-      oninput={(event) => onEdit({ field: 'filters.connection', value: valueOf(event) })}
-    />
-  </label>
+  <FormField
+    form="trigger"
+    field="filters.connection"
+    label="Connection slug"
+    required
+    error={fieldError('filters.connection')}
+  >
+    {#snippet children(id, described)}
+      <input
+        class="tp-field__control"
+        {id}
+        type="text"
+        value={document.filters.connection}
+        aria-invalid={fieldInvalid('filters.connection')}
+        aria-describedby={described}
+        data-field="filters.connection"
+        oninput={(event) => onEdit({ field: 'filters.connection', value: valueOf(event) })}
+      />
+    {/snippet}
+  </FormField>
 
   <div class="tp-trigger-form__row">
-    <label class="tp-field">
-      <span class="tp-field__label">Resource kind</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.filters.resource.kind}
-        data-field="filters.resource.kind"
-        aria-invalid={fieldInvalid('filters.resource.kind')}
-        oninput={(event) =>
-          onEdit({ field: 'filters.resource.kind', value: valueOf(event) })}
-      />
-    </label>
-    <label class="tp-field">
-      <span class="tp-field__label">Resource id</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.filters.resource.id}
-        placeholder="acme/widgets"
-        data-field="filters.resource.id"
-        aria-invalid={fieldInvalid('filters.resource.id')}
-        oninput={(event) => onEdit({ field: 'filters.resource.id', value: valueOf(event) })}
-      />
-    </label>
+    <FormField
+      form="trigger"
+      field="filters.resource.kind"
+      label="Resource kind"
+      required
+      error={fieldError('filters.resource.kind')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.filters.resource.kind}
+          aria-invalid={fieldInvalid('filters.resource.kind')}
+          aria-describedby={described}
+          data-field="filters.resource.kind"
+          oninput={(event) =>
+            onEdit({ field: 'filters.resource.kind', value: valueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
+
+    <FormField
+      form="trigger"
+      field="filters.resource.id"
+      label="Resource id"
+      required
+      error={fieldError('filters.resource.id')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.filters.resource.id}
+          placeholder="acme/widgets"
+          aria-invalid={fieldInvalid('filters.resource.id')}
+          aria-describedby={described}
+          data-field="filters.resource.id"
+          oninput={(event) => onEdit({ field: 'filters.resource.id', value: valueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
   </div>
 
-  <label class="tp-field">
-    <span class="tp-field__label">Allowed users</span>
-    <textarea
-      class="tp-input tp-trigger-form__users"
-      rows="3"
-      value={document.filters.from_users.join('\n')}
-      placeholder="One handle per line. Required: the allowlist is what keeps a stranger's event from starting an agent."
-      data-field="filters.from_users"
-      aria-invalid={fieldInvalid('filters.from_users')}
-      oninput={(event) => onEdit({ field: 'filters.from_users', value: usersOf(event) })}
-    ></textarea>
-    <span class="tp-field__hint">
-      Required and never defaulted. Every handle is one person allowed to start
-      this run.
-    </span>
-  </label>
+  <FormField
+    form="trigger"
+    field="filters.from_users"
+    label="Allowed users"
+    required
+    help="Required and never defaulted. Every handle is one person allowed to start this run."
+    error={fieldError('filters.from_users')}
+  >
+    {#snippet children(id, described)}
+      <textarea
+        class="tp-field__control tp-trigger-form__users"
+        {id}
+        rows="3"
+        value={document.filters.from_users.join('\n')}
+        placeholder="One handle per line. Required: the allowlist is what keeps a stranger's event from starting an agent."
+        aria-invalid={fieldInvalid('filters.from_users')}
+        aria-describedby={described}
+        data-field="filters.from_users"
+        oninput={(event) => onEdit({ field: 'filters.from_users', value: usersOf(event) })}
+      ></textarea>
+    {/snippet}
+  </FormField>
 
   <div class="tp-trigger-form__row">
-    <label class="tp-field">
-      <span class="tp-field__label">Channel (optional)</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.filters.channel ?? ''}
-        data-field="filters.channel"
-        aria-invalid={fieldInvalid('filters.channel')}
-        oninput={(event) =>
-          onEdit({ field: 'filters.channel', value: optionalValueOf(event) })}
-      />
-    </label>
-    <label class="tp-field">
-      <span class="tp-field__label">Label (optional)</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.filters.label ?? ''}
-        data-field="filters.label"
-        aria-invalid={fieldInvalid('filters.label')}
-        oninput={(event) => onEdit({ field: 'filters.label', value: optionalValueOf(event) })}
-      />
-    </label>
+    <FormField
+      form="trigger"
+      field="filters.channel"
+      label="Channel"
+      error={fieldError('filters.channel')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.filters.channel ?? ''}
+          aria-invalid={fieldInvalid('filters.channel')}
+          aria-describedby={described}
+          data-field="filters.channel"
+          oninput={(event) =>
+            onEdit({ field: 'filters.channel', value: optionalValueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
+
+    <FormField form="trigger" field="filters.label" label="Label" error={fieldError('filters.label')}>
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.filters.label ?? ''}
+          aria-invalid={fieldInvalid('filters.label')}
+          aria-describedby={described}
+          data-field="filters.label"
+          oninput={(event) => onEdit({ field: 'filters.label', value: optionalValueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
   </div>
 
   <div class="tp-trigger-form__row">
-    <label class="tp-field">
-      <span class="tp-field__label">Contains (optional)</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.filters.contains ?? ''}
-        data-field="filters.contains"
-        aria-invalid={fieldInvalid('filters.contains')}
-        oninput={(event) =>
-          onEdit({ field: 'filters.contains', value: optionalValueOf(event) })}
-      />
-    </label>
-    <label class="tp-field">
-      <span class="tp-field__label">Pattern (optional)</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={document.filters.pattern ?? ''}
-        data-field="filters.pattern"
-        aria-invalid={fieldInvalid('filters.pattern')}
-        oninput={(event) => onEdit({ field: 'filters.pattern', value: optionalValueOf(event) })}
-      />
-    </label>
+    <FormField
+      form="trigger"
+      field="filters.contains"
+      label="Contains"
+      error={fieldError('filters.contains')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.filters.contains ?? ''}
+          aria-invalid={fieldInvalid('filters.contains')}
+          aria-describedby={described}
+          data-field="filters.contains"
+          oninput={(event) =>
+            onEdit({ field: 'filters.contains', value: optionalValueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
+
+    <FormField
+      form="trigger"
+      field="filters.pattern"
+      label="Pattern"
+      error={fieldError('filters.pattern')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={document.filters.pattern ?? ''}
+          aria-invalid={fieldInvalid('filters.pattern')}
+          aria-describedby={described}
+          data-field="filters.pattern"
+          oninput={(event) => onEdit({ field: 'filters.pattern', value: optionalValueOf(event) })}
+        />
+      {/snippet}
+    </FormField>
   </div>
 
   <div class="tp-trigger-form__row">
-    <label class="tp-field">
-      <span class="tp-field__label">Host</span>
-      <select
-        class="tp-input"
-        value={document.run.host}
-        data-field="run.host"
-        aria-invalid={fieldInvalid('run.host')}
-        onchange={(event) => onHost(valueOf(event))}
-      >
-        <option value="">Choose a host…</option>
-        {#each hostChoices as host (host.value)}
-          <option value={host.value}>{host.label}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="tp-field">
-      <span class="tp-field__label">Working directory</span>
-      <input
-        class="tp-input"
-        type="text"
-        value={directory}
-        placeholder="/srv/tidepool"
-        data-field="directory"
-        onchange={(event) => onDirectory(valueOf(event))}
-      />
-      <span class="tp-field__hint">
-        The context the host is asked about. This contract stores the host and
-        agent in the trigger; the directory is not part of the document.
-      </span>
-    </label>
+    <FormField form="trigger" field="run.host" label="Host" required error={fieldError('run.host')}>
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          value={document.run.host}
+          aria-invalid={fieldInvalid('run.host')}
+          aria-describedby={described}
+          data-field="run.host"
+          onchange={(event) => onHost(valueOf(event))}
+        >
+          <option value="">Choose a host…</option>
+          {#each hostChoices as host (host.value)}
+            <option value={host.value}>{host.label}</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
+
+    <FormField
+      form="trigger"
+      field="directory"
+      label="Working directory"
+      help="The context the host is asked about. This contract stores the host and agent in the trigger; the directory is not part of the document."
+      error={fieldError('directory')}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          value={directory}
+          placeholder="/srv/tidepool"
+          aria-describedby={described}
+          data-field="directory"
+          onchange={(event) => onDirectory(valueOf(event))}
+        />
+      {/snippet}
+    </FormField>
   </div>
 
   <fieldset class="tp-trigger-form__agent" data-agent-fields="true">
     <legend class="tp-trigger-form__legend">Agent</legend>
 
     <div class="tp-trigger-form__row">
-      <label class="tp-field">
-        <span class="tp-field__label">Provider</span>
-        <select
-          class="tp-input"
-          value={document.run.agent.provider}
-          data-field="run.agent.provider"
-          aria-invalid={fieldInvalid('run.agent.provider')}
-          onchange={(event) =>
-            onEdit({ field: 'run.agent.provider', value: valueOf(event) })}
-        >
-          {#if document.run.agent.provider.trim() === ''}
-            <option value="">Choose a host to load providers…</option>
-          {/if}
-          {#each selectable(providerChoices, document.run.agent.provider) as choice (choice.value)}
-            <option value={choice.value}>{choice.label}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="tp-field">
-        <span class="tp-field__label">Model</span>
-        <select
-          class="tp-input"
-          value={document.run.agent.model}
-          data-field="run.agent.model"
-          aria-invalid={fieldInvalid('run.agent.model')}
-          onchange={(event) => onEdit({ field: 'run.agent.model', value: valueOf(event) })}
-        >
-          {#if document.run.agent.model.trim() === ''}
-            <option value="">Choose a provider first…</option>
-          {/if}
-          {#each selectable(modelChoices, document.run.agent.model) as choice (choice.value)}
-            <option value={choice.value}>{choice.label}</option>
-          {/each}
-        </select>
-      </label>
+      <FormField
+        form="trigger"
+        field="run.agent.provider"
+        label="Provider"
+        required
+        error={fieldError('run.agent.provider')}
+      >
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            value={document.run.agent.provider}
+            aria-invalid={fieldInvalid('run.agent.provider')}
+            aria-describedby={described}
+            data-field="run.agent.provider"
+            onchange={(event) =>
+              onEdit({ field: 'run.agent.provider', value: valueOf(event) })}
+          >
+            {#if document.run.agent.provider.trim() === ''}
+              <option value="">Choose a host to load providers…</option>
+            {/if}
+            {#each selectable(providerChoices, document.run.agent.provider) as choice (choice.value)}
+              <option value={choice.value}>{choice.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
+
+      <FormField
+        form="trigger"
+        field="run.agent.model"
+        label="Model"
+        required
+        error={fieldError('run.agent.model')}
+      >
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            value={document.run.agent.model}
+            aria-invalid={fieldInvalid('run.agent.model')}
+            aria-describedby={described}
+            data-field="run.agent.model"
+            onchange={(event) => onEdit({ field: 'run.agent.model', value: valueOf(event) })}
+          >
+            {#if document.run.agent.model.trim() === ''}
+              <option value="">Choose a provider first…</option>
+            {/if}
+            {#each selectable(modelChoices, document.run.agent.model) as choice (choice.value)}
+              <option value={choice.value}>{choice.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
     </div>
 
     <div class="tp-trigger-form__row">
-      <label class="tp-field">
-        <span class="tp-field__label">Execution mode</span>
-        <select
-          class="tp-input"
-          value={document.run.agent.execution_mode}
-          data-field="run.agent.execution_mode"
-          aria-invalid={fieldInvalid('run.agent.execution_mode')}
-          onchange={(event) =>
-            onEdit({ field: 'run.agent.execution_mode', value: valueOf(event) })}
-        >
-          {#if document.run.agent.execution_mode.trim() === ''}
-            <option value="">Choose a model first…</option>
-          {/if}
-          {#each selectable(modeChoices, document.run.agent.execution_mode) as choice (choice.value)}
-            <option value={choice.value}>{choice.label}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="tp-field">
-        <span class="tp-field__label">Thinking option</span>
-        <select
-          class="tp-input"
-          value={document.run.agent.thinking_option ?? ''}
-          data-field="run.agent.thinking_option"
-          aria-invalid={fieldInvalid('run.agent.thinking_option')}
-          onchange={(event) => {
-            const value = valueOf(event);
-            onEdit({ field: 'run.agent.thinking_option', value: value === '' ? null : value });
-          }}
-        >
-          <option value="">No thinking option</option>
-          {#each selectable(thinkingChoices, document.run.agent.thinking_option ?? '') as choice (choice.value)}
-            <option value={choice.value}>{choice.label}</option>
-          {/each}
-        </select>
-      </label>
+      <FormField
+        form="trigger"
+        field="run.agent.execution_mode"
+        label="Execution mode"
+        required
+        error={fieldError('run.agent.execution_mode')}
+      >
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            value={document.run.agent.execution_mode}
+            aria-invalid={fieldInvalid('run.agent.execution_mode')}
+            aria-describedby={described}
+            data-field="run.agent.execution_mode"
+            onchange={(event) =>
+              onEdit({ field: 'run.agent.execution_mode', value: valueOf(event) })}
+          >
+            {#if document.run.agent.execution_mode.trim() === ''}
+              <option value="">Choose a model first…</option>
+            {/if}
+            {#each selectable(modeChoices, document.run.agent.execution_mode) as choice (choice.value)}
+              <option value={choice.value}>{choice.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
+
+      <FormField
+        form="trigger"
+        field="run.agent.thinking_option"
+        label="Thinking option"
+        error={fieldError('run.agent.thinking_option')}
+      >
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            value={document.run.agent.thinking_option ?? ''}
+            aria-invalid={fieldInvalid('run.agent.thinking_option')}
+            aria-describedby={described}
+            data-field="run.agent.thinking_option"
+            onchange={(event) => {
+              const value = valueOf(event);
+              onEdit({ field: 'run.agent.thinking_option', value: value === '' ? null : value });
+            }}
+          >
+            <option value="">No thinking option</option>
+            {#each selectable(thinkingChoices, document.run.agent.thinking_option ?? '') as choice (choice.value)}
+              <option value={choice.value}>{choice.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
     </div>
 
     {#if availability.unavailable.length > 0}
@@ -445,21 +585,6 @@
   .tp-trigger-form__users {
     min-height: 4rem;
     font-family: var(--tp-font-code);
-  }
-
-  .tp-field {
-    display: grid;
-    gap: var(--tp-space-1);
-  }
-
-  .tp-field__label {
-    font-size: var(--tp-font-caption);
-    color: var(--tp-text-muted);
-  }
-
-  .tp-field__hint {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
   }
 
   .tp-trigger-form__unavailable {

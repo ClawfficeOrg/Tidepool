@@ -2,6 +2,70 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - One form pattern everywhere (task 2.4.4)
+
+### Added
+- `tidepool-control-plane/src/components/form.ts` - the pattern's source of
+  truth: the class names of one field (`tp-field`, `tp-field__label`,
+  `tp-field__requirement`, `tp-field__control`, `tp-field__help`,
+  `tp-field__error`, `tp-field__actions`), the two marker words `Required` and
+  `Optional`, and the pure helpers `fieldId`, `helpId`, `errorId`,
+  `describedBy`, `errorForField` and `errorsFor`.
+- `tidepool-control-plane/src/components/FormField.svelte` - the one field.
+  It lays out, in a fixed order: the label with its required/optional marker,
+  the caller's control, the help text, then the error as `role="alert"`. It
+  derives the control id and the matching `aria-describedby`, supports a
+  `group` variant for checkbox and radio sets (`role="group"` plus
+  `aria-labelledby`), a `wide` variant for multi-column forms, and an `extra`
+  snippet for secondary help paragraphs.
+
+### Changed
+- Every form on the control plane now renders through `FormField`, so the parts
+  cannot drift: `routes/SignIn.svelte`, `routes/Setup.svelte`,
+  `routes/settings/InviteMemberForm.svelte`,
+  `routes/settings/CreateKeyForm.svelte`,
+  `routes/settings/PreferencesPanel.svelte` (pool URL plus the clock, time-zone
+  and density choice groups), `routes/settings/MemberRow.svelte` (role select),
+  `routes/connections/ConnectionForm.svelte` (including the resources group),
+  `routes/connections/SecretField.svelte`,
+  `routes/connections/ConnectionCard.svelte` (rename form and transport select),
+  `routes/hosts/EnrollHostPanel.svelte`, `routes/rooms/MessageComposer.svelte`,
+  `routes/projects/FileEditor.svelte` (content and add-path forms),
+  `routes/runs/RunsPage.svelte` (dispatch), `routes/runs/TidetableRunPanel.svelte`,
+  `routes/runs/ActivityFilters.svelte`, `routes/triggers/TriggerForm.svelte`,
+  `routes/triggers/TriggersPage.svelte` (project picker) and
+  `routes/triggers/YamlTriggerEditor.svelte`.
+- Primary actions are last, in a `tp-field__actions` row that justifies to the
+  right; quiet actions (Cancel, Clear) come first.
+- Local validators now name the field their message belongs to instead of
+  printing one banner: `EnrollHostPanel` keeps a `{ field, message }` failure
+  and renders it under `hostname` or `display_name`, and
+  `ConnectionForm` gained a local `validateConnectionInput` call so
+  `credential_ref` and `resources` report in place. `PreferencesPanel` moved its
+  rejected-URL sentence onto the field, beside the control.
+- The per-page copies of the field CSS are gone: `.tp-enrol__field/label/hint/
+  input`, `.tp-secret__label/input/help/actions`, `.tp-prefs__field/label/input`,
+  `.tp-member__field/label/select`, `.tp-connection__input/select`,
+  `.tp-editor__label/input`, `run-field*`, and the local `.tp-field*` rules in
+  `ActivityFilters`, `TriggerForm`, `MessageComposer` and `RunsPage`.
+
+### Tests
+- `src/components/form.test.ts` - the pure rules: the class names, both marker
+  words, id derivation (including names with spaces, underscores and dots),
+  `aria-describedby` composition, and one validator failure becoming one
+  field's error.
+- `src/components/FormField.test.ts` - the rendered order (label, control,
+  help, error), required versus optional, the label's `for` and a fixed id,
+  `role="alert"`, the `group` and `wide` variants and the `extra` snippet.
+- `src/components/form-pattern.test.ts` - a source scan across every `.svelte`
+  file: no component redefines `.tp-field*`, no page-local field/label/hint
+  class survives (20 removed spellings are named), every `<form>` has a
+  `data-form` name and a `tp-field__actions` row containing its submit button.
+- `npx vitest run` in `tidepool-control-plane`: 43 files, 525 tests, all pass.
+  `npx tsc -p tsconfig.json`: clean. `npx vite build`: builds.
+- Repo gates: `cargo fmt --check` clean, `cargo clippy --all-targets
+  --all-features -- -D warnings` clean, `cargo test` 890 passed / 185 ignored.
+
 ## [Unreleased] - 2026-11-04 - Projects page explains manifests in plain words (task 2.4.3)
 
 ### Changed

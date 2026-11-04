@@ -19,11 +19,13 @@
     describeTransport,
     isConnectionProvider,
     transportsFor,
+    validateConnectionInput,
     type ConnectionProvider,
     type ConnectionTransport,
     type NewConnectionInput,
     type ResourceInput,
   } from '$lib/connections';
+  import FormField from '../../components/FormField.svelte';
 
   interface Props {
     /** True while a create is in flight. */
@@ -56,6 +58,8 @@
   let displayName = $state('');
   let credentialRef = $state('');
   let resources = $state<ResourceInput[]>([]);
+  /** The one validation failure, tied to the field it names. */
+  let failure = $state<{ field: string; message: string } | null>(null);
 
   const descriptor = $derived(CONNECTION_PROVIDERS_CATALOG[provider]);
   const transportChoices = $derived(transportsFor(provider));
@@ -93,7 +97,9 @@
   /** Submit the form. Validation lives in `$lib/connections`. */
   function submit(event: SubmitEvent): void {
     event.preventDefault();
-    onSubmit?.({
+    if (busy) return;
+    failure = null;
+    const validation = validateConnectionInput({
       provider,
       transport,
       slug,
@@ -101,6 +107,11 @@
       credentialRef,
       resources,
     });
+    if (!validation.ok) {
+      failure = { field: validation.field, message: validation.message };
+      return;
+    }
+    onSubmit?.(validation.input);
   }
 </script>
 
@@ -112,167 +123,235 @@
     reference, and the value is never shown again.
   </p>
 
-  <form class="tp-connection-form__body" onsubmit={submit}>
+  <form class="tp-connection-form__body" onsubmit={submit} data-form="connection">
     <div class="tp-connection-form__grid">
-      <div class="tp-field">
-        <label class="tp-field__label" for="tp-connection-provider">Provider</label>
-        <select
-          class="tp-field__input"
-          id="tp-connection-provider"
-          name="provider"
-          onchange={(event) => selectProvider(event.currentTarget.value)}
-          disabled={busy}
-        >
-          {#each CONNECTION_PROVIDERS as choice (choice)}
-            <option value={choice} selected={choice === provider}>
-              {CONNECTION_PROVIDERS_CATALOG[choice].label}
-            </option>
-          {/each}
-        </select>
-        <p class="tp-field__help">{descriptor.summary}</p>
-      </div>
-
-      <div class="tp-field">
-        <label class="tp-field__label" for="tp-connection-transport">Transport</label>
-        <select
-          class="tp-field__input"
-          id="tp-connection-transport"
-          name="transport"
-          onchange={(event) => selectTransport(event.currentTarget.value)}
-          disabled={busy}
-        >
-          {#each transportChoices as choice (choice.id)}
-            <option value={choice.id} selected={choice.id === transport}>{choice.label}</option>
-          {/each}
-        </select>
-        {#if chosenTransport}
-          <p class="tp-field__help" data-transport-help={chosenTransport.id}>
-            {chosenTransport.description}
-          </p>
-          {#if chosenTransport.id === 'slack_socket'}
-            <p class="tp-field__help" data-socket-mode="true">
-              Choose socket mode when this pool has no public address: the pool
-              dials Slack, so no callback URL is needed.
-            </p>
-          {:else if chosenTransport.id === 'discord_gateway'}
-            <p class="tp-field__help" data-gateway="true">
-              Discord configures the bot gateway: the pool dials out with
-              bot_token, so there is no callback URL to paste.
-            </p>
-          {:else if chosenTransport.callbackTemplate}
-            <p class="tp-field__help" data-callback-preview={`${poolUrl ?? ''}${chosenTransport.callbackTemplate.replace('{slug}', slug.trim() || '{slug}')}`}>
-              Callback URL: {poolUrl ?? 'the pool origin'}
-              {chosenTransport.callbackTemplate.replace('{slug}', slug.trim() || '{slug}')}
-            </p>
-          {/if}
-        {/if}
-      </div>
-
-      <div class="tp-field">
-        <label class="tp-field__label" for="tp-connection-slug">Slug</label>
-        <input
-          class="tp-field__input"
-          id="tp-connection-slug"
-          name="slug"
-          type="text"
-          autocomplete="off"
-          placeholder="acme"
-          bind:value={slug}
-          disabled={busy}
-        />
-        <p class="tp-field__help">
-          The callback path segment; lowercased, with non-alphanumerics collapsed.
-        </p>
-      </div>
-
-      <div class="tp-field">
-        <label class="tp-field__label" for="tp-connection-display">Display name</label>
-        <input
-          class="tp-field__input"
-          id="tp-connection-display"
-          name="display_name"
-          type="text"
-          autocomplete="off"
-          placeholder="Acme"
-          bind:value={displayName}
-          disabled={busy}
-        />
-      </div>
-
-      <div class="tp-field tp-field--wide">
-        <label class="tp-field__label" for="tp-connection-credential">
-          Credential reference
-        </label>
-        <input
-          class="tp-field__input"
-          id="tp-connection-credential"
-          name="credential_ref"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="e.g. GITHUB_ACME_CREDS"
-          bind:value={credentialRef}
-          disabled={busy}
-        />
-        <p class="tp-field__help" data-credential-write-only="true">
-          The name of the secret holding {descriptor.label}’s
-          {descriptor.credentialFields.map((field) => field.key).join(', ')}.
-          Write-only: the pool never sends it back.
-        </p>
-      </div>
-    </div>
-
-    <fieldset class="tp-connection-form__resources">
-      <legend>Resources</legend>
-      <p class="tp-field__help">
-        The {descriptor.label} identities this connection delivers for
-        ({descriptor.resourceKinds.join(', ')}). Leave empty to add them later.
-      </p>
-      {#each resources as resource, index (index)}
-        <div class="tp-connection-form__resource">
-          <label class="tp-field">
-            <span class="tp-field__label">Resource kind</span>
-            <select
-              class="tp-field__input"
-              value={resource.kind}
-              onchange={(event) => {
-                const kind = event.currentTarget.value;
-                resource.kind = kind;
-              }}
-              disabled={busy}
-            >
-              {#each descriptor.resourceKinds as kind (kind)}
-                <option value={kind} selected={kind === resource.kind}>{kind}</option>
-              {/each}
-            </select>
-          </label>
-          <label class="tp-field">
-            <span class="tp-field__label">External id</span>
-            <input
-              class="tp-field__input"
-              type="text"
-              autocomplete="off"
-              placeholder={resource.kind === 'repository' ? 'acme/app' : 'provider id'}
-              bind:value={resource.externalId}
-              disabled={busy}
-            />
-          </label>
-          <button
-            class="tp-button tp-button--quiet"
-            type="button"
-            onclick={() => removeResource(index)}
+      <FormField
+        form="connection"
+        field="provider"
+        label="Provider"
+        required
+        id="tp-connection-provider"
+        help={descriptor.summary}
+        error={failure?.field === 'provider' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            name="provider"
+            aria-invalid={failure?.field === 'provider'}
+            aria-describedby={described}
+            onchange={(event) => selectProvider(event.currentTarget.value)}
             disabled={busy}
           >
-            Remove resource
+            {#each CONNECTION_PROVIDERS as choice (choice)}
+              <option value={choice} selected={choice === provider}>
+                {CONNECTION_PROVIDERS_CATALOG[choice].label}
+              </option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
+
+      <FormField
+        form="connection"
+        field="transport"
+        label="Transport"
+        required
+        id="tp-connection-transport"
+        help={null}
+        error={failure?.field === 'transport' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            name="transport"
+            aria-invalid={failure?.field === 'transport'}
+            aria-describedby={described}
+            onchange={(event) => selectTransport(event.currentTarget.value)}
+            disabled={busy}
+          >
+            {#each transportChoices as choice (choice.id)}
+              <option value={choice.id} selected={choice.id === transport}>{choice.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+        {#snippet extra()}
+          {#if chosenTransport}
+            <p class="tp-field__help" data-transport-help={chosenTransport.id}>
+              {chosenTransport.description}
+            </p>
+            {#if chosenTransport.id === 'slack_socket'}
+              <p class="tp-field__help" data-socket-mode="true">
+                Choose socket mode when this pool has no public address: the pool
+                dials Slack, so no callback URL is needed.
+              </p>
+            {:else if chosenTransport.id === 'discord_gateway'}
+              <p class="tp-field__help" data-gateway="true">
+                Discord configures the bot gateway: the pool dials out with
+                bot_token, so there is no callback URL to paste.
+              </p>
+            {:else if chosenTransport.callbackTemplate}
+              <p
+                class="tp-field__help"
+                data-callback-preview={`${poolUrl ?? ''}${chosenTransport.callbackTemplate.replace('{slug}', slug.trim() || '{slug}')}`}
+              >
+                Callback URL: {poolUrl ?? 'the pool origin'}
+                {chosenTransport.callbackTemplate.replace('{slug}', slug.trim() || '{slug}')}
+              </p>
+            {/if}
+          {/if}
+        {/snippet}
+      </FormField>
+
+      <FormField
+        form="connection"
+        field="slug"
+        label="Slug"
+        required
+        id="tp-connection-slug"
+        help="The callback path segment; lowercased, with non-alphanumerics collapsed."
+        error={failure?.field === 'slug' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            name="slug"
+            type="text"
+            autocomplete="off"
+            placeholder="acme"
+            aria-invalid={failure?.field === 'slug'}
+            aria-describedby={described}
+            bind:value={slug}
+            disabled={busy}
+          />
+        {/snippet}
+      </FormField>
+
+      <FormField
+        form="connection"
+        field="display_name"
+        label="Display name"
+        required
+        id="tp-connection-display"
+        error={failure?.field === 'display_name' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            name="display_name"
+            type="text"
+            autocomplete="off"
+            placeholder="Acme"
+            aria-invalid={failure?.field === 'display_name'}
+            aria-describedby={described}
+            bind:value={displayName}
+            disabled={busy}
+          />
+        {/snippet}
+      </FormField>
+
+      <FormField
+        form="connection"
+        field="credential_ref"
+        label="Credential reference"
+        required
+        wide
+        id="tp-connection-credential"
+        help={`The name of the secret holding ${descriptor.label}'s ${descriptor.credentialFields
+          .map((field) => field.key)
+          .join(', ')}. Write-only: the pool never sends it back.`}
+        error={failure?.field === 'credential_ref' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            name="credential_ref"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="e.g. GITHUB_ACME_CREDS"
+            aria-invalid={failure?.field === 'credential_ref'}
+            aria-describedby={described}
+            data-credential-write-only="true"
+            bind:value={credentialRef}
+            disabled={busy}
+          />
+        {/snippet}
+      </FormField>
+    </div>
+
+    <FormField
+      form="connection"
+      field="resources"
+      label="Resources"
+      wide
+      group
+      help={`The ${descriptor.label} identities this connection delivers for
+        (${descriptor.resourceKinds.join(', ')}). Leave empty to add them later.`}
+      error={failure?.field === 'resources' ? failure.message : null}
+    >
+      {#snippet children()}
+        <div class="tp-connection-form__resources">
+          {#each resources as resource, index (index)}
+            <div class="tp-connection-form__resource">
+              <FormField form="connection" field={`resource-${index}-kind`} label="Resource kind">
+                {#snippet children(id, described)}
+                  <select
+                    class="tp-field__control"
+                    {id}
+                    value={resource.kind}
+                    aria-describedby={described}
+                    onchange={(event) => {
+                      const kind = event.currentTarget.value;
+                      resource.kind = kind;
+                    }}
+                    disabled={busy}
+                  >
+                    {#each descriptor.resourceKinds as kind (kind)}
+                      <option value={kind} selected={kind === resource.kind}>{kind}</option>
+                    {/each}
+                  </select>
+                {/snippet}
+              </FormField>
+              <FormField form="connection" field={`resource-${index}-external`} label="External id">
+                {#snippet children(id, described)}
+                  <input
+                    class="tp-field__control"
+                    {id}
+                    type="text"
+                    autocomplete="off"
+                    placeholder={resource.kind === 'repository' ? 'acme/app' : 'provider id'}
+                    aria-describedby={described}
+                    bind:value={resource.externalId}
+                    disabled={busy}
+                  />
+                {/snippet}
+              </FormField>
+              <button
+                class="tp-button tp-button--quiet"
+                type="button"
+                onclick={() => removeResource(index)}
+                disabled={busy}
+              >
+                Remove resource
+              </button>
+            </div>
+          {/each}
+          <button class="tp-button tp-button--quiet" type="button" onclick={addResource} disabled={busy}>
+            Add resource
           </button>
         </div>
-      {/each}
-      <button class="tp-button tp-button--quiet" type="button" onclick={addResource} disabled={busy}>
-        Add resource
-      </button>
-    </fieldset>
+      {/snippet}
+    </FormField>
 
-    <button class="tp-button" type="submit" disabled={busy}>Add connection</button>
+    <div class="tp-field__actions">
+      <button class="tp-button" type="submit" disabled={busy}>Add connection</button>
+    </div>
   </form>
 </section>
 
@@ -309,44 +388,9 @@
     gap: var(--tp-space-2);
   }
 
-  .tp-field {
-    display: grid;
-    gap: 2px;
-  }
-
-  .tp-field--wide {
-    grid-column: 1 / -1;
-  }
-
-  .tp-field__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .tp-field__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    color: var(--tp-text-strong);
-    background: var(--tp-window-background);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-  }
-
-  .tp-field__help {
-    margin: 0;
-    max-width: 68ch;
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-  }
-
   .tp-connection-form__resources {
     display: grid;
     gap: var(--tp-space-1);
-    margin: 0;
-    padding: var(--tp-space-2);
-    border: 1px solid var(--tp-border);
-    border-radius: var(--tp-radius-control);
   }
 
   .tp-connection-form__resource {

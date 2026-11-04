@@ -27,6 +27,7 @@
     type TimeFormat,
     type TimeZonePreference,
   } from './preferences';
+  import FormField from '../../components/FormField.svelte';
 
   interface Props {
     /** The preferences currently in effect. */
@@ -81,38 +82,49 @@
       pointing at a different pool never needs a rebuild. Leave it empty to use
       the pool that served this page.
     </p>
-    <form class="tp-prefs__form" onsubmit={savePool}>
-      <label class="tp-prefs__field">
-        <span class="tp-prefs__label">Pool URL</span>
-        <input
-          class="tp-prefs__input"
-          type="url"
-          name="pool-url"
-          inputmode="url"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="https://pool.example.com"
-          bind:value={poolUrl}
-          data-pool-url-input="true"
-        />
-        <span class="tp-prefs__hint">
-          {#if effectivePoolUrl}
-            In effect: <code data-effective-pool-url>{effectivePoolUrl}</code>
-            {#if servedByPool}
-              (served by the pool itself)
+    <form class="tp-prefs__form" onsubmit={savePool} data-form="pool_url">
+      <FormField
+        form="pool_url"
+        field="pool_url"
+        label="Pool URL"
+        help="Leave empty to use the pool that served this page."
+        error={poolUrlProblem}
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            type="url"
+            name="pool-url"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://pool.example.com"
+            aria-invalid={poolUrlProblem !== null}
+            aria-describedby={described}
+            data-pool-url-problem={poolUrlProblem !== null ? 'true' : undefined}
+            bind:value={poolUrl}
+            data-pool-url-input="true"
+          />
+        {/snippet}
+        {#snippet extra()}
+          <p class="tp-prefs__hint">
+            {#if effectivePoolUrl}
+              In effect: <code data-effective-pool-url>{effectivePoolUrl}</code>
+              {#if servedByPool}
+                (served by the pool itself)
+              {/if}
+            {:else}
+              No pool in effect yet. Enter an absolute URL to connect.
             {/if}
-          {:else}
-            No pool in effect yet. Enter an absolute URL to connect.
-          {/if}
-        </span>
-      </label>
-      <button class="tp-button" type="submit">Save pool URL</button>
+          </p>
+        {/snippet}
+      </FormField>
+      <div class="tp-field__actions">
+        <button class="tp-button" type="submit">Save pool URL</button>
+      </div>
     </form>
-    {#if poolUrlProblem}
-      <p class="tp-prefs__error" role="alert" data-pool-url-problem="true">
-        {poolUrlProblem}
-      </p>
-    {:else if submitted && poolUrlNotice}
+    {#if !poolUrlProblem && submitted && poolUrlNotice}
       <p class="tp-prefs__notice" role="status" data-pool-url-notice="true">
         {poolUrlNotice}
       </p>
@@ -126,39 +138,45 @@
       <code>{formatTime(previewInstant, preferences, { seconds: true, date: true })}</code>.
     </p>
     <div class="tp-prefs__choices">
-      <fieldset class="tp-prefs__choice-set">
-        <legend class="tp-prefs__label">Clock</legend>
-        {#each TIME_FORMATS as option (option)}
-          <label class="tp-prefs__choice">
-            <input
-              type="radio"
-              name="time-format"
-              value={option}
-              checked={preferences.timeFormat === option}
-              onchange={() => onPreferenceChange?.({ timeFormat: option as TimeFormat })}
-              data-time-format-option={option}
-            />
-            <span>{timeFormatLabel(option)}</span>
-          </label>
-        {/each}
-      </fieldset>
+      <FormField form="preferences" field="time_format" label="Clock" group>
+        {#snippet children()}
+          <div class="tp-prefs__choice-set">
+            {#each TIME_FORMATS as option (option)}
+              <label class="tp-prefs__choice">
+                <input
+                  type="radio"
+                  name="time-format"
+                  value={option}
+                  checked={preferences.timeFormat === option}
+                  onchange={() => onPreferenceChange?.({ timeFormat: option as TimeFormat })}
+                  data-time-format-option={option}
+                />
+                <span>{timeFormatLabel(option)}</span>
+              </label>
+            {/each}
+          </div>
+        {/snippet}
+      </FormField>
 
-      <fieldset class="tp-prefs__choice-set">
-        <legend class="tp-prefs__label">Time zone</legend>
-        {#each TIME_ZONES as option (option)}
-          <label class="tp-prefs__choice">
-            <input
-              type="radio"
-              name="time-zone"
-              value={option}
-              checked={preferences.timeZone === option}
-              onchange={() => onPreferenceChange?.({ timeZone: option as TimeZonePreference })}
-              data-time-zone-option={option}
-            />
-            <span>{timeZoneLabel(option)}</span>
-          </label>
-        {/each}
-      </fieldset>
+      <FormField form="preferences" field="time_zone" label="Time zone" group>
+        {#snippet children()}
+          <div class="tp-prefs__choice-set">
+            {#each TIME_ZONES as option (option)}
+              <label class="tp-prefs__choice">
+                <input
+                  type="radio"
+                  name="time-zone"
+                  value={option}
+                  checked={preferences.timeZone === option}
+                  onchange={() => onPreferenceChange?.({ timeZone: option as TimeZonePreference })}
+                  data-time-zone-option={option}
+                />
+                <span>{timeZoneLabel(option)}</span>
+              </label>
+            {/each}
+          </div>
+        {/snippet}
+      </FormField>
     </div>
   </div>
 
@@ -168,22 +186,25 @@
       Comfortable spacing, or compact when more rows matter than air. The choice
       applies to every page.
     </p>
-    <fieldset class="tp-prefs__choice-set">
-      <legend class="tp-prefs__label">Spacing</legend>
-      {#each DENSITIES as option (option)}
-        <label class="tp-prefs__choice">
-          <input
-            type="radio"
-            name="density"
-            value={option}
-            checked={preferences.density === option}
-            onchange={() => onPreferenceChange?.({ density: option as Density })}
-            data-density-option={option}
-          />
-          <span>{densityLabel(option)}</span>
-        </label>
-      {/each}
-    </fieldset>
+    <FormField form="preferences" field="density" label="Spacing" group>
+      {#snippet children()}
+        <div class="tp-prefs__choice-set">
+          {#each DENSITIES as option (option)}
+            <label class="tp-prefs__choice">
+              <input
+                type="radio"
+                name="density"
+                value={option}
+                checked={preferences.density === option}
+                onchange={() => onPreferenceChange?.({ density: option as Density })}
+                data-density-option={option}
+              />
+              <span>{densityLabel(option)}</span>
+            </label>
+          {/each}
+        </div>
+      {/snippet}
+    </FormField>
   </div>
 
   <div class="tp-prefs__group" data-prefs-group="about">
@@ -246,26 +267,9 @@
     font-size: var(--tp-font-caption);
   }
 
-  .tp-prefs__form,
-  .tp-prefs__field {
+  .tp-prefs__form {
     display: grid;
     gap: var(--tp-space-1);
-  }
-
-  .tp-prefs__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-prefs__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
   }
 
   .tp-prefs__choices {
@@ -277,9 +281,6 @@
   .tp-prefs__choice-set {
     display: grid;
     gap: var(--tp-space-1);
-    margin: 0;
-    padding: 0;
-    border: 0;
   }
 
   .tp-prefs__choice {
@@ -287,13 +288,6 @@
     align-items: center;
     gap: var(--tp-space-1);
     color: var(--tp-text);
-  }
-
-  .tp-prefs__error {
-    margin: 0;
-    padding-left: var(--tp-space-2);
-    border-left: 3px solid var(--tp-status-danger);
-    color: var(--tp-text-strong);
   }
 
   .tp-prefs__notice {

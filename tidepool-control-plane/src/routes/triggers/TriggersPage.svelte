@@ -15,6 +15,7 @@
    */
   import ProblemDetails from '../../components/ProblemDetails.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
+  import FormField from '../../components/FormField.svelte';
   import AgentSourcePanel from './AgentSourcePanel.svelte';
   import TriggerForm from './TriggerForm.svelte';
   import YamlTriggerEditor from './YamlTriggerEditor.svelte';
@@ -198,28 +199,33 @@
       </p>
     {:else}
       <div class="tp-triggers__toolbar">
-        <label class="tp-field">
-          <span class="tp-field__label">Project</span>
-          <select
-            class="tp-input"
-            value={view.selectedProjectId ?? ''}
-            data-project-select="true"
-            onchange={(event) =>
-              selectProject((event.currentTarget as HTMLSelectElement).value)}
-          >
-            <option value="">Choose a project…</option>
-            {#each view.projects as project (project.id)}
-              <option value={project.id}>{project.name} ({project.slug})</option>
-            {/each}
-          </select>
-        </label>
-        <p class="tp-triggers__project-note">
-          {#if selectedProject}
-            The trigger is installed into <strong>{selectedProject.name}</strong>.
-          {:else}
-            A trigger belongs to one project; choose the project it installs into.
-          {/if}
-        </p>
+        <FormField form="trigger_project" field="project" label="Project" required>
+          {#snippet children(id, described)}
+            <select
+              class="tp-field__control"
+              {id}
+              value={view.selectedProjectId ?? ''}
+              aria-describedby={described}
+              data-project-select="true"
+              onchange={(event) =>
+                selectProject((event.currentTarget as HTMLSelectElement).value)}
+            >
+              <option value="">Choose a project…</option>
+              {#each view.projects as project (project.id)}
+                <option value={project.id}>{project.name} ({project.slug})</option>
+              {/each}
+            </select>
+          {/snippet}
+          {#snippet extra()}
+            <p class="tp-triggers__project-note">
+              {#if selectedProject}
+                The trigger is installed into <strong>{selectedProject.name}</strong>.
+              {:else}
+                A trigger belongs to one project; choose the project it installs into.
+              {/if}
+            </p>
+          {/snippet}
+        </FormField>
       </div>
 
       <AgentSourcePanel choices={view.choices} onRetry={() => void retryChoices()} />

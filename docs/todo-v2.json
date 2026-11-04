@@ -991,7 +991,7 @@
         {
           "id": "2.4.4",
           "title": "Form consistency pass",
-          "status": "pending",
+          "status": "in_progress",
           "goal": "One pattern for every form: label above field, help text under the field, required marked the same way, errors under the field, primary action last and on the right.",
           "touches": [
             "tidepool-control-plane/src/routes/",
@@ -1004,7 +1004,11 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T10:24:50Z",
+          "claimed_by": "tkrun-2026-11-04",
+          "claimed_at": "2026-11-04T10:24:50Z",
+          "lease_expires_at": "2026-11-04T18:24:50Z"
         },
         {
           "id": "2.4.5",

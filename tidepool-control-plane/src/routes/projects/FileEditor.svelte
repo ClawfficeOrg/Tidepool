@@ -9,6 +9,7 @@
    * path.
    */
   import IssueList from './IssueList.svelte';
+  import FormField from '../../components/FormField.svelte';
   import type { DraftFile, LocatedIssue } from '$lib/configuration';
 
   interface Props {
@@ -110,19 +111,27 @@
             </button>
           {/if}
         </div>
-        <label class="tp-editor__label" for="tp-editor-textarea">
-          Exact content of {current.path}
-        </label>
-        <textarea
-          class="tp-editor__textarea"
+        <FormField
+          form="file_editor"
+          field="content"
+          label={`Exact content of ${current.path}`}
+          required
           id="tp-editor-textarea"
-          name="configuration-file"
-          spellcheck="false"
-          readonly={!canEdit || busy}
-          rows="18"
-          data-file-content-path={current.path}
-          oninput={(event) => onEdit?.(current.path, event.currentTarget.value)}
-        >{current.content}</textarea>
+        >
+          {#snippet children(id, described)}
+            <textarea
+              class="tp-field__control tp-editor__textarea"
+              {id}
+              name="configuration-file"
+              spellcheck="false"
+              readonly={!canEdit || busy}
+              rows="18"
+              aria-describedby={described}
+              data-file-content-path={current.path}
+              oninput={(event) => onEdit?.(current.path, event.currentTarget.value)}
+            >{current.content}</textarea>
+          {/snippet}
+        </FormField>
       </div>
     {/if}
   {/if}
@@ -130,22 +139,34 @@
   {#if onAdd}
     <form
       class="tp-editor__add"
+      data-form="add_file_path"
       onsubmit={(event) => {
         event.preventDefault();
         addFile();
       }}
     >
-      <label class="tp-editor__label" for="tp-editor-new-path">Add a file path</label>
-      <div class="tp-editor__add-row">
-        <input
-          class="tp-editor__input"
-          id="tp-editor-new-path"
-          name="new-file-path"
-          type="text"
-          placeholder="prompts/system.md"
-          bind:value={newPath}
-          disabled={busy || !canEdit}
-        />
+      <FormField
+        form="add_file_path"
+        field="path"
+        label="Add a file path"
+        required
+        id="tp-editor-new-path"
+        help="Relative to the project root, e.g. prompts/system.md."
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            name="new-file-path"
+            type="text"
+            placeholder="prompts/system.md"
+            aria-describedby={described}
+            bind:value={newPath}
+            disabled={busy || !canEdit}
+          />
+        {/snippet}
+      </FormField>
+      <div class="tp-field__actions">
         <button
           class="tp-button"
           type="submit"
@@ -220,11 +241,6 @@
     font-size: var(--tp-font-body);
   }
 
-  .tp-editor__label {
-    font-family: var(--tp-font-caption);
-    color: var(--tp-text-muted);
-  }
-
   .tp-editor__textarea {
     width: 100%;
     padding: var(--tp-space-2);
@@ -243,19 +259,4 @@
     gap: var(--tp-space-1);
   }
 
-  .tp-editor__add-row {
-    display: flex;
-    gap: var(--tp-space-1);
-    align-items: center;
-  }
-
-  .tp-editor__input {
-    flex: 1;
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-surface);
-    color: var(--tp-text);
-    font-family: var(--tp-font-code);
-  }
 </style>
