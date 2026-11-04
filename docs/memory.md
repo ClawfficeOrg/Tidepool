@@ -2989,3 +2989,47 @@ component redefines `.tp-field*`, if any of the twenty retired local class
 names come back, if a `routes/` component writes a bare `<label>` beside a field
 span, or if a `<form>` lacks a `data-form` name or an actions row holding its
 submit button.
+
+### 2026-11-04 - Task 2.4.5, contrast floors enforced when the palette is rendered
+
+**Decision:** WCAG AA is enforced in `lib/design/tokens.ts` at the moment a
+palette becomes CSS custom properties, not by editing the clawffice-design
+snapshot. Every role that is read as text, drawn as a control edge or used as a
+focus ring passes through `readableColor` in `lib/theme.contrast.ts` against the
+three opaque grounds the app paints on (`window-background`, `surface`,
+`terminal-background`). A role that already passes comes through unchanged; a
+failing one is mixed toward `text-strong` in 1% steps and the first passing value
+is used.
+
+**Floors:** 4.5:1 for body text (`--tp-text`, `--tp-text-muted`,
+`--tp-text-strong`, `--tp-primary` read as text, the four status colours,
+`--tp-primary-text` on `--tp-primary`, and `--tp-selection-text` on the painted
+selection tint); 3:1 for controls and large text (`--tp-border-strong` as a
+control outline, `--tp-focus` as the focus ring, `--tp-second` as an accent
+edge).
+
+**Why not the design system:** the snapshot is pinned to a clawffice-design
+commit and `design.drift.test.ts` asserts it verbatim, so editing a grey inside
+it would break that check and silently fork the design system. Repairing on the
+way out keeps one source of hue and identity per palette while guaranteeing what
+the app actually paints.
+
+**Audit result:** every text role already cleared 4.5:1 in all five palettes.
+The one systematic failure was `--tp-border-strong`, which outlines every input,
+select and button: 1.68:1 to 2.66:1 against `--tp-surface`, well under 3:1, so
+controls had no visible edge. It is now repaired per palette (e.g. Biolume
+`#24505E` -> `#476F79`). Sea Glass's `--tp-primary` also moved 1/100 toward
+`text-strong` (`#C7410C` -> `#C5410C`) to clear 4.5:1 as text.
+
+**Consequence: the audit is a test, not a review step.**
+`lib/theme.contrast.test.ts` runs `contrastReport` over the variables of all five
+palettes, asserts no finding fails, and additionally asserts that a passing role
+still equals its design-system value (so the repair cannot repaint a legible
+palette) and that an injected failing value is reported. It also scans
+`app.css`: the only literal colours allowed are the two pre-mount fallbacks, and
+that pair is itself contrast-checked.
+
+**Known gap, out of this task's scope:** `routes/rooms/MessageList.svelte` sets
+`opacity: 0.75` on `.tp-messages__id`, which paints muted text at 3.2:1 to
+3.7:1. It belongs to the rooms page, not to `app.css` or the theme layer, so it
+is recorded here rather than edited.

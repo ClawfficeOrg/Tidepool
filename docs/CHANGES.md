@@ -2,6 +2,38 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - Palette contrast cleanup (task 2.4.5)
+
+### Added
+- `tidepool-control-plane/src/lib/theme.contrast.ts` - WCAG AA contrast maths
+  (`relativeLuminance`, `contrastRatio`, `meetsContrast`, `blend`, `composite`,
+  `readableColor`) plus `contrastReport`, which audits the CSS custom properties
+  a palette actually ships. `BODY_TEXT_MIN` (4.5) and `CONTROL_MIN` (3) are the
+  only floors in the app.
+- `tidepool-control-plane/src/lib/theme.contrast.test.ts` - the contrast check
+  now runs in the test suite. It audits all five palettes (four dark, one light),
+  asserts no text or control colour fails, proves a passing role is still its
+  exact design-system value, proves an injected failure is reported, and scans
+  `app.css` for literal colours (only the two pre-mount fallbacks remain).
+
+### Changed
+- `tidepool-control-plane/src/lib/design/tokens.ts` - `themeVars` now repairs
+  each palette role on the way out: a role that clears its WCAG floor is used
+  verbatim, a failing one is shaded toward `text-strong` only as far as needed.
+  The design snapshot is untouched, so `design.drift.test.ts` still holds it
+  verbatim.
+
+### Fixed
+- `--tp-border-strong`, the outline of every input, select and button, sat
+  between 1.68:1 and 2.66:1 against `--tp-surface` in all five palettes. It now
+  clears 3:1 everywhere; Biolume, for example, moves `#24505E` to `#476F79`.
+- Sea Glass `--tp-primary` moved one step (`#C7410C` to `#C5410C`) so that when
+  it is drawn as text it clears 4.5:1 rather than 4.47:1.
+
+### Known
+- `routes/rooms/MessageList.svelte` paints `.tp-messages__id` at `opacity: 0.75`
+  (3.2:1 to 3.7:1). Out of this task's owned paths; recorded in `docs/memory.md`.
+
 ## [Unreleased] - 2026-11-04 - One form pattern everywhere (task 2.4.4)
 
 ### Added
