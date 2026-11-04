@@ -308,7 +308,9 @@ pub async fn rooms_for_principal(
     let (kind, user_id, session_id) = principal_columns(pool, organization_id, principal).await?;
     let rows = sqlx::query_as::<_, Room>(
         "SELECT r.id, r.public_id, r.organization_id, r.project_id, r.name, r.visibility, \
-                r.origin_pool, r.created_at, r.updated_at \
+                r.origin_pool, r.created_at, r.updated_at, \
+                (SELECT MAX(msg.created_at) FROM chat_messages msg WHERE msg.room_id = r.id) \
+                    AS last_activity_at \
          FROM chat_rooms r \
          JOIN chat_room_members m ON m.room_id = r.id \
          WHERE r.organization_id = ? AND m.member_kind = ? \
