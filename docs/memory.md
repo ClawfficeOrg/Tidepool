@@ -3033,3 +3033,50 @@ that pair is itself contrast-checked.
 `opacity: 0.75` on `.tp-messages__id`, which paints muted text at 3.2:1 to
 3.7:1. It belongs to the rooms page, not to `app.css` or the theme layer, so it
 is recorded here rather than edited.
+
+## 2026-11-04 - Task 2.4.6, a trigger page that says what a trigger is
+
+**Decision: the card is derived from the same `TriggerDocument` the form and
+the YAML edit, never from a second copy.** `routes/triggers/triggerCards.ts`
+takes `{ document, hosts, installed }` and returns the three answers as strings.
+`TriggersPage.svelte` renders it with `$derived`, so a keystroke in the form
+changes the card on the same tick, and the card cannot describe a document the
+pool would not receive. The alternative - a card built from the saved install
+only - would have shown the previous version's meaning while a person was
+editing, which is the exact confusion the task exists to remove.
+
+**Decision: "when it runs next" answers with the event, and says outright that
+nothing is scheduled.** The pool has no trigger-list route and no next-run
+field: a trigger is evaluated when a provider event arrives, and there is no
+clock, cron or queue behind it (`docs/memory.md` records the same gap for the
+CLI and the console). Rather than print an empty column or invent a timestamp,
+`nextRunPhrase` says "the next matching GitHub event" and then "nothing is
+scheduled: a trigger has no clock, cron or queue". A test asserts no `HH:MM` or
+ISO date appears inside the next-run answer, so a future author cannot quietly
+fabricate one.
+
+**Decision: the whole editor is one `<form data-form="trigger">`.** Task 2.4.4's
+review found the install action sitting in a left-aligned `tp-triggers__save`
+outside any `<form>`, which is why `components/form-pattern.test.ts` - it only
+scans `<form>` elements - never covered it. Wrapping the project picker, the
+agent-source panel, the card, the toggle, the fields and the issues in the form
+makes the create flow take the same steps as every other form: fields through
+`FormField`, quiet actions first, one `tp-field__actions` row, the submit last.
+The structural tests now assert exactly that on the rendered page.
+
+**Decision: the card list is honest about being one trigger.** The goal says
+"one list shows each trigger's status and next run", but no route can enumerate
+a project's triggers, so the page lists the trigger it edits and states in a
+note that the pool has no route listing every trigger. Showing a real list
+becomes possible without a redesign once a trigger-list route lands.
+
+**Consequence: the card owns the plain-words vocabulary.** `EVENT_PHRASES` maps
+known provider events to sentences and falls back to the event id, because an
+invented sentence about an unrecognised event is worse than the id. An empty
+allowlist is reported as "nobody may start it yet" rather than as a blank field,
+since the pool refuses such a trigger anyway.
+
+**Not done, and why:** the card does not show a next-run time, a run history or
+a per-trigger list. None of the three exists in the contract; adding them needs a
+pool route first. Criteria that depend on a person looking at the rendered page
+in a browser are still open and are flagged for a human check.

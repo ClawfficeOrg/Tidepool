@@ -17,8 +17,10 @@
   import StatusBadge from '../../components/StatusBadge.svelte';
   import FormField from '../../components/FormField.svelte';
   import AgentSourcePanel from './AgentSourcePanel.svelte';
+  import TriggerCard from './TriggerCard.svelte';
   import TriggerForm from './TriggerForm.svelte';
   import YamlTriggerEditor from './YamlTriggerEditor.svelte';
+  import { triggerCards } from './triggerCards';
   import { canUseControl, controlById, denialReason } from '../../auth/roles';
   import type { Role } from '../../auth/types';
   import { poolClient, isPoolConfigured, type PoolConfig } from '$lib/api/pool';
@@ -86,6 +88,9 @@
     selectionAvailability(options, view.document.run.agent),
   );
   const summary = $derived(saveSummary(view));
+  const cards = $derived(
+    triggerCards({ document: view.document, hosts: view.hosts, installed: view.saved }),
+  );
 
   /** Adopt a controller result. */
   function adopt(next: TriggersViewState): void {
@@ -160,6 +165,12 @@
     if (!controller) return;
     adopt(await controller.save());
   }
+
+  /** The form's one submit action: validating and installing is the save. */
+  function submit(event: SubmitEvent): void {
+    event.preventDefault();
+    void save();
+  }
 </script>
 
 <section class="tp-triggers tp-page" aria-labelledby="tp-triggers-title" data-triggers-page="true">
@@ -198,135 +209,148 @@
         </span>
       </p>
     {:else}
-      <div class="tp-triggers__toolbar">
-        <FormField form="trigger_project" field="project" label="Project" required>
-          {#snippet children(id, described)}
-            <select
-              class="tp-field__control"
-              {id}
-              value={view.selectedProjectId ?? ''}
-              aria-describedby={described}
-              data-project-select="true"
-              onchange={(event) =>
-                selectProject((event.currentTarget as HTMLSelectElement).value)}
-            >
-              <option value="">Choose a project…</option>
-              {#each view.projects as project (project.id)}
-                <option value={project.id}>{project.name} ({project.slug})</option>
-              {/each}
-            </select>
-          {/snippet}
-          {#snippet extra()}
-            <p class="tp-triggers__project-note">
-              {#if selectedProject}
-                The trigger is installed into <strong>{selectedProject.name}</strong>.
-              {:else}
-                A trigger belongs to one project; choose the project it installs into.
-              {/if}
-            </p>
-          {/snippet}
-        </FormField>
-      </div>
+      <form class="tp-triggers__form" data-form="trigger" onsubmit={submit}>
+        <div class="tp-triggers__toolbar">
+          <FormField form="trigger" field="project" label="Project" required>
+            {#snippet children(id, described)}
+              <select
+                class="tp-field__control"
+                {id}
+                value={view.selectedProjectId ?? ''}
+                aria-describedby={described}
+                data-project-select="true"
+                onchange={(event) =>
+                  selectProject((event.currentTarget as HTMLSelectElement).value)}
+              >
+                <option value="">Choose a project…</option>
+                {#each view.projects as project (project.id)}
+                  <option value={project.id}>{project.name} ({project.slug})</option>
+                {/each}
+              </select>
+            {/snippet}
+            {#snippet extra()}
+              <p class="tp-triggers__project-note">
+                {#if selectedProject}
+                  The trigger is installed into <strong>{selectedProject.name}</strong>.
+                {:else}
+                  A trigger belongs to one project; choose the project it installs into.
+                {/if}
+              </p>
+            {/snippet}
+          </FormField>
+        </div>
 
-      <AgentSourcePanel choices={view.choices} onRetry={() => void retryChoices()} />
+        <AgentSourcePanel choices={view.choices} onRetry={() => void retryChoices()} />
 
-      <div class="tp-triggers__modes" role="group" aria-label="Editor view">
-        <button
-          class="tp-button"
-          type="button"
-          aria-pressed={view.mode === 'form'}
-          disabled={view.yamlError !== null}
-          data-trigger-mode="form"
-          onclick={() => setMode('form')}
-        >
-          Form
-        </button>
-        <button
-          class="tp-button"
-          type="button"
-          aria-pressed={view.mode === 'yaml'}
-          data-trigger-mode="yaml"
-          onclick={() => setMode('yaml')}
-        >
-          YAML
-        </button>
-      </div>
-
-      {#if view.mode === 'form'}
-        <TriggerForm
-          document={view.document}
-          hosts={view.hosts}
-          directory={view.directory}
-          options={options}
-          availability={availability}
-          issues={view.issues}
-          disabled={!canInstall}
-          onEdit={edit}
-          onHost={(slug) => void setHost(slug)}
-          onDirectory={(directory) => void setDirectory(directory)}
-        />
-      {:else}
-        <YamlTriggerEditor
-          value={view.yaml}
-          error={view.yamlError}
-          disabled={!canInstall}
-          onInput={editYaml}
-        />
-      {/if}
-
-      {#if view.issues.length > 0}
-        <section class="tp-triggers__issues" aria-labelledby="tp-trigger-issues-title">
-          <h2 class="tp-triggers__issues-title" id="tp-trigger-issues-title">
-            Fields that need attention
-          </h2>
-          <ul class="tp-triggers__issue-list" data-trigger-issues="true">
-            {#each view.issues as issue, index (index)}
-              <li class="tp-triggers__issue" data-issue-field={issue.field}>
-                <code>{issue.field}</code>
-                <span>{issue.message}</span>
-              </li>
-            {/each}
-          </ul>
+        <section class="tp-triggers__card-list" aria-labelledby="tp-triggers-list-title">
+          <h2 class="tp-triggers__list-title" id="tp-triggers-list-title">This trigger, in words</h2>
+          <p class="tp-triggers__list-note">
+            The card reads the same document the form and the YAML edit, so it always
+            describes what would be installed. It is one trigger because this page
+            edits one; the pool has no route that lists every trigger in a project.
+          </p>
+          {#each cards as card (card.key)}
+            <TriggerCard {card} />
+          {/each}
         </section>
-      {/if}
 
-      <div class="tp-triggers__save">
-        <button
-          class="tp-button tp-triggers__save-button"
-          type="button"
-          disabled={view.busy || !canInstall || view.yamlError !== null}
-          data-save-action="save"
-          onclick={() => void save()}
-        >
-          {view.savePhase === 'validating' || view.savePhase === 'installing'
-            ? 'Saving…'
-            : 'Validate and install'}
-        </button>
-        <p class="tp-triggers__save-summary" data-save-phase={view.savePhase}>
-          {summary}
-        </p>
-      </div>
+        <div class="tp-triggers__modes" role="group" aria-label="Editor view">
+          <button
+            class="tp-button"
+            type="button"
+            aria-pressed={view.mode === 'form'}
+            disabled={view.yamlError !== null}
+            data-trigger-mode="form"
+            onclick={() => setMode('form')}
+          >
+            Form
+          </button>
+          <button
+            class="tp-button"
+            type="button"
+            aria-pressed={view.mode === 'yaml'}
+            data-trigger-mode="yaml"
+            onclick={() => setMode('yaml')}
+          >
+            YAML
+          </button>
+        </div>
 
-      {#if installDenial}
-        <p class="tp-triggers__denial" data-triggers-denial="install-trigger">
-          {installDenial}
-        </p>
-      {/if}
+        {#if view.mode === 'form'}
+          <TriggerForm
+            document={view.document}
+            hosts={view.hosts}
+            directory={view.directory}
+            options={options}
+            availability={availability}
+            issues={view.issues}
+            disabled={!canInstall}
+            onEdit={edit}
+            onHost={(slug) => void setHost(slug)}
+            onDirectory={(directory) => void setDirectory(directory)}
+          />
+        {:else}
+          <YamlTriggerEditor
+            value={view.yaml}
+            error={view.yamlError}
+            disabled={!canInstall}
+            onInput={editYaml}
+          />
+        {/if}
 
-      {#if view.saved}
-        <p class="tp-triggers__saved" data-trigger-saved="true">
-          <StatusBadge kind="success" />
-          <span>
-            Installed <strong>{view.saved.name}</strong> revision
-            {view.saved.version} ({view.saved.revision}); it is
-            {view.saved.active ? 'active' : 'not active'}.
-          </span>
-        </p>
-      {/if}
+        {#if view.issues.length > 0}
+          <section class="tp-triggers__issues" aria-labelledby="tp-trigger-issues-title">
+            <h2 class="tp-triggers__issues-title" id="tp-trigger-issues-title">
+              Fields that need attention
+            </h2>
+            <ul class="tp-triggers__issue-list" data-trigger-issues="true">
+              {#each view.issues as issue, index (index)}
+                <li class="tp-triggers__issue" data-issue-field={issue.field}>
+                  <code>{issue.field}</code>
+                  <span>{issue.message}</span>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
 
-      {#if view.saveProblem}
-        <ProblemDetails problem={view.saveProblem} />
-      {/if}
+        {#if installDenial}
+          <p class="tp-triggers__denial" data-triggers-denial="install-trigger">
+            {installDenial}
+          </p>
+        {/if}
+
+        <div class="tp-field__actions">
+          <p class="tp-triggers__save-summary" data-save-phase={view.savePhase}>
+            {summary}
+          </p>
+          <button
+            class="tp-button tp-triggers__save-button"
+            type="submit"
+            disabled={view.busy || !canInstall || view.yamlError !== null}
+            data-save-action="save"
+          >
+            {view.savePhase === 'validating' || view.savePhase === 'installing'
+              ? 'Saving…'
+              : 'Validate and install'}
+          </button>
+        </div>
+
+        {#if view.saved}
+          <p class="tp-triggers__saved" data-trigger-saved="true">
+            <StatusBadge kind="success" />
+            <span>
+              Installed <strong>{view.saved.name}</strong> revision
+              {view.saved.version} ({view.saved.revision}); it is
+              {view.saved.active ? 'active' : 'not active'}.
+            </span>
+          </p>
+        {/if}
+
+        {#if view.saveProblem}
+          <ProblemDetails problem={view.saveProblem} />
+        {/if}
+      </form>
     {/if}
   {/if}
 </section>
@@ -335,6 +359,29 @@
   .tp-triggers {
     display: grid;
     gap: var(--tp-space-3);
+  }
+
+  .tp-triggers__form {
+    display: grid;
+    gap: var(--tp-space-3);
+  }
+
+  .tp-triggers__card-list {
+    display: grid;
+    gap: var(--tp-space-2);
+  }
+
+  .tp-triggers__list-title {
+    margin: 0;
+    font-family: var(--tp-font-heading);
+    font-size: var(--tp-font-body);
+  }
+
+  .tp-triggers__list-note {
+    margin: 0;
+    max-width: 78ch;
+    color: var(--tp-text-muted);
+    font-size: var(--tp-font-caption);
   }
 
   .tp-triggers__toolbar {
@@ -385,13 +432,6 @@
     display: flex;
     gap: var(--tp-space-2);
     align-items: baseline;
-    flex-wrap: wrap;
-  }
-
-  .tp-triggers__save {
-    display: flex;
-    gap: var(--tp-space-2);
-    align-items: center;
     flex-wrap: wrap;
   }
 

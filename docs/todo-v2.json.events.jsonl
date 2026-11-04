@@ -66,3 +66,5 @@
 {"at": "2026-11-04T10:24:50Z", "event": "start", "task": "2.4.4", "owner": "tkrun-2026-11-04", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-11-04T18:24:50Z"}
 {"at": "2026-11-04T11:09:48Z", "event": "start", "task": "2.4.5", "owner": "tkrun-2026-11-04", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-11-04T19:09:48Z"}
 {"at": "2026-11-04T11:37:57Z", "event": "done", "task": "2.4.5", "owner": "tkrun-2026-11-04", "from": "in_progress", "to": "done", "changelog": "Contrast cleanup", "filed_under": "2.3"}
+{"at": "2026-11-04T11:37:58Z", "event": "start", "task": "2.4.6", "owner": "tkrun-2026-11-04", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-11-04T19:37:58Z"}
+{"at": "2026-11-04T11:55:09Z", "event": "look_defer", "task": "2.4.6", "owner": "tkrun-2026-11-04", "from": "in_progress", "to": "needs_human_look", "note": "A trigger's card shows what fires it, what it runs and when it runs next."}

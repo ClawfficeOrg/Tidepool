@@ -2,6 +2,47 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - A trigger page that says what a trigger is (task 2.4.6)
+
+### Added
+- `tidepool-control-plane/src/routes/triggers/triggerCards.ts` - the plain-words
+  model behind a trigger card. `firesPhrase`, `runsPhrase` and `nextRunPhrase`
+  answer the three questions from the same `TriggerDocument` the form and the
+  YAML edit, plus `eventPhrase`, `filterPhrases`, `allowlistSentence`,
+  `agentPhrase` and `triggerCard`. `triggerCards` is the list the page renders.
+- `tidepool-control-plane/src/routes/triggers/TriggerCard.svelte` - one trigger,
+  described: name, install state as a badge **and** a sentence, then "What fires
+  it", "What it runs" and "When it runs next" in that order, over a small list
+  of the settings a person matches against the project.
+- `tidepool-control-plane/src/routes/triggers/TriggerCard.test.ts` - 25 tests for
+  the wording, the state words, the answer order and the absence of an invented
+  clock.
+
+### Changed
+- `tidepool-control-plane/src/routes/triggers/TriggersPage.svelte` - the whole
+  editor is now one `<form data-form="trigger">`: project picker, agent-source
+  panel, the card list, the form/YAML toggle, the fields and the issues, ending
+  in a `tp-field__actions` row whose only button is `type="submit"`. The save
+  summary sits in that row ahead of the button. This closes the gap task 2.4.4's
+  review named: the install action was a left-aligned `tp-triggers__save` outside
+  any `<form>`, so the shared form-pattern test could not see it.
+- The page shows "This trigger, in words" above the editor, with the card and a
+  note that the pool has no route listing every trigger in a project.
+
+### Tests
+- `TriggersPage.test.ts` gained 11 tests: the three answers on the page, the card
+  following a form edit, the saved install state on the card, the plain
+  statement about the missing list route, no scheduled time, the host blocker,
+  and four structural checks on the create flow (one form, one actions row, the
+  submit last, every field inside the form carrying its required/optional mark).
+
+### Known
+- There is still no trigger-list route and no next-run time in the pool, so the
+  "one list shows each trigger's status and next run" half of the goal is
+  answered honestly rather than literally: the page lists the one trigger it
+  edits, and says its next run is the next matching event because a trigger has
+  no clock. Recorded in `docs/memory.md`.
+
 ## [Unreleased] - 2026-11-04 - Palette contrast cleanup (task 2.4.5)
 
 ### Added

@@ -574,3 +574,130 @@ describe('the rendered page', () => {
     expect(rendered.text).toContain('last YAML that parsed');
   });
 });
+
+describe('the page shows what the trigger is', () => {
+  it('renders one card answering fires, runs and next', () => {
+    const rendered = renderPage();
+    expect(rendered.html).toContain('data-trigger-card="draft"');
+    expect(rendered.text).toContain('What fires it');
+    expect(rendered.text).toContain('What it runs');
+    expect(rendered.text).toContain('When it runs next');
+    expect(rendered.text).toContain('Only alice may start it');
+    expect(rendered.text).toContain("on the host 'swaygent'");
+    expect(rendered.text).toContain('It runs on the next matching GitHub event.');
+  });
+
+  it('keeps the card in step with a form edit', () => {
+    const document: TriggerDocument = { ...DOCUMENT, name: 'renamed-by-card' };
+    const rendered = renderPage({ document, yaml: triggerYaml(document) });
+    expect(rendered.text).toContain('renamed-by-card');
+    expect(rendered.html).toContain('data-trigger-card="draft"');
+  });
+
+  it('shows the install state of the saved trigger, not only a banner', () => {
+    const rendered = renderPage({
+      savePhase: 'saved',
+      saved: {
+        id: 'trigger-1',
+        name: 'auto-fix-issues',
+        revision: 'revision-1',
+        version: 2,
+        active: true,
+        replaced: false,
+      },
+    });
+    expect(rendered.html).toContain('data-trigger-card="trigger-1"');
+    expect(rendered.text).toContain('Installed as version 2');
+    expect(rendered.text).toContain('OK');
+  });
+
+  it('says plainly that the pool has no route listing every trigger', () => {
+    const rendered = renderPage();
+    expect(rendered.text).toContain('no route that lists every trigger');
+  });
+
+  it('never invents a scheduled time for the next run', () => {
+    const rendered = renderPage();
+    expect(rendered.text).toContain('Nothing is scheduled');
+    const next = rendered.html.split('data-trigger-card-answer="next"')[1] ?? '';
+    const answer = next.slice(0, next.indexOf('</div>'));
+    expect(answer).toContain('next matching');
+    expect(answer).not.toMatch(/\d{1,2}:\d{2}/);
+    expect(answer).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('names what stops a run when the host cannot run agents', () => {
+    const document: TriggerDocument = {
+      ...DOCUMENT,
+      run: { ...DOCUMENT.run, host: 'night-host' },
+    };
+    const rendered = renderPage({ document, yaml: triggerYaml(document) });
+    expect(rendered.text).toContain('the host is offline');
+    expect(rendered.text).toContain('no agent starts');
+  });
+});
+
+describe('creating a trigger follows the one form pattern', () => {
+  it('wraps the editor in one form with a data-form name', () => {
+    const rendered = renderPage();
+    const forms = rendered.html.match(/<form\b[\s\S]*?<\/form>/g) ?? [];
+    expect(forms).toHaveLength(1);
+    expect(forms[0]).toContain('data-form="trigger"');
+  });
+
+  it('ends the form in one actions row whose only button is the submit', () => {
+    const rendered = renderPage();
+    const form = rendered.html.match(/<form\b[\s\S]*?<\/form>/g)?.[0] ?? '';
+    expect(form).toContain('tp-field__actions');
+
+    const actions = form.slice(form.indexOf('tp-field__actions'));
+    const buttons = actions.match(/<button\b[\s\S]*?<\/button>/g) ?? [];
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toContain('type="submit"');
+    expect(buttons[0]).toContain('Validate and install');
+    expect(actions.indexOf('data-save-phase')).toBeLessThan(actions.indexOf('type="submit"'));
+  });
+
+  it('puts every field of the create flow inside that one form, in the shared order', () => {
+    const rendered = renderPage();
+    const form = rendered.html.match(/<form\b[\s\S]*?<\/form>/g)?.[0] ?? '';
+    for (const field of [
+      'project',
+      'name',
+      'event.provider',
+      'event.type',
+      'filters.connection',
+      'filters.resource.kind',
+      'filters.resource.id',
+      'filters.from_users',
+      'filters.channel',
+      'filters.label',
+      'filters.contains',
+      'filters.pattern',
+      'run.host',
+      'directory',
+      'run.agent.provider',
+      'run.agent.model',
+      'run.agent.execution_mode',
+      'run.agent.thinking_option',
+    ]) {
+      expect(form).toContain(`data-field="${field}"`);
+    }
+    // The project is chosen before the document is authored, and the agent
+    // comes after the host, exactly as the form asks for it.
+    expect(form.indexOf('data-field="project"')).toBeLessThan(form.indexOf('data-field="name"'));
+    expect(form.indexOf('data-field="run.host"')).toBeLessThan(
+      form.indexOf('data-field="run.agent.provider"'),
+    );
+  });
+
+  it('labels every field of the create flow required or optional', () => {
+    const rendered = renderPage();
+    const form = rendered.html.match(/<form\b[\s\S]*?<\/form>/g)?.[0] ?? '';
+    const fields = form.match(/<div class="tp-field[^"]*"[^>]*data-field="[^"]+"[^>]*>/g) ?? [];
+    expect(fields.length).toBeGreaterThan(10);
+    for (const field of fields) {
+      expect(field).toMatch(/data-required="(true|false)"/);
+    }
+  });
+});
