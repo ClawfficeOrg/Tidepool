@@ -1490,6 +1490,156 @@
           "created_at": "2026-11-03T22:00:00Z"
         }
       ]
+    },
+    {
+      "id": "2.8",
+      "title": "Run console: pickers, open tasks and agent roles",
+      "goal": "Make the run console usable without typing IDs: pick a project, host and checkout; browse open tasks with their requirements and prerequisites; choose which agent tier does which review; and later add run-end, computer-use and roundtable reviews.",
+      "prerequisites": [
+        "2.7"
+      ],
+      "tasks": [
+        {
+          "id": "2.8.1",
+          "title": "Pickers for project, host and checkout",
+          "status": "pending",
+          "goal": "Replace the id fields with selectors: projects by name, hosts by slug, checkouts from the host's report. Until hosts report checkouts, offer the project slug.",
+          "touches": [
+            "tidepool-control-plane/src/routes/runs/TidetableRunPanel.svelte",
+            "tidepool-control-plane/src/lib/tidetableRuns.ts"
+          ],
+          "success": [
+            "No id has to be typed to start a run.",
+            "The checkout list is never empty for a bound project."
+          ],
+          "prerequisites": [
+            "2.7.1"
+          ],
+          "complexity": "Low",
+          "agent": "basic_dev_agent",
+          "created_at": "2026-11-03T23:00:00Z"
+        },
+        {
+          "id": "2.8.2",
+          "title": "Hosts report their checkout names",
+          "status": "pending",
+          "goal": "The host reports the checkout names it allows in its capability report, so the control plane can offer real choices.",
+          "touches": [
+            "crates/swaygent-core/src/hub/ws.rs",
+            "src/services/host_protocol.rs"
+          ],
+          "success": [
+            "A connected host's capability report lists its checkout names.",
+            "The pool shows them on the host row."
+          ],
+          "prerequisites": [
+            "2.8.1"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T23:00:00Z"
+        },
+        {
+          "id": "2.8.3",
+          "title": "Open tasks from the hub, read-only",
+          "status": "pending",
+          "goal": "A pool route returns a bound project's open tasks from its TideTable todo, through the read token. The control plane lists them ordered by phase, with status.",
+          "touches": [
+            "src/api/",
+            "src/services/tidetable_jobs.rs"
+          ],
+          "success": [
+            "GET returns the open tasks for a bound project.",
+            "The read token is never sent to the browser."
+          ],
+          "prerequisites": [
+            "2.5.1"
+          ],
+          "complexity": "Medium",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T23:00:00Z"
+        },
+        {
+          "id": "2.8.4",
+          "title": "Task detail: requirements, prerequisites and success",
+          "status": "pending",
+          "goal": "Selecting a task shows its goal, the paths it owns, its prerequisites (with their status), its success criteria and any outstanding human sign-off.",
+          "touches": [
+            "tidepool-control-plane/src/routes/runs/"
+          ],
+          "success": [
+            "Each open task opens a detail view with all of these fields.",
+            "A prerequisite that is not done is marked."
+          ],
+          "prerequisites": [
+            "2.8.3"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T23:00:00Z"
+        },
+        {
+          "id": "2.8.5",
+          "title": "Pick tasks from the list to run",
+          "status": "pending",
+          "goal": "Tick tasks in the open list, or leave none ticked to let the run take the next ready tasks by time budget.",
+          "touches": [
+            "tidepool-control-plane/src/routes/runs/TidetableRunPanel.svelte"
+          ],
+          "success": [
+            "Ticked tasks are sent as the run's tasks.",
+            "With nothing ticked, the run sends no task list."
+          ],
+          "prerequisites": [
+            "2.8.4"
+          ],
+          "complexity": "Medium",
+          "agent": "mid_dev_agent",
+          "created_at": "2026-11-03T23:00:00Z"
+        },
+        {
+          "id": "2.8.6",
+          "title": "Agent roles: which tier does which review",
+          "status": "pending",
+          "goal": "A settings panel for each review: task review and phase review each on, off, or set to an agent tier. Dev tiers low, mid and pro are also set here.",
+          "touches": [
+            "src/api/",
+            "src/services/",
+            "tidepool-control-plane/src/routes/settings/"
+          ],
+          "success": [
+            "Each review shows on, off or an agent tier.",
+            "The choice is stored per project and sent with the run."
+          ],
+          "prerequisites": [
+            "2.8.1"
+          ],
+          "complexity": "High",
+          "agent": "pro_dev_agent",
+          "created_at": "2026-11-03T23:00:00Z"
+        },
+        {
+          "id": "2.8.7",
+          "title": "Run-end, computer-use and roundtable reviews (later)",
+          "status": "pending",
+          "goal": "Run-end review, a computer-use review, and a roundtable: agents spawned to review, writing review docs into a chat room and discussing them. Not started until 2.8.6 is in use.",
+          "touches": [
+            "src/services/",
+            "src/api/rooms*"
+          ],
+          "success": [
+            "Each review type is switchable in the role settings.",
+            "A roundtable creates a chat room and posts its docs there."
+          ],
+          "prerequisites": [
+            "2.8.6",
+            "2.4.7"
+          ],
+          "complexity": "High",
+          "agent": "flagship",
+          "created_at": "2026-11-03T23:00:00Z"
+        }
+      ]
     }
   ]
 }
