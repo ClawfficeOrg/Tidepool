@@ -2911,3 +2911,28 @@ that belongs in the repository rather than in each machine's git config.
 but prints an install notice and exits non-zero. The gate failed for a reason
 that had nothing to do with the conformance suite's behaviour. `PYTHON` stays
 the explicit override, which is what CI already sets elsewhere.
+
+### 2026-11-04 - Task 2.4.2, the palette is one dropdown in the header
+
+**Decision:** the palette choice is a single native `<select>` in the header's
+top-right tool group (`components/PaletteMenu.svelte`), and no page renders a
+palette panel.
+
+**Why:** a fieldset of five preview cards cost a block of the page on every
+settings visit for a preference that is set once and forgotten. A native select
+gives keyboard use, screen-reader semantics and the platform picker for free,
+needs no open/closed state to test, and is compact enough to live beside the
+session bar. A bare `<select>` also cannot be mistaken for a decorative row of
+swatches: the palette is named in words and Biolume carries `(default)`.
+
+**Consequence: one owner, one render site.** `Root` still owns the theme store
+and writes the preference; `App` renders the dropdown in the header and passes
+`onPaletteSelect` through. `PreferencesPanel` lost its palette props and
+`SettingsPage` stopped forwarding them, so there is no second switch to fall
+behind. The old `.tp-palettes*` rules went with the component; a new palette
+control brings its own scoped styles.
+
+**Consequence: the value is validated where it enters.** `paletteChoice` in
+`$lib/theme` turns a control's raw string into a `PaletteName` or null, so a
+stale option cannot repaint into a palette that does not exist. The store would
+also refuse it, but the control should not ask.

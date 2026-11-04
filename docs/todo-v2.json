@@ -948,7 +948,7 @@
         {
           "id": "2.4.2",
           "title": "Palette chooser as a top-right dropdown",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Replace the palette picker that takes a block of the page with one compact dropdown in the header, top right. The choice applies at once and is remembered per viewer.",
           "touches": [
             "tidepool-control-plane/src/components/",
@@ -962,7 +962,9 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T10:11:45Z",
+          "human_look": "choosing a palette repaints the page without a reload (click not exercised in a browser); the choice survives a reload (real tab reload not exercised)"
         },
         {
           "id": "2.4.3",

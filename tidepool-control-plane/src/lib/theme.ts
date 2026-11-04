@@ -33,6 +33,17 @@ export interface ThemeStore extends Readable<PaletteName> {
   reset(): void;
 }
 
+/**
+ * The palette a chooser's raw value names.
+ *
+ * A `<select>` hands back a string, which may be an option the design system no
+ * longer defines; returning null lets the caller ignore it rather than repaint
+ * into a palette that does not exist.
+ */
+export function paletteChoice(value: unknown): PaletteName | null {
+  return isPaletteName(value) ? value : null;
+}
+
 /** Read a saved palette, falling back to the default. */
 export function paletteFromStorage(storage: ThemeStorage | null): PaletteName {
   if (!storage) return DEFAULT_PALETTE;

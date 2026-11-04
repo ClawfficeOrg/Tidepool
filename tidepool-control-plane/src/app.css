@@ -307,74 +307,10 @@ a:hover {
   font-size: var(--tp-font-caption);
 }
 
-/* ---- Palette switch ---------------------------------------------------- */
+/* ---- Palette dropdown -------------------------------------------------- */
 
-.tp-palettes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--tp-space-1);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.tp-palettes__legend {
-  padding: 0;
-  margin-bottom: var(--tp-space-1);
-  color: var(--tp-text-muted);
-  font-size: var(--tp-font-caption);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  flex-basis: 100%;
-}
-
-.tp-palettes__option {
-  display: flex;
-  align-items: center;
-  gap: var(--tp-space-1);
-  padding: var(--tp-space-1) var(--tp-space-2);
-  border: 1px solid var(--tp-border);
-  border-radius: var(--tp-radius-control);
-  background: var(--tp-terminal-background);
-  color: var(--tp-text);
-  font: inherit;
-  cursor: pointer;
-  transition: border-color var(--tp-motion-hover) var(--tp-easing);
-}
-
-.tp-palettes__option:hover {
-  border-color: var(--tp-border-strong);
-}
-
-.tp-palettes__option[aria-pressed='true'] {
-  border-color: var(--tp-focus);
-  color: var(--tp-text-strong);
-}
-
-.tp-palettes__swatches {
-  display: inline-flex;
-  border: 1px solid var(--tp-border-strong);
-  border-radius: var(--tp-radius-chip);
-  overflow: hidden;
-}
-
-.tp-palettes__swatches span {
-  display: block;
-  width: 8px;
-  height: 14px;
-}
-
-.tp-palettes__scheme,
-.tp-palettes__default {
-  color: var(--tp-text-muted);
-  font-size: var(--tp-font-caption);
-}
-
-.tp-palettes__default {
-  border: 1px solid var(--tp-border-strong);
-  border-radius: var(--tp-radius-chip);
-  padding: 0 4px;
-}
+/* The control itself lives in `components/PaletteMenu.svelte`: its rules ship
+ * with the component, so the header carries one small select and nothing else. */
 
 /* ---- Status: colour, icon, word --------------------------------------- */
 

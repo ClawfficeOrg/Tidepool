@@ -8,7 +8,7 @@
    * signed-in session bar. Everything it renders is a pure function of its
    * props, so the shell can be rendered and asserted on without a browser.
    */
-  import PaletteSwitcher from './components/PaletteSwitcher.svelte';
+  import PaletteMenu from './components/PaletteMenu.svelte';
   import Nav from './components/Nav.svelte';
   import PoolNotice from './components/PoolNotice.svelte';
   import ProblemDetails from './components/ProblemDetails.svelte';
@@ -137,7 +137,7 @@
       {#if session}
         <SessionBar {session} {onSignOut} />
       {/if}
-      <PaletteSwitcher {palette} onSelect={onPaletteSelect} />
+      <PaletteMenu {palette} onSelect={onPaletteSelect} />
     </div>
   </header>
 

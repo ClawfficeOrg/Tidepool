@@ -2,6 +2,44 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - Palette chooser as a header dropdown (task 2.4.2)
+
+### Added
+- `tidepool-control-plane/src/components/PaletteMenu.svelte` - the palette
+  choice as one compact native `<select>` (plus a decorative swatch) in the
+  header's top-right tool group. Native select means the keyboard, the screen
+  reader and the platform picker all work without extra state; the palettes are
+  named in words and Biolume is marked `(default)`.
+- `PaletteMenu.test.ts` - one `<select>` and no option row, all five palettes
+  offered and named, exactly one option selected, the choice wired to
+  `onSelect` through a validated `paletteChoice`, and the shell/root wiring
+  checked at the source.
+- `paletteChoice` in `$lib/theme` - reads a control's raw string as a palette,
+  or null for a value the design system no longer defines.
+
+### Changed
+- `App.svelte` - the header renders `PaletteMenu` instead of `PaletteSwitcher`.
+- `routes/settings/PreferencesPanel.svelte` - the palette block is gone: the
+  palette is chosen in the header only, so no page spends a panel on it.
+  `SettingsPage`/`Settings` no longer pass `onPaletteSelect` down, and
+  `PreferencesPanel` no longer takes it.
+- `app.css` - the `.tp-palettes*` rules are removed; the dropdown's rules ship
+  with its component.
+- Removed `components/PaletteSwitcher.svelte` and its test.
+
+### Tests
+- `npx vitest run` in `tidepool-control-plane`: 40 files, 492 tests, all pass.
+- `npx tsc -p tsconfig.json`: clean. `npx vite build`: clean.
+
+### Still a person's check
+- The criteria "choosing a palette repaints the page without a reload" and "the
+  choice survives a reload" are driven by the browser: a change event on the
+  select and a real page reload. Their whole chain is covered headlessly (the
+  store notifies subscribers at once, the root writes the preference, a fresh
+  store restores it, and every route renders in the restored palette), but
+  clicking the select and reloading the tab needs a human.
+- Seeing the dropdown sit in the header's top right in the running app.
+
 ## [Unreleased] - 2026-11-04 - Responsive shell with a hamburger menu (task 2.4.1)
 
 ### Added

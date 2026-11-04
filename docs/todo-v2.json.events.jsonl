@@ -60,3 +60,5 @@
 {"at": "2026-11-04T09:13:46Z", "event": "done", "task": "2.7.2", "owner": "Morrissey5070Ti:32880", "from": "pending", "to": "done", "forced": true}
 {"at": "2026-11-04T09:15:08Z", "event": "start", "task": "2.4.1", "owner": "tkrun-2026-11-04", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-11-04T17:15:08Z"}
 {"at": "2026-11-04T09:55:16Z", "event": "look_defer", "task": "2.4.1", "owner": "tkrun-2026-11-04", "from": "in_progress", "to": "needs_human_look", "note": "375px no horizontal scroll needs a person looking; menu opens/closes by button and Escape with focus return needs a person clicking; every page reachable from menu needs a person clicking"}
+{"at": "2026-11-04T09:55:17Z", "event": "start", "task": "2.4.2", "owner": "tkrun-2026-11-04", "from": "pending", "to": "in_progress", "lease_expires_at": "2026-11-04T17:55:17Z"}
+{"at": "2026-11-04T10:11:45Z", "event": "look_defer", "task": "2.4.2", "owner": "tkrun-2026-11-04", "from": "in_progress", "to": "needs_human_look", "note": "choosing a palette repaints the page without a reload (click not exercised in a browser); the choice survives a reload (real tab reload not exercised)"}

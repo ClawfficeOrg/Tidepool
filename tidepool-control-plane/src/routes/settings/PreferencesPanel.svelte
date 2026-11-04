@@ -3,16 +3,15 @@
    * The settings a person owns: pool URL, palette, clock, density and about.
    *
    * Everything here is read from and written to the browser's storage, so the
-   * change applies to the running app and survives a reload. The palette
-   * switch is the shell's own control (`PaletteSwitcher`): the choice is made
-   * in one place and every page renders it, rather than only this page.
+   * change applies to the running app and survives a reload. The palette is
+   * not here: it is the shell's one dropdown in the header (`PaletteMenu`), so
+   * the choice is offered in one compact control rather than a block of this
+   * page.
    *
    * The about block reports the control plane's version and the hub contract
    * version, which is the pair a person needs when a pool is older than the
    * app talking to it.
    */
-  import PaletteSwitcher from '../../components/PaletteSwitcher.svelte';
-  import type { PaletteName } from '$lib/design/tokens';
   import {
     CONTROL_PLANE_VERSION,
     DENSITIES,
@@ -38,8 +37,6 @@
     servedByPool?: boolean;
     /** Called when a new pool URL is submitted. */
     onSavePoolUrl?: (url: string) => void;
-    /** Called with a palette choice; the shell remembers it. */
-    onPaletteSelect?: (name: PaletteName) => void;
     /** Called with any other preference change. */
     onPreferenceChange?: (patch: Partial<ControlPlanePreferences>) => void;
     /** A rejected pool URL, already in words. */
@@ -55,7 +52,6 @@
     effectivePoolUrl = null,
     servedByPool = false,
     onSavePoolUrl,
-    onPaletteSelect,
     onPreferenceChange,
     poolUrlProblem = null,
     poolUrlNotice = null,
@@ -121,15 +117,6 @@
         {poolUrlNotice}
       </p>
     {/if}
-  </div>
-
-  <div class="tp-prefs__group" data-prefs-group="palette">
-    <h3 class="tp-prefs__heading">Palette</h3>
-    <p class="tp-prefs__lede">
-      All five Clawffice palettes. Biolume is the default; the choice is
-      remembered and every page renders it.
-    </p>
-    <PaletteSwitcher palette={preferences.palette} onSelect={onPaletteSelect} />
   </div>
 
   <div class="tp-prefs__group" data-prefs-group="time">
