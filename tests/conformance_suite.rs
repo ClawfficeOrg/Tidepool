@@ -13,9 +13,50 @@ fn repository() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
 
+/// True when `program` is a working Python 3.
+///
+/// On Windows `python3` resolves to the Microsoft Store stub, which exists on
+/// `PATH` but exits with an error instead of running anything. Probing the
+/// version is the only reliable way to tell that apart from a real interpreter.
+fn is_python_3(program: &str) -> bool {
+    match Command::new(program).arg("--version").output() {
+        Ok(output) if output.status.success() => {
+            // Python 3.4+ writes the version to stdout; older builds and some
+            // wrappers use stderr, so accept either.
+            let banner = format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            banner.trim_start().starts_with("Python 3")
+        }
+        _ => false,
+    }
+}
+
+/// Resolve a usable Python 3 interpreter.
+///
+/// `PYTHON` wins when set, which is how CI pins the interpreter. Otherwise the
+/// usual names are probed in turn, then `py -3`, so the gate runs on Linux,
+/// macOS and Windows alike.
+fn python() -> String {
+    if let Ok(configured) = std::env::var("PYTHON") {
+        return configured;
+    }
+    for candidate in ["python3", "python"] {
+        if is_python_3(candidate) {
+            return candidate.to_string();
+        }
+    }
+    if is_python_3("py") {
+        return "py".to_string();
+    }
+    panic!("no Python 3 interpreter found; set PYTHON to one to run the conformance suite");
+}
+
 /// Run one Python script in the repository and return its output.
 fn run_python(script: &str, arguments: &[&str]) -> Output {
-    let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_string());
+    let python = python();
     Command::new(&python)
         .arg(script)
         .args(arguments)

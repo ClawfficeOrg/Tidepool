@@ -2860,3 +2860,54 @@ load, palette apply), `settings_window.rs` (the settings UI),
 `main_window.rs`/`popover_view.rs` (`theme::follow_theme`),
 `tests/tray.rs` (mounting `settings` and `theme`) and a new
 `tests/packaging.rs`; `docs/CHANGES.md` and this file are updated per AGENTS.md.
+
+### 2026-11-04 - Task 2.4.1, the menu is the sidebar at narrow widths
+
+**Decision:** below 52rem the control plane does not hide a separate mobile
+navigation behind a button. The sidebar list itself becomes the menu: one
+component, one route table, one set of links. The shell adds only the button and
+the open/closed state.
+
+**Why:** a second navigation tree is the usual way a menu drifts from the
+sidebar (a page added to one and not the other). With one list, "every page is
+reachable from the menu" is structural, and `Nav.test.ts` can assert that each
+menu link resolves to a route that `App.svelte` actually renders.
+
+**Testable rules live in `src/components/menu.ts`, not the component:** the
+open/closed transitions, Escape's focus-return, and field-owned Escape are a
+pure reducer. The suite renders components through `svelte/server` (no DOM), so
+a reducer is what makes the menu's behaviour provable headlessly.
+
+**Consequence: "no sideways scroll at 375px" is a stylesheet contract.** There
+is no layout engine in the suite, so `responsive.test.ts` reads `app.css` and
+every `src/**/*.svelte` and fails on a fixed `width`/`min-width`/grid track
+wider than 23.4375rem (375px). The shell supplies `overflow-x: clip`,
+`min-width: 0` on the grid children, and wrapping/shrinking content. A new page
+that pins itself wide fails the suite instead of the phone.
+
+### 2026-11-04 - Line endings are pinned in the repository, not in git config
+
+**Decision:** `.gitattributes` sets `* text=auto eol=lf` and marks the icon and
+image assets `binary`.
+
+**Why:** `src/api/openapi.rs` proves the committed OpenAPI artifacts are exactly
+what the tables generate, by comparing `include_str!` of the committed file
+against the generator's output byte for byte. The generator emits LF. With no
+`eol` policy, a Windows checkout with `core.autocrlf=true` writes CRLF, so both
+drift tests failed on the checkout alone: no source change was involved. A
+byte-exact comparison across platforms needs a checkout that is byte-stable, and
+that belongs in the repository rather than in each machine's git config.
+
+**Consequence:** a worktree cloned before this file needs renormalising once
+(`git add --renormalize .`); a fresh clone is correct on every platform.
+
+### 2026-11-04 - Test harnesses find Python instead of assuming it
+
+**Decision:** `tests/conformance_suite.rs` resolves an interpreter by probing
+(`PYTHON` first, then `python3`, `python`, `py`) instead of hard-coding
+`python3`.
+
+**Why:** on Windows `python3` is a Microsoft Store alias that exists on `PATH`
+but prints an install notice and exits non-zero. The gate failed for a reason
+that had nothing to do with the conformance suite's behaviour. `PYTHON` stays
+the explicit override, which is what CI already sets elsewhere.

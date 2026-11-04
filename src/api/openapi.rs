@@ -275,7 +275,6 @@ const ROUTES: &[RouteSpec] = &[
         errors: &["404"],
         ..HUB
     },
-
     // ---------------------------------------------------------------- game
     RouteSpec {
         method: HttpMethod::Post,

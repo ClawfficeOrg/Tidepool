@@ -1,0 +1,31 @@
+# Normalise line endings so every checkout (Linux CI, macOS, Windows) has the
+# same bytes in the working tree as in the index.
+#
+# Generated artifacts are compared byte for byte by
+# `src/api/openapi.rs::tests` via `include_str!`. With `core.autocrlf=true`
+# those comparisons failed on Windows purely on CRLF vs LF, so the text
+# convention is pinned here instead of left to each machine's git config.
+* text=auto eol=lf
+
+# PowerShell and shell scripts stay LF too: pwsh 7 and POSIX shells read them.
+*.ps1       text eol=lf
+*.sh        text eol=lf
+*.rs        text eol=lf
+*.toml      text eol=lf
+*.json      text eol=lf
+*.jsonl     text eol=lf
+*.md        text eol=lf
+*.svelte    text eol=lf
+*.ts        text eol=lf
+*.css       text eol=lf
+
+# Binary assets must never be converted.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.pdf       binary
+*.wasm      binary

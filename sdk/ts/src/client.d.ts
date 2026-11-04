@@ -79,10 +79,20 @@ export declare class TidepoolClient {
   login(credentials: { email: string; password: string }): Promise<PoolLoginResponse>;
   /** Route metadata for one operation. */
   describe(operationId: string): RouteInfo;
-  /** Ask the contract whether a principal may call an operation. */
+  /**
+   * Ask the contract whether a principal may call an operation.
+   *
+   * `authenticated` records a caller known to hold a session but no role yet;
+   * it never widens access, so an unauthenticated principal and one without a
+   * role are decided the same way.
+   */
   allows(
     operationId: string,
-    principal?: { role?: string | null; scopes?: readonly string[] | null },
+    principal?: {
+      role?: string | null;
+      scopes?: readonly string[] | null;
+      authenticated?: boolean;
+    },
   ): boolean;
   /** Build an absolute URL for one operation. */
   urlFor(

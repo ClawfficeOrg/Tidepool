@@ -2,6 +2,53 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - Responsive shell with a hamburger menu (task 2.4.1)
+
+### Added
+- `tidepool-control-plane/src/components/menu.ts` - the narrow-width menu as a
+  pure state machine (`menuReducer`, `escapeOutcome`), plus the breakpoint it
+  collapses at. The rules that matter are testable without a browser: the
+  button toggles, Escape closes and asks for focus back on the button, and
+  following a link closes the menu without stealing focus from the page.
+- `Nav.svelte` now renders the sidebar and the menu from one list. Below tablet
+  width a `Menu` button with `aria-expanded`/`aria-controls` opens the same
+  navigation; Escape closes it and returns focus to the button, and a link
+  press closes it for the page it moved to.
+- `Nav.test.ts`, `menu.test.ts` and `responsive.test.ts` - every page is
+  reachable from the menu, the button is named and marked closed, Escape's
+  outcome is pinned, and the stylesheet keeps the shell one column with a 16px
+  gutter and no fixed track wider than a 375px viewport.
+
+### Changed
+- `app.css` - the 52rem breakpoint now sets a 16px (`--tp-space-4`) side
+  gutter on the header and the shell, the shell is one column, and the page
+  never scrolls sideways (`overflow-x: clip`, `min-width: 0` on the grid
+  children, `overflow-wrap: break-word` and shrinking images in the content).
+  The menu button is hidden where the sidebar is already visible.
+
+### Still a person's check
+- Watching the menu open and close in the running app at 375px, and confirming
+  by eye that the page itself does not scroll sideways there. The rules behind
+  both are pinned by tests; the rendered pixels need a human.
+
+### Fixed while getting the gate green
+- `.gitattributes` - the repository had no line-ending policy, so a Windows
+  checkout with `core.autocrlf=true` materialised CRLF while the OpenAPI
+  generator emits LF. `api_reference_matches_generated_document` and
+  `published_contract_matches_generated_document` compare bytes through
+  `include_str!`, so they failed on the checkout alone. The text convention is
+  now pinned in the repo (`* text=auto eol=lf`) with binaries marked `binary`.
+- `src/services/connections/discord.rs` - `DiscordIngestContext::from_connection`
+  reimplemented a check that `CredentialMaterial::has_all` already provides;
+  clippy's `nonminimal_bool` rejected the negated `is_some_and`.
+- `tests/conformance_suite.rs` - the harness hard-coded `python3`, which on
+  Windows is the Microsoft Store stub that exits with an error. It now probes
+  interpreters, keeps `PYTHON` as the override, and falls back to `python`.
+- `sdk/ts/src/client.d.ts` - `allows` declared only `role`/`scopes` while
+  `client.js` documents and accepts `authenticated`, so the control plane's
+  `roles.test.ts` failed typecheck. The declaration now matches the
+  implementation.
+
 ## [Unreleased] — 2026-11-02 — TideTable job dispatch (phase 1)
 
 ### Added
