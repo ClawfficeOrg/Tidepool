@@ -31,6 +31,9 @@ export function buildResources(client) {
       },
     },
     chatrooms: {
+      create(body, options) {
+        return client._call("post_v1_chatrooms", options, undefined, body);
+      },
       list(options) {
         return client._call("get_v1_chatrooms", options, undefined, undefined);
       },

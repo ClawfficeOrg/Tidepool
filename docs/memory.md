@@ -3080,3 +3080,41 @@ since the pool refuses such a trigger anyway.
 a per-trigger list. None of the three exists in the contract; adding them needs a
 pool route first. Criteria that depend on a person looking at the rendered page
 in a browser are still open and are flagged for a human check.
+
+### 2026-11-04 - Task 2.4.7, a room is created with its owner and listed by its activity
+
+**Decision: creating a room also writes the creator's owner membership.**
+`GET /v1/chatrooms` lists the rooms the caller belongs to, so a room created
+without a membership is invisible to the person who made it - the create flow
+would show a 201 and then an unchanged list. `create_room_as` therefore writes
+the owner row in the same call, and deletes the room if that write fails, so an
+ownerless room cannot be left behind. The non-transactional cleanup is
+deliberate: the alternative is a second table write inside the create path,
+which the service does not otherwise do.
+
+**Decision: a viewer may not create a room (403).** Creation is a write, and
+the pool already refuses writes from a viewer on the message route. Keeping the
+same rule here means the control plane's create form and its composer fail for
+the same principals, instead of one being silently permissive.
+
+**Decision: last activity is the newest message, computed in SQL, not
+`updated_at`.** The task asks the list to show each room's last activity;
+`updated_at` moves on any row change and would claim activity an empty room never
+had. `RoomView.last_activity_at` is a `MAX(chat_messages.created_at)` subquery in
+every room query and is null for an empty room, which the page renders as "No
+messages yet" rather than as a timestamp.
+
+**Consequence: the create form lives inside the shared form pattern.** The
+project picker, the name and the visibility all go through `FormField`, the form
+carries `data-form="room_create"`, and the submit is the last control in the one
+`tp-field__actions` row, so `components/form-pattern.test.ts` covers it without a
+new rule. The project list is read from `GET /v1/projects`; when exactly one
+project exists it is chosen for the person.
+
+**Not done, and why:** the Rust and Python SDK generators still have no `NAMES`
+mapping for `post_v1_chatrooms` (nor for the pre-existing job, TideTable and
+host-grant routes), so `sdk/rust` and `sdk/python` generated code is stale and
+`cargo test -p tidepool-client --test contract` fails. Fixing that means editing
+`sdk/rust/scripts/generate.mjs` and `sdk/python/scripts/generate.py`, which are
+outside the files this task owns; the default workspace `cargo test` (pool, CLI,
+console, host agent) passes.

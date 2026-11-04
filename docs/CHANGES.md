@@ -2,6 +2,55 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - Creating a chat room, and knowing when it last spoke (task 2.4.7)
+
+### Added
+- `src/api/chatrooms.rs` - `POST /v1/chatrooms` and `CreateRoomBody`
+  (`project`, `name`, optional `visibility`). The handler refuses a non-mutating
+  operator with 403 and answers 201 with the created `RoomView`.
+- `src/services/chatrooms.rs` - `create_room_as` creates the room and writes the
+  caller's owner membership in the same call, because the room list is the rooms
+  a principal belongs to; if the membership write fails the room is deleted so no
+  ownerless room survives. `delete_room` is the cleanup it uses.
+- `tidepool-control-plane/src/routes/rooms/RoomsPage.svelte` - a create panel
+  (`data-form="room_create"`) with project, name and visibility fields on the
+  shared `FormField`, ending in a `tp-field__actions` row whose submit button is
+  last, plus a success sentence and the pool's problem details on failure.
+- `tidepool-control-plane/src/lib/rooms.ts` - `validateRoomInput`,
+  `defaultProjectId`, `visibilityDescription`, `ROOM_VISIBILITIES`,
+  `lastActivityView`, `NO_ACTIVITY_YET`, and `RoomsController.createRoom` /
+  `loadProjects`. `RoomsTransport` gained `create` and `listProjects`.
+
+### Changed
+- The room list shows each room's name and its **last activity**: the newest
+  message's time, or "No messages yet" for an empty room. `RoomView` (and the
+  entity `Room`) gained `last_activity_at`, filled by a `MAX(created_at)`
+  subquery in every room query. The list no longer shows `updated_at`, which was
+  never activity.
+- `tidepool-control-plane/src/routes/rooms/rooms.test.ts` and `e2e.test.ts` -
+  the fake transports and the fake pool now serve `POST /v1/chatrooms` and
+  `GET /v1/projects`; the end-to-end case creates a room through the real SDK
+  and reads it back from the same list.
+- `docs/api/openapi-v1.json`, `docs/API_REFERENCE.md` and the TypeScript SDK
+  generated artifacts regenerated. Contract counts: 93 routes, 70 hub
+  operations.
+
+### Tests
+- `rooms.test.ts` gained 14 tests: last-activity wording for a live and an empty
+  room, create-input validation, the visibility sentences, the project default,
+  a create that posts the right body and shows the room in the reloaded list,
+  a read-only create that never reaches the pool, a pool refusal that leaves the
+  list alone, and the rendered create form and last-activity markup.
+- `e2e.test.ts` gained the create-through-the-SDK step.
+
+### Known
+- The Rust and Python SDK generators still lack `NAMES` mappings for
+  `post_v1_chatrooms` and for the pre-existing job/TideTable/host-grant routes,
+  so `sdk/rust` and `sdk/python` generated code is stale and
+  `cargo test -p tidepool-client --test contract` fails. The default
+  `cargo test` workspace members (pool, CLI, console, host agent) pass. Recorded
+  in `docs/memory.md`.
+
 ## [Unreleased] - 2026-11-04 - A trigger page that says what a trigger is (task 2.4.6)
 
 ### Added

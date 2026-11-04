@@ -18,6 +18,7 @@ import { createClient } from '@clawffice/tidepool-sdk';
 import type {
   HistoryResponse,
   MessageView,
+  ProjectView,
   RoomMemberView,
   RoomView,
 } from '@clawffice/tidepool-sdk';
@@ -42,6 +43,16 @@ const ROOM: RoomView = {
   origin_pool: null,
   created_at: '2026-10-20T09:00:00.000Z',
   updated_at: '2026-10-29T05:00:00.000Z',
+  last_activity_at: '2026-10-29T05:00:00.000Z',
+};
+
+/** The one project the create form chooses from. */
+const PROJECT: ProjectView = {
+  id: 'project-a',
+  name: 'Alpha',
+  slug: 'alpha',
+  created_at: '2026-10-01T09:00:00.000Z',
+  updated_at: '2026-10-02T09:00:00.000Z',
 };
 
 /** One message, authored by whoever the fake member id names. */
@@ -78,6 +89,7 @@ const MEMBERS: RoomMemberView[] = [
 /** What both browser clients share. */
 interface Hub {
   messages: MessageView[];
+  rooms: RoomView[];
   sockets: Set<FakeSocket>;
   nextSequence: number;
 }
@@ -218,7 +230,37 @@ function fakeFetch(hub: Hub): typeof fetch {
     }
 
     if (method === 'GET' && path === '/v1/chatrooms') {
-      return json([ROOM]);
+      return json(hub.rooms);
+    }
+
+    if (method === 'POST' && path === '/v1/chatrooms') {
+      const raw = typeof init?.body === 'string' ? init.body : '{}';
+      const parsed: unknown = JSON.parse(raw);
+      const body =
+        parsed !== null && typeof parsed === 'object'
+          ? (parsed as { project?: unknown; name?: unknown; visibility?: unknown })
+          : {};
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (name === '') return problem(422, 'validation_failed');
+      if (hub.rooms.some((room) => room.name === name)) {
+        return problem(409, 'conflict');
+      }
+      const created: RoomView = {
+        ...ROOM,
+        id: `room-${name}`,
+        name,
+        visibility:
+          body.visibility === 'public' || body.visibility === 'unlisted'
+            ? body.visibility
+            : 'private',
+        last_activity_at: null,
+      };
+      hub.rooms.push(created);
+      return json(created, 201);
+    }
+
+    if (method === 'GET' && path === '/v1/projects') {
+      return json({ projects: [PROJECT] });
     }
 
     const membersRoute = /^\/v1\/chatrooms\/([^/]+)\/members$/.exec(path);
@@ -301,6 +343,7 @@ describe('two browsers in one room', () => {
   it('sees the same server ids, presence and currentness on both sides', async () => {
     const hub: Hub = {
       messages: Array.from({ length: 120 }, (_, index) => message(index + 1)),
+      rooms: [ROOM],
       sockets: new Set(),
       nextSequence: 121,
     };
@@ -360,6 +403,17 @@ describe('two browsers in one room', () => {
       expect(rendered.text).toContain('Person');
       expect(rendered.text).toContain('Agent session');
       expect(rendered.html).toContain('data-catch-up-status="current"');
+
+      // Browser B creates a room through the SDK and sees it in the same list.
+      const created = await b.controller.createRoom({
+        project: PROJECT.id,
+        name: 'releases',
+        visibility: 'unlisted',
+      });
+      expect(created.createPhase).toBe('created');
+      expect(created.rooms.map((room) => room.name)).toEqual(['builds', 'releases']);
+      expect(created.rooms[1]?.visibility).toBe('unlisted');
+      expect(hub.rooms.map((room) => room.name)).toEqual(['builds', 'releases']);
 
       a.controller.dispose();
       b.controller.dispose();

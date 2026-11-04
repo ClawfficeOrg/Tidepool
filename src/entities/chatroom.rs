@@ -200,6 +200,8 @@ pub struct Room {
     pub created_at: DateTime<Utc>,
     /// When the room last changed.
     pub updated_at: DateTime<Utc>,
+    /// When the newest message in the room was posted; unset for an empty room.
+    pub last_activity_at: Option<DateTime<Utc>>,
 }
 
 impl Room {
@@ -224,6 +226,8 @@ pub struct RoomView {
     pub created_at: DateTime<Utc>,
     /// When the room last changed.
     pub updated_at: DateTime<Utc>,
+    /// When the newest message was posted; `null` while the room is empty.
+    pub last_activity_at: Option<DateTime<Utc>>,
 }
 
 impl RoomView {
@@ -236,6 +240,7 @@ impl RoomView {
             origin_pool: room.origin_pool.clone(),
             created_at: room.created_at,
             updated_at: room.updated_at,
+            last_activity_at: room.last_activity_at,
         })
     }
 }
@@ -388,6 +393,7 @@ mod tests {
             origin_pool: None,
             created_at: "2026-10-22T00:00:00Z".parse().expect("ts"),
             updated_at: "2026-10-22T00:00:00Z".parse().expect("ts"),
+            last_activity_at: None,
         }
     }
 
@@ -434,6 +440,21 @@ mod tests {
         assert!(json["originPool"].is_null());
         assert!(json.get("project_id").is_none());
         assert!(json.get("organization_id").is_none());
+        // An empty room has no activity; the field is still present and null.
+        assert!(json["last_activity_at"].is_null());
+    }
+
+    #[test]
+    fn last_activity_is_the_newest_message_time() {
+        let mut row = room();
+        row.last_activity_at = Some("2026-10-29T05:00:00Z".parse().expect("ts"));
+        let view = RoomView::from_room(&row).expect("view");
+        assert_eq!(
+            view.last_activity_at.map(|at| at.to_rfc3339()),
+            Some("2026-10-29T05:00:00+00:00".to_string())
+        );
+        let json = serde_json::to_value(&view).expect("serialize");
+        assert_eq!(json["last_activity_at"], "2026-10-29T05:00:00Z");
     }
 
     #[test]

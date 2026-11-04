@@ -95,6 +95,7 @@ const NAMES = {
 
   // Chatrooms: cursor paging plus the live socket.
   get_v1_chatrooms: ["chatrooms", "list"],
+  post_v1_chatrooms: ["chatrooms", "create"],
   get_v1_chatrooms_room_members: ["chatrooms", "members"],
   get_v1_chatrooms_room_messages: ["chatrooms", "messages"],
   post_v1_chatrooms_room_messages: ["chatrooms", "send"],
