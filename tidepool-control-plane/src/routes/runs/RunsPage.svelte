@@ -17,6 +17,7 @@
    */
   import ProblemDetails from '../../components/ProblemDetails.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
+  import FormField from '../../components/FormField.svelte';
   import ActivityFilters from './ActivityFilters.svelte';
   import ActivityList from './ActivityList.svelte';
   import RunDetail from './RunDetail.svelte';
@@ -241,68 +242,102 @@
       <form
         class="tp-runs__dispatch-form"
         data-dispatch-form="true"
+        data-form="dispatch_run"
         onsubmit={(event) => {
           event.preventDefault();
           void dispatch();
         }}
       >
-        <label class="tp-field">
-          <span class="tp-field__label">Project</span>
-          <select
-            class="tp-input"
-            value={dispatchInput.project}
-            data-dispatch-field="project"
-            disabled={!canDispatchRole || view.projects.length === 0}
-            onchange={(event) =>
-              (dispatchProject = (event.currentTarget as HTMLSelectElement).value)}
-          >
-            {#if view.projects.length === 0}
-              <option value="">No projects loaded</option>
-            {:else}
-              {#each view.projects as project (project.id)}
-                <option value={project.id}>{project.name} ({project.slug})</option>
-              {/each}
-            {/if}
-          </select>
-        </label>
-        <label class="tp-field">
-          <span class="tp-field__label">Trigger</span>
-          <input
-            class="tp-input"
-            type="text"
-            value={dispatchTrigger}
-            placeholder="Installed trigger name"
-            data-dispatch-field="trigger"
-            disabled={!canDispatchRole}
-            oninput={(event) =>
-              (dispatchTrigger = (event.currentTarget as HTMLInputElement).value)}
-          />
-        </label>
-        <label class="tp-field">
-          <span class="tp-field__label">Actor</span>
-          <input
-            class="tp-input"
-            type="text"
-            value={dispatchActor}
-            placeholder="Actor the trigger must allow"
-            data-dispatch-field="actor"
-            disabled={!canDispatchRole}
-            oninput={(event) => (dispatchActor = (event.currentTarget as HTMLInputElement).value)}
-          />
-        </label>
-        <label class="tp-field tp-runs__request-field">
-          <span class="tp-field__label">Request</span>
-          <textarea
-            class="tp-input"
-            rows="3"
-            value={dispatchText}
-            placeholder="key=value tokens followed by what the agent should do"
-            data-dispatch-field="input"
-            disabled={!canDispatchRole}
-            oninput={(event) => (dispatchText = (event.currentTarget as HTMLTextAreaElement).value)}
-          ></textarea>
-        </label>
-        <div class="tp-runs__dispatch-actions">
+        <FormField form="dispatch_run" field="project" label="Project" required>
+          {#snippet children(id, described)}
+            <select
+              class="tp-field__control"
+              {id}
+              value={dispatchInput.project}
+              aria-describedby={described}
+              data-dispatch-field="project"
+              disabled={!canDispatchRole || view.projects.length === 0}
+              onchange={(event) =>
+                (dispatchProject = (event.currentTarget as HTMLSelectElement).value)}
+            >
+              {#if view.projects.length === 0}
+                <option value="">No projects loaded</option>
+              {:else}
+                {#each view.projects as project (project.id)}
+                  <option value={project.id}>{project.name} ({project.slug})</option>
+                {/each}
+              {/if}
+            </select>
+          {/snippet}
+        </FormField>
+
+        <FormField
+          form="dispatch_run"
+          field="trigger"
+          label="Trigger"
+          required
+          help="The installed trigger name the delivery must match."
+        >
+          {#snippet children(id, described)}
+            <input
+              class="tp-field__control"
+              {id}
+              type="text"
+              value={dispatchTrigger}
+              placeholder="Installed trigger name"
+              aria-describedby={described}
+              data-dispatch-field="trigger"
+              disabled={!canDispatchRole}
+              oninput={(event) =>
+                (dispatchTrigger = (event.currentTarget as HTMLInputElement).value)}
+            />
+          {/snippet}
+        </FormField>
+
+        <FormField form="dispatch_run" field="actor" label="Actor">
+          {#snippet children(id, described)}
+            <input
+              class="tp-field__control"
+              {id}
+              type="text"
+              value={dispatchActor}
+              placeholder="Actor the trigger must allow"
+              aria-describedby={described}
+              data-dispatch-field="actor"
+              disabled={!canDispatchRole}
+              oninput={(event) => (dispatchActor = (event.currentTarget as HTMLInputElement).value)}
+            />
+          {/snippet}
+        </FormField>
+
+        <FormField
+          form="dispatch_run"
+          field="input"
+          label="Request"
+          wide
+          help="key=value tokens followed by what the agent should do."
+        >
+          {#snippet children(id, described)}
+            <textarea
+              class="tp-field__control"
+              {id}
+              rows="3"
+              value={dispatchText}
+              placeholder="key=value tokens followed by what the agent should do"
+              aria-describedby={described}
+              data-dispatch-field="input"
+              disabled={!canDispatchRole}
+              oninput={(event) => (dispatchText = (event.currentTarget as HTMLTextAreaElement).value)}
+            ></textarea>
+          {/snippet}
+        </FormField>
+
+        <div class="tp-field__actions">
+          {#if dispatchIssues.length > 0 && canDispatchRole}
+            <p class="tp-runs__dispatch-note" data-dispatch-issues={dispatchIssues.length}>
+              {dispatchIssues[0]}
+            </p>
+          {/if}
           <button
             class="tp-button"
             type="submit"
@@ -311,11 +346,6 @@
           >
             {view.dispatchPhase === 'dispatching' ? 'Dispatching…' : 'Dispatch run'}
           </button>
-          {#if dispatchIssues.length > 0 && canDispatchRole}
-            <p class="tp-runs__dispatch-note" data-dispatch-issues={dispatchIssues.length}>
-              {dispatchIssues[0]}
-            </p>
-          {/if}
         </div>
       </form>
 
@@ -455,36 +485,8 @@
     align-items: end;
   }
 
-  .tp-runs__request-field {
+  .tp-field__actions {
     grid-column: 1 / -1;
-  }
-
-  .tp-field {
-    display: grid;
-    gap: var(--tp-space-1);
-  }
-
-  .tp-field__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .tp-input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-surface);
-    color: var(--tp-text-strong);
-    font: inherit;
-  }
-
-  .tp-runs__dispatch-actions {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--tp-space-2);
   }
 
   .tp-runs__dispatch-note,

@@ -187,7 +187,6 @@
     effectivePoolUrl={isPoolConfigured(pool) ? pool.baseUrl : null}
     {servedByPool}
     {onSavePoolUrl}
-    {onPaletteSelect}
     {onPreferenceChange}
     {poolUrlProblem}
     {poolUrlNotice}

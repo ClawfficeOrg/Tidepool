@@ -8,6 +8,7 @@
    * the draft.
    */
   import ProblemDetails from '../../components/ProblemDetails.svelte';
+  import FormField from '../../components/FormField.svelte';
   import { VIEWER_CANNOT_POST, type RoomsViewState } from '$lib/rooms';
   import type { PoolProblem } from '$lib/api/problem';
 
@@ -36,22 +37,28 @@
   }
 </script>
 
-<form class="tp-composer" data-composer="true" onsubmit={submit}>
+<form class="tp-composer" data-composer="true" onsubmit={submit} data-form="room_message">
   {#if !canPost}
     <p class="tp-composer__denial" data-composer-denial="viewer">{VIEWER_CANNOT_POST}</p>
   {/if}
-  <label class="tp-field">
-    <span class="tp-field__label">Message</span>
-    <textarea
-      class="tp-input"
-      rows="3"
-      bind:value={draft}
-      data-composer-field="body"
-      placeholder={canPost ? 'Write a message to the room' : 'Read-only room'}
-      disabled={!canPost}
-    ></textarea>
-  </label>
-  <div class="tp-composer__actions">
+  <FormField form="room_message" field="body" label="Message" required>
+    {#snippet children(id, described)}
+      <textarea
+        class="tp-field__control"
+        {id}
+        rows="3"
+        aria-describedby={described}
+        bind:value={draft}
+        data-composer-field="body"
+        placeholder={canPost ? 'Write a message to the room' : 'Read-only room'}
+        disabled={!canPost}
+      ></textarea>
+    {/snippet}
+  </FormField>
+  <div class="tp-field__actions">
+    {#if sendPhase === 'sent'}
+      <p class="tp-composer__sent" data-composer-sent="true" role="status">Message sent.</p>
+    {/if}
     <button
       class="tp-button"
       type="submit"
@@ -60,9 +67,6 @@
     >
       {sendPhase === 'sending' ? 'Sending…' : 'Send message'}
     </button>
-    {#if sendPhase === 'sent'}
-      <p class="tp-composer__sent" data-composer-sent="true" role="status">Message sent.</p>
-    {/if}
   </div>
   {#if problem}
     <ProblemDetails {problem} />
@@ -72,34 +76,6 @@
 <style>
   .tp-composer {
     display: grid;
-    gap: var(--tp-space-2);
-  }
-
-  .tp-field {
-    display: grid;
-    gap: var(--tp-space-1);
-  }
-
-  .tp-field__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .tp-input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-surface);
-    color: var(--tp-text-strong);
-    font: inherit;
-  }
-
-  .tp-composer__actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     gap: var(--tp-space-2);
   }
 

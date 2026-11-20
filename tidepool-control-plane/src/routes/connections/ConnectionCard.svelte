@@ -9,6 +9,7 @@
    * connection-named confirm step because it stops deliveries immediately.
    */
   import StatusBadge from '../../components/StatusBadge.svelte';
+  import FormField from '../../components/FormField.svelte';
   import VerificationReport from './VerificationReport.svelte';
   import SecretField from './SecretField.svelte';
   import ConnectionCallback from './ConnectionCallback.svelte';
@@ -180,25 +181,28 @@
 
   {#if transportChoices.length > 1}
     <div class="tp-connection__transport">
-      <label class="tp-connection__section-title" for={`tp-connection-${row.id}-transport`}>
-        Transport
-      </label>
-      <select
-        class="tp-connection__select"
+      <FormField
+        form={`connection_${row.id}`}
+        field="transport"
+        label="Transport"
         id={`tp-connection-${row.id}-transport`}
-        value={row.transport}
-        onchange={(event) => selectTransport(event.currentTarget.value)}
-        disabled={busy}
+        help="Remembered in this browser: this contract revision does not carry the transport on the connection, so the page cannot read it back from the pool."
       >
-        {#each transportChoices as choice (choice.id)}
-          <option value={choice.id} selected={choice.id === row.transport}>{choice.label}</option>
-        {/each}
-      </select>
-      <p class="tp-connection__note">
-        Remembered in this browser: this contract revision does not carry the
-        transport on the connection, so the page cannot read it back from the
-        pool.
-      </p>
+        {#snippet children(id, described)}
+          <select
+            class="tp-field__control"
+            {id}
+            value={row.transport}
+            aria-describedby={described}
+            onchange={(event) => selectTransport(event.currentTarget.value)}
+            disabled={busy}
+          >
+            {#each transportChoices as choice (choice.id)}
+              <option value={choice.id} selected={choice.id === row.transport}>{choice.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
     </div>
   {/if}
 
@@ -234,29 +238,39 @@
 
   <div class="tp-connection__actions">
     {#if renaming}
-      <form class="tp-connection__rename" onsubmit={submitRename}>
-        <label class="tp-connection__section-title" for={`tp-connection-${row.id}-name`}>
-          New display name
-        </label>
-        <input
-          class="tp-connection__input"
+      <form class="tp-connection__rename" onsubmit={submitRename} data-form="rename_connection">
+        <FormField
+          form={`rename_connection_${row.id}`}
+          field="display_name"
+          label="New display name"
+          required
           id={`tp-connection-${row.id}-name`}
-          type="text"
-          autocomplete="off"
-          bind:value={name}
-          disabled={busy}
-        />
-        <button class="tp-button" type="submit" disabled={busy || name.trim() === ''}>
-          Save name
-        </button>
-        <button
-          class="tp-button tp-button--quiet"
-          type="button"
-          onclick={() => (renaming = false)}
-          disabled={busy}
         >
-          Cancel
-        </button>
+          {#snippet children(id, described)}
+            <input
+              class="tp-field__control"
+              {id}
+              type="text"
+              autocomplete="off"
+              aria-describedby={described}
+              bind:value={name}
+              disabled={busy}
+            />
+          {/snippet}
+        </FormField>
+        <div class="tp-field__actions">
+          <button
+            class="tp-button tp-button--quiet"
+            type="button"
+            onclick={() => (renaming = false)}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button class="tp-button" type="submit" disabled={busy || name.trim() === ''}>
+            Save name
+          </button>
+        </div>
       </form>
     {:else}
       <button
@@ -407,16 +421,6 @@
 
   .tp-connection__section-title {
     margin: 0;
-  }
-
-  .tp-connection__select,
-  .tp-connection__input {
-    max-width: 42ch;
-    padding: var(--tp-space-1) var(--tp-space-2);
-    color: var(--tp-text-strong);
-    background: var(--tp-window-background);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
   }
 
   .tp-connection__resource-list {

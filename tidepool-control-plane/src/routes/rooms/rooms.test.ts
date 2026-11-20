@@ -13,8 +13,10 @@
 import { describe, expect, it } from 'vitest';
 import type {
   ChatFrame,
+  CreateRoomBody,
   MessageView,
   Principal,
+  ProjectView,
   RoomMemberView,
   RoomView,
 } from '@clawffice/tidepool-sdk';
@@ -23,21 +25,26 @@ import { renderComponent } from '$lib/testing/render';
 import {
   CATCH_UP_NOTICE,
   CURRENT_NOTICE,
+  NO_ACTIVITY_YET,
   RECONNECT_NOTICE,
   ROOM_PAGE_SIZE,
   RoomsController,
   VIEWER_CANNOT_POST,
   canPostInRoom,
   currentnessBanner,
+  defaultProjectId,
   describeAuthor,
   emptyRoomsState,
   isCurrent,
+  lastActivityView,
   mergeMessages,
   olderMessagesPage,
   presenceSentence,
   roomRoleFor,
   shouldLoadOlder,
   tailCursor,
+  validateRoomInput,
+  visibilityDescription,
   type OpenRoomStream,
   type RoomCache,
   type RoomStream,
@@ -48,6 +55,16 @@ import {
 
 const POOL = { baseUrl: 'https://pool.example.com' };
 
+const NOW = Date.parse('2026-10-29T06:00:00.000Z');
+
+const PROJECT: ProjectView = {
+  id: 'project-a',
+  name: 'Alpha',
+  slug: 'alpha',
+  created_at: '2026-10-01T09:00:00.000Z',
+  updated_at: '2026-10-02T09:00:00.000Z',
+};
+
 const ROOM: RoomView = {
   id: 'room-builds',
   name: 'builds',
@@ -55,6 +72,7 @@ const ROOM: RoomView = {
   origin_pool: null,
   created_at: '2026-10-20T09:00:00.000Z',
   updated_at: '2026-10-29T05:00:00.000Z',
+  last_activity_at: '2026-10-29T05:00:00.000Z',
 };
 
 const OTHER_ROOM: RoomView = {
@@ -105,16 +123,43 @@ function stateWith(overrides: Partial<RoomsViewState> = {}): RoomsViewState {
 }
 
 /** A transport over an in-memory room, recording every history read. */
-function fakeTransport(all: MessageView[], room: RoomView = ROOM): RoomsTransport & {
+function fakeTransport(
+  all: MessageView[],
+  room: RoomView = ROOM,
+): RoomsTransport & {
   reads: { after?: number; limit?: number }[];
   sent: string[];
+  created: CreateRoomBody[];
+  listedProjects: number;
 } {
   const reads: { after?: number; limit?: number }[] = [];
   const sent: string[] = [];
+  const created: CreateRoomBody[] = [];
+  let listedProjects = 0;
   return {
     reads,
     sent,
+    created,
+    get listedProjects() {
+      return listedProjects;
+    },
     listRooms: () => Promise.resolve([room]),
+    listProjects: () => {
+      listedProjects += 1;
+      return Promise.resolve({ projects: [PROJECT] });
+    },
+    create: (body) => {
+      created.push(body);
+      return Promise.resolve({
+        id: `room-${body.name}`,
+        name: body.name,
+        visibility: body.visibility ?? 'private',
+        origin_pool: null,
+        created_at: '2026-10-30T09:00:00.000Z',
+        updated_at: '2026-10-30T09:00:00.000Z',
+        last_activity_at: null,
+      });
+    },
     members: () =>
       Promise.resolve([member('user-ada', 'user', 'owner'), member('session-7', 'session')]),
     history: (_room, query) => {
@@ -201,6 +246,73 @@ function fakeScheduler(): RoomsScheduler & { pending: (() => void | Promise<unkn
     cancel: () => undefined,
   };
 }
+
+describe('last activity', () => {
+  it('says so in words when the room has no messages', () => {
+    const empty = lastActivityView(null, NOW);
+    expect(empty.text).toBe(NO_ACTIVITY_YET);
+    expect(empty.at).toBeNull();
+    expect(empty.hasActivity).toBe(false);
+  });
+
+  it('reads the newest message time, not the creation time', () => {
+    const view = lastActivityView('2026-10-29T05:00:00.000Z', NOW);
+    expect(view.text).toBe('Last activity 1 hour ago');
+    expect(view.at).toBe('2026-10-29T05:00:00.000Z');
+    expect(view.hasActivity).toBe(true);
+  });
+
+  it('treats an unparseable timestamp as no activity', () => {
+    expect(lastActivityView('not a time', NOW).hasActivity).toBe(false);
+  });
+});
+
+describe('create-room input', () => {
+  it('requires a project and a name', () => {
+    const noProject = validateRoomInput({ project: '  ', name: 'builds', visibility: 'private' });
+    expect(noProject.ok).toBe(false);
+    expect(noProject.ok ? '' : noProject.field).toBe('project');
+
+    const noName = validateRoomInput({ project: PROJECT.id, name: '   ', visibility: 'private' });
+    expect(noName.ok).toBe(false);
+    expect(noName.ok ? '' : noName.field).toBe('name');
+  });
+
+  it('trims the name and keeps the chosen visibility', () => {
+    const result = validateRoomInput({
+      project: ` ${PROJECT.id} `,
+      name: '  builds  ',
+      visibility: 'unlisted',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.input : null).toEqual({
+      project: PROJECT.id,
+      name: 'builds',
+      visibility: 'unlisted',
+    });
+  });
+
+  it('refuses a name longer than the pool accepts', () => {
+    const result = validateRoomInput({
+      project: PROJECT.id,
+      name: 'a'.repeat(121),
+      visibility: 'private',
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('picks the only project, and no project when there are several', () => {
+    expect(defaultProjectId([PROJECT])).toBe(PROJECT.id);
+    expect(defaultProjectId([])).toBe('');
+    expect(defaultProjectId([PROJECT, { ...PROJECT, id: 'project-b' }])).toBe('');
+  });
+
+  it('explains each visibility in a sentence', () => {
+    expect(visibilityDescription('private')).toContain('Only the members');
+    expect(visibilityDescription('unlisted')).toContain('not listed');
+    expect(visibilityDescription('public')).toContain('Every member');
+  });
+});
 
 describe('mergeMessages', () => {
   it('keeps one row per server id and the server order', () => {
@@ -526,6 +638,87 @@ describe('RoomsController', () => {
     expect(state.sendPhase).toBe('sent');
     expect(state.messages[state.messages.length - 1]?.body).toBe('hello from the page');
   });
+
+  it('creates a room and shows it in the pool list', async () => {
+    const rooms: RoomView[] = [];
+    const bodies: CreateRoomBody[] = [];
+    const base = fakeTransport(messages(1, 3));
+    const transport: RoomsTransport = {
+      ...base,
+      listRooms: () => Promise.resolve([...rooms]),
+      create: (body) => {
+        bodies.push(body);
+        const created: RoomView = {
+          ...ROOM,
+          id: `room-${body.name}`,
+          name: body.name,
+          visibility: body.visibility ?? 'private',
+          last_activity_at: null,
+        };
+        rooms.push(created);
+        return Promise.resolve(created);
+      },
+    };
+    const controller = controllerWith(transport);
+
+    const state = await controller.createRoom({
+      project: PROJECT.id,
+      name: 'releases',
+      visibility: 'unlisted',
+    });
+
+    expect(bodies).toEqual([
+      { project: PROJECT.id, name: 'releases', visibility: 'unlisted' },
+    ]);
+    expect(state.createPhase).toBe('created');
+    expect(state.createProblem).toBeNull();
+    expect(state.createNotice).toContain('releases');
+    expect(state.createdRoomId).toBe('room-releases');
+    // The list is the pool's answer: the created room is in it.
+    expect(state.rooms.map((room) => room.name)).toContain('releases');
+    expect(state.phase).toBe('ready');
+  });
+
+  it('loads the projects the create form chooses from', async () => {
+    const transport = fakeTransport(messages(1, 1));
+    const controller = controllerWith(transport);
+    const state = await controller.loadProjects();
+    expect(transport.listedProjects).toBe(1);
+    expect(state.projectsPhase).toBe('ready');
+    expect(state.projects.map((project) => project.id)).toEqual([PROJECT.id]);
+  });
+
+  it('refuses an incomplete create without calling the pool', async () => {
+    const transport = fakeTransport(messages(1, 1));
+    const controller = controllerWith(transport);
+    const state = await controller.createRoom({
+      project: PROJECT.id,
+      name: '   ',
+      visibility: 'private',
+    });
+    expect(transport.created).toEqual([]);
+    expect(state.createPhase).toBe('failed');
+    expect(state.createProblem?.message).toContain('name');
+    expect(state.createdRoomId).toBeNull();
+  });
+
+  it('reports a create the pool refused and leaves the list alone', async () => {
+    const base = fakeTransport(messages(1, 1));
+    const transport: RoomsTransport = {
+      ...base,
+      create: () => Promise.reject(new Error('a room named "builds" already exists')),
+    };
+    const controller = controllerWith(transport);
+    const state = await controller.createRoom({
+      project: PROJECT.id,
+      name: 'builds',
+      visibility: 'private',
+    });
+    expect(state.createPhase).toBe('failed');
+    expect(state.createProblem?.message).toContain('already exists');
+    expect(state.rooms).toEqual([]);
+    expect(state.busy).toBe(false);
+  });
 });
 
 describe('RoomsPage', () => {
@@ -533,6 +726,8 @@ describe('RoomsPage', () => {
     return stateWith({
       phase: 'ready',
       rooms: [ROOM, OTHER_ROOM],
+      projects: [PROJECT],
+      projectsPhase: 'ready',
       selectedRoomId: ROOM.id,
       room: ROOM,
       members: [member('user-ada', 'user', 'owner'), member('session-7', 'session')],
@@ -545,6 +740,42 @@ describe('RoomsPage', () => {
       ...overrides,
     });
   }
+
+  it('offers a create form with a project, a name and a visibility', () => {
+    const { html, text } = renderComponent(RoomsPage, {
+      pool: POOL,
+      token: null,
+      initial: roomsState(),
+      now: NOW,
+    });
+    expect(html).toContain('data-form="room_create"');
+    expect(html).toContain('data-field="project"');
+    expect(html).toContain('data-field="name"');
+    expect(html).toContain('data-field="visibility"');
+    expect(html).toContain('data-rooms-action="create"');
+    expect(text).toContain('Create a room');
+    expect(text).toContain('Alpha (alpha)');
+    expect(text).toContain('Private');
+  });
+
+  it('shows every room name with its last activity', () => {
+    const { html, text } = renderComponent(RoomsPage, {
+      pool: POOL,
+      token: null,
+      initial: roomsState({
+        rooms: [ROOM, { ...OTHER_ROOM, last_activity_at: null }],
+      }),
+      now: NOW,
+    });
+    expect(html).toContain('data-room-id="room-builds"');
+    expect(html).toContain('data-room-id="room-deploys"');
+    expect(html).toContain('data-room-last-activity="2026-10-29T05:00:00.000Z"');
+    expect(html).toContain('data-room-last-activity="none"');
+    expect(text).toContain('builds');
+    expect(text).toContain('deploys');
+    expect(text).toContain('Last activity 1 hour ago');
+    expect(text).toContain(NO_ACTIVITY_YET);
+  });
 
   it('labels cached history as catching up', () => {
     const { text, html } = renderComponent(RoomsPage, {

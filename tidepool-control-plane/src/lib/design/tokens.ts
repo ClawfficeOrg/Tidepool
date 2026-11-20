@@ -9,9 +9,21 @@
  *
  * Suite rule 8: state is never colour alone. These tokens provide the colours;
  * `$lib/status` provides the icon and the word that go beside them.
+ *
+ * A palette value that fails WCAG AA is repaired on the way out, in
+ * `themeVars`, not in this snapshot: the design system keeps its hues, and the
+ * rendered CSS is guaranteed to clear the floors. `$lib/theme.contrast`
+ * explains and audits the repair.
  */
 
 import snapshot from './clawffice-design.snapshot.json';
+import {
+  BODY_TEXT_MIN,
+  CONTROL_MIN,
+  SELECTION_TINT,
+  composite,
+  readableColor,
+} from '../theme.contrast';
 
 /** The five Clawffice palettes, in presentation order. */
 export const PALETTE_NAMES = ['biolume', 'deep-tide', 'sea-glass', 'phosphor', 'boiled'] as const;
@@ -43,11 +55,11 @@ export interface PaletteRoles {
   textMuted: string;
   /** Titles and emphasis. */
   textStrong: string;
-  /** The palette's primary action colour. */
+  /** The palette's primary action colour; also read as text on some pages. */
   primary: string;
   /** Text drawn on `primary`. */
   primaryText: string;
-  /** The palette's secondary accent. */
+  /** The palette's secondary accent; drawn as text and as a control edge. */
   second: string;
 }
 
@@ -173,29 +185,67 @@ export function withAlpha(hex: string, alpha: number): string {
  *
  * Focus and selection come from Tidepool's product hue (`tide`), not from the
  * palette's primary colour, so the app keeps its identity across all five.
+ *
+ * Every role that is read as text, drawn as a control edge or used as a focus
+ * ring is passed through `readableColor` against the three opaque grounds the
+ * app paints on, so the rendered palette clears WCAG AA even where the design
+ * token does not. A passing role comes through untouched; a failing one is
+ * shaded toward `text-strong` only as far as the floor requires.
  */
 export function themeVars(name: PaletteName): Record<string, string> {
   const palette = PALETTES[name];
   const hue = productHue(palette.scheme);
+  const roles = palette.roles;
+  // The concrete colours behind every surface: text and controls are measured
+  // against all three, because a panel, the window and a terminal ground are
+  // all used as a backdrop in this app.
+  const grounds = [roles.windowBackground, roles.surface, roles.terminalBackground];
+  const toward = roles.textStrong;
+  /** Repair a role to a floor against every ground. */
+  const legible = (color: string, minimum: number): string =>
+    readableColor(color, grounds, minimum, toward);
+
+  const text = legible(roles.text, BODY_TEXT_MIN);
+  const textMuted = legible(roles.textMuted, BODY_TEXT_MIN);
+  const textStrong = legible(roles.textStrong, BODY_TEXT_MIN);
+  const primary = legible(roles.primary, BODY_TEXT_MIN);
+  const primaryText = readableColor(roles.primaryText, [primary], BODY_TEXT_MIN);
+  const borderStrong = legible(roles.borderStrong, CONTROL_MIN);
+  const second = legible(roles.second, BODY_TEXT_MIN);
+  const focus = legible(hue, CONTROL_MIN);
+  const status = {
+    success: legible(palette.status.success, BODY_TEXT_MIN),
+    warning: legible(palette.status.warning, BODY_TEXT_MIN),
+    danger: legible(palette.status.danger, BODY_TEXT_MIN),
+    info: legible(palette.status.info, BODY_TEXT_MIN),
+  };
+  // Selected text is drawn on a translucent tint of the focus hue, so it is
+  // measured against each ground as painted rather than against the bare one.
+  const selectionText = readableColor(
+    textStrong,
+    grounds.map((ground) => composite(focus, SELECTION_TINT, ground)),
+    BODY_TEXT_MIN,
+  );
+
   const vars: Record<string, string> = {
-    '--tp-window-background': palette.roles.windowBackground,
-    '--tp-surface': palette.roles.surface,
-    '--tp-terminal-background': palette.roles.terminalBackground,
-    '--tp-border': palette.roles.border,
-    '--tp-border-strong': palette.roles.borderStrong,
-    '--tp-text': palette.roles.text,
-    '--tp-text-muted': palette.roles.textMuted,
-    '--tp-text-strong': palette.roles.textStrong,
-    '--tp-primary': palette.roles.primary,
-    '--tp-primary-text': palette.roles.primaryText,
-    '--tp-second': palette.roles.second,
-    '--tp-status-success': palette.status.success,
-    '--tp-status-warning': palette.status.warning,
-    '--tp-status-danger': palette.status.danger,
-    '--tp-status-info': palette.status.info,
-    '--tp-focus': hue,
-    '--tp-selection': withAlpha(hue, 0.35),
-    '--tp-selection-text': palette.roles.textStrong,
+    '--tp-window-background': roles.windowBackground,
+    '--tp-surface': roles.surface,
+    '--tp-terminal-background': roles.terminalBackground,
+    '--tp-border': roles.border,
+    '--tp-border-strong': borderStrong,
+    '--tp-text': text,
+    '--tp-text-muted': textMuted,
+    '--tp-text-strong': textStrong,
+    '--tp-primary': primary,
+    '--tp-primary-text': primaryText,
+    '--tp-second': second,
+    '--tp-status-success': status.success,
+    '--tp-status-warning': status.warning,
+    '--tp-status-danger': status.danger,
+    '--tp-status-info': status.info,
+    '--tp-focus': focus,
+    '--tp-selection': withAlpha(focus, SELECTION_TINT),
+    '--tp-selection-text': selectionText,
     '--tp-color-scheme': palette.scheme,
     '--tp-cell-grid': String(CORE.cellGrid),
   };

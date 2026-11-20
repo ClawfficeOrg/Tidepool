@@ -22,6 +22,7 @@ import type {
   CreateExecutionResponse,
   CreateHostRequest,
   CreateProjectRequest,
+  CreateRoomBody,
   DispatchJobRequest,
   EnrollHostRequest,
   GrantRequest,
@@ -60,6 +61,7 @@ import type {
   RevisionView,
   RevisionsResponse,
   RoomMemberViewList,
+  RoomView,
   RoomViewList,
   SendMessageBody,
   SetupRequest,
@@ -107,6 +109,10 @@ export interface Resources {
     whoami(options?: RequestOptions): Promise<ApiKeyView>;
   };
   chatrooms: {
+    /**
+     * Create a room and join it as its owner
+     */
+    create(body: CreateRoomBody, options?: RequestOptions): Promise<RoomView>;
     /**
      * List rooms visible to the operator
      */

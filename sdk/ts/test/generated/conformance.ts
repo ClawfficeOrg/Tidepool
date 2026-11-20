@@ -23,6 +23,7 @@ import type {
   CreateExecutionResponse,
   CreateHostRequest,
   CreateProjectRequest,
+  CreateRoomBody,
   DispatchJobRequest,
   EnrollHostRequest,
   GrantRequest,
@@ -61,6 +62,7 @@ import type {
   RevisionView,
   RevisionsResponse,
   RoomMemberViewList,
+  RoomView,
   RoomViewList,
   SendMessageBody,
   SetupRequest,
@@ -254,6 +256,11 @@ const post_v1_auth_register: Promise<JsonObject> = client.game.auth.register({} 
 void post_v1_auth_register;
 // @ts-expect-error the request body is typed by the contract
 void client.game.auth.register(42, )
+
+const post_v1_chatrooms: Promise<RoomView> = client.chatrooms.create({} as CreateRoomBody, );
+void post_v1_chatrooms;
+// @ts-expect-error the request body is typed by the contract
+void client.chatrooms.create(42, )
 
 const post_v1_chatrooms_room_messages: Promise<MessageView> = client.chatrooms.send("id-1", {} as SendMessageBody, );
 void post_v1_chatrooms_room_messages;

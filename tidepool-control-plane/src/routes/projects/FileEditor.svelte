@@ -2,16 +2,18 @@
   /**
    * The bundle as files: pick one, edit its exact text, add or remove a path.
    *
-   * This is a text editor, not a form. The textarea holds the authored bytes
-   * and an edit replaces only that file's content; the page's model guarantees
-   * the other files are sent exactly as they were stored. The only structural
-   * changes offered are adding a path at the end and removing one path.
+   * This is a text editor, not a form. The textarea holds the file's exact
+   * bytes and an edit replaces only that file's content; the page's model
+   * guarantees the other files are sent exactly as they were stored. The only
+   * structural changes offered are adding a path at the end and removing one
+   * path.
    */
   import IssueList from './IssueList.svelte';
+  import FormField from '../../components/FormField.svelte';
   import type { DraftFile, LocatedIssue } from '$lib/configuration';
 
   interface Props {
-    /** The draft files, in authored order. */
+    /** The draft files, in manifest order. */
     files?: readonly DraftFile[];
     /** The file currently open in the editor. */
     selectedPath?: string | null;
@@ -60,12 +62,13 @@
 </script>
 
 <section class="tp-editor" aria-labelledby="tp-editor-title" data-configuration-editor="true">
-  <h3 class="tp-editor__title" id="tp-editor-title">Authored files</h3>
+  <h3 class="tp-editor__title" id="tp-editor-title">Files this project's runs use</h3>
 
   {#if files.length === 0}
     <p class="tp-page__state" data-editor-empty="true">
-      This project has no authored files yet. Add a path, or start with
-      <code>tidepool.json</code> as the manifest.
+      This project has no files yet. Start with the manifest: add
+      <code>tidepool.json</code> to list what a run uses, then add each prompt
+      file it names.
     </p>
   {:else}
     <nav class="tp-editor__files" aria-label="Bundle files">
@@ -108,19 +111,27 @@
             </button>
           {/if}
         </div>
-        <label class="tp-editor__label" for="tp-editor-textarea">
-          Exact content of {current.path}
-        </label>
-        <textarea
-          class="tp-editor__textarea"
+        <FormField
+          form="file_editor"
+          field="content"
+          label={`Exact content of ${current.path}`}
+          required
           id="tp-editor-textarea"
-          name="configuration-file"
-          spellcheck="false"
-          readonly={!canEdit || busy}
-          rows="18"
-          data-file-content-path={current.path}
-          oninput={(event) => onEdit?.(current.path, event.currentTarget.value)}
-        >{current.content}</textarea>
+        >
+          {#snippet children(id, described)}
+            <textarea
+              class="tp-field__control tp-editor__textarea"
+              {id}
+              name="configuration-file"
+              spellcheck="false"
+              readonly={!canEdit || busy}
+              rows="18"
+              aria-describedby={described}
+              data-file-content-path={current.path}
+              oninput={(event) => onEdit?.(current.path, event.currentTarget.value)}
+            >{current.content}</textarea>
+          {/snippet}
+        </FormField>
       </div>
     {/if}
   {/if}
@@ -128,22 +139,34 @@
   {#if onAdd}
     <form
       class="tp-editor__add"
+      data-form="add_file_path"
       onsubmit={(event) => {
         event.preventDefault();
         addFile();
       }}
     >
-      <label class="tp-editor__label" for="tp-editor-new-path">Add a file path</label>
-      <div class="tp-editor__add-row">
-        <input
-          class="tp-editor__input"
-          id="tp-editor-new-path"
-          name="new-file-path"
-          type="text"
-          placeholder="prompts/system.md"
-          bind:value={newPath}
-          disabled={busy || !canEdit}
-        />
+      <FormField
+        form="add_file_path"
+        field="path"
+        label="Add a file path"
+        required
+        id="tp-editor-new-path"
+        help="Relative to the project root, e.g. prompts/system.md."
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            name="new-file-path"
+            type="text"
+            placeholder="prompts/system.md"
+            aria-describedby={described}
+            bind:value={newPath}
+            disabled={busy || !canEdit}
+          />
+        {/snippet}
+      </FormField>
+      <div class="tp-field__actions">
         <button
           class="tp-button"
           type="submit"
@@ -218,11 +241,6 @@
     font-size: var(--tp-font-body);
   }
 
-  .tp-editor__label {
-    font-family: var(--tp-font-caption);
-    color: var(--tp-text-muted);
-  }
-
   .tp-editor__textarea {
     width: 100%;
     padding: var(--tp-space-2);
@@ -241,19 +259,4 @@
     gap: var(--tp-space-1);
   }
 
-  .tp-editor__add-row {
-    display: flex;
-    gap: var(--tp-space-1);
-    align-items: center;
-  }
-
-  .tp-editor__input {
-    flex: 1;
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-surface);
-    color: var(--tp-text);
-    font-family: var(--tp-font-code);
-  }
 </style>

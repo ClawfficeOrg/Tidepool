@@ -186,6 +186,7 @@ The machine-readable document is served at `/openapi.json` and at the pinned maj
 | Method | Path | Auth | Scope | Request | Success | Response |
 |---|---|---|---|---|---|---|
 | GET | `/v1/chatrooms` | member | — | — | 200 | RoomViewList |
+| POST | `/v1/chatrooms` | member | — | CreateRoomBody | 201 | RoomView |
 | GET | `/v1/chatrooms/{room}/members` | member | — | — | 200 | RoomMemberViewList |
 | GET | `/v1/chatrooms/{room}/messages` | member | — | — | 200 | HistoryResponse |
 | POST | `/v1/chatrooms/{room}/messages` | member | — | SendMessageBody | 201 | MessageView |
@@ -1135,6 +1136,17 @@ One chatroom
 | `origin_pool` | string or null | no |  |
 | `created_at` | string (date-time) | yes |  |
 | `updated_at` | string (date-time) | yes |  |
+| `last_activity_at` | string (date-time) or null | no | When the newest message was posted; null while the room is empty |
+
+### CreateRoomBody
+
+Create a room in a project
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `project` | string | yes | Public id of the project the room belongs to |
+| `name` | string | yes |  |
+| `visibility` | `private` \| `unlisted` \| `public` | no | Who may read the room; private when omitted |
 
 ### RoomViewList
 

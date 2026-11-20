@@ -8,6 +8,7 @@
    * second sign-in form.
    */
   import ProblemDetails from '../components/ProblemDetails.svelte';
+  import FormField from '../components/FormField.svelte';
   import type { PoolProblem } from '$lib/api/problem';
   import { MIN_SETUP_PASSWORD_LENGTH, type SetupInput } from '../auth/types';
 
@@ -70,81 +71,125 @@
     <p class="tp-auth__notice" role="status">{notice}</p>
   {/if}
 
-  {#if localError}
-    <p class="tp-auth__notice" role="alert">{localError}</p>
-  {/if}
-
   {#if problem}
     <ProblemDetails {problem} />
   {/if}
 
-  <form class="tp-auth__form" onsubmit={submit}>
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Organization name</span>
-      <input
-        class="tp-auth__input"
-        type="text"
-        name="organization_name"
-        autocomplete="organization"
-        required
-        bind:value={organizationName}
-      />
-    </label>
+  <form class="tp-auth__form" onsubmit={submit} data-form="setup">
+    <FormField
+      form="setup"
+      field="organization_name"
+      label="Organization name"
+      required
+      help="The name of the organization this pool serves."
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          name="organization_name"
+          autocomplete="organization"
+          required
+          aria-describedby={described}
+          bind:value={organizationName}
+        />
+      {/snippet}
+    </FormField>
 
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Your name</span>
-      <input
-        class="tp-auth__input"
-        type="text"
-        name="display_name"
-        autocomplete="name"
-        required
-        bind:value={displayName}
-      />
-    </label>
+    <FormField
+      form="setup"
+      field="display_name"
+      label="Your name"
+      required
+      help="What the members list calls you."
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          name="display_name"
+          autocomplete="name"
+          required
+          aria-describedby={described}
+          bind:value={displayName}
+        />
+      {/snippet}
+    </FormField>
 
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Email</span>
-      <input
-        class="tp-auth__input"
-        type="email"
-        name="email"
-        autocomplete="username"
-        required
-        bind:value={email}
-      />
-    </label>
+    <FormField
+      form="setup"
+      field="email"
+      label="Email"
+      required
+      help="The address you sign in with."
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="email"
+          name="email"
+          autocomplete="username"
+          required
+          aria-describedby={described}
+          bind:value={email}
+        />
+      {/snippet}
+    </FormField>
 
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Password</span>
-      <input
-        class="tp-auth__input"
-        type="password"
-        name="password"
-        autocomplete="new-password"
-        minlength={MIN_SETUP_PASSWORD_LENGTH}
-        required
-        bind:value={password}
-      />
-      <span class="tp-auth__hint">At least {MIN_SETUP_PASSWORD_LENGTH} characters.</span>
-    </label>
+    <FormField
+      form="setup"
+      field="password"
+      label="Password"
+      required
+      help="At least {MIN_SETUP_PASSWORD_LENGTH} characters."
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="password"
+          name="password"
+          autocomplete="new-password"
+          minlength={MIN_SETUP_PASSWORD_LENGTH}
+          required
+          aria-describedby={described}
+          bind:value={password}
+        />
+      {/snippet}
+    </FormField>
 
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Confirm password</span>
-      <input
-        class="tp-auth__input"
-        type="password"
-        name="password_confirmation"
-        autocomplete="new-password"
-        minlength={MIN_SETUP_PASSWORD_LENGTH}
-        required
-        bind:value={confirmation}
-      />
-    </label>
+    <FormField
+      form="setup"
+      field="password_confirmation"
+      label="Confirm password"
+      required
+      help="Type the same password again."
+      error={localError}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="password"
+          name="password_confirmation"
+          autocomplete="new-password"
+          minlength={MIN_SETUP_PASSWORD_LENGTH}
+          required
+          aria-invalid={localError !== null}
+          aria-describedby={described}
+          bind:value={confirmation}
+        />
+      {/snippet}
+    </FormField>
 
-    <button class="tp-button" type="submit" disabled={busy}>
-      {busy ? 'Creating the pool…' : 'Create the pool and sign in'}
-    </button>
+    <div class="tp-field__actions">
+      <button class="tp-button" type="submit" disabled={busy}>
+        {busy ? 'Creating the pool…' : 'Create the pool and sign in'}
+      </button>
+    </div>
   </form>
 </section>
 
@@ -182,31 +227,5 @@
   .tp-auth__form {
     display: grid;
     gap: var(--tp-space-2);
-  }
-
-  .tp-auth__field {
-    display: grid;
-    gap: 2px;
-  }
-
-  .tp-auth__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-auth__hint {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-  }
-
-  .tp-auth__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
   }
 </style>

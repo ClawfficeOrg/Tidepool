@@ -87,7 +87,9 @@ async fn room_row(
 ) -> Result<Room, ChatroomServiceError> {
     sqlx::query_as::<_, Room>(
         "SELECT id, public_id, organization_id, project_id, name, visibility, origin_pool, \
-                created_at, updated_at \
+                created_at, updated_at, \
+                (SELECT MAX(m.created_at) FROM chat_messages m WHERE m.room_id = chat_rooms.id) \
+                    AS last_activity_at \
          FROM chat_rooms WHERE organization_id = ? AND public_id = ?",
     )
     .bind(organization_id)
@@ -213,6 +215,62 @@ pub async fn create_room(
     Ok(RoomView::from_room(&room)?)
 }
 
+/// Create a room and make the caller its owner.
+///
+/// The room list is the rooms a principal belongs to, so a room the creator
+/// did not join would be invisible to them the moment it was made. Creation
+/// therefore writes the membership that owns the room, and the caller sees it
+/// in the same list every other member's rooms come from.
+pub async fn create_room_as(
+    pool: &MySqlPool,
+    organization_id: u64,
+    project_public_id: &str,
+    new: NewRoom,
+    creator: &Principal,
+) -> Result<RoomView, ChatroomServiceError> {
+    // Refuse an unknown or malformed creator before writing the room, so a
+    // failed membership cannot leave an ownerless room behind.
+    principal_columns(pool, organization_id, creator).await?;
+    let room = create_room(pool, organization_id, project_public_id, new).await?;
+    match add_member(
+        pool,
+        organization_id,
+        &room.id,
+        NewMember {
+            principal: creator.clone(),
+            role: MemberRole::Owner,
+        },
+    )
+    .await
+    {
+        Ok(_) => Ok(room),
+        Err(error) => {
+            // A room nobody owns is a room nobody can see: remove it rather
+            // than leave an orphan behind.
+            if let Err(cleanup) = delete_room(pool, organization_id, &room.id).await {
+                tracing::error!(%cleanup, room = %room.id, "could not remove an unowned room");
+            }
+            Err(error)
+        }
+    }
+}
+
+/// Delete a room, its members and its messages.
+pub async fn delete_room(
+    pool: &MySqlPool,
+    organization_id: u64,
+    room_public_id: &str,
+) -> Result<(), ChatroomServiceError> {
+    let room = room_row(pool, organization_id, room_public_id).await?;
+    sqlx::query("DELETE FROM chat_rooms WHERE id = ? AND organization_id = ?")
+        .bind(room.id)
+        .bind(organization_id)
+        .execute(pool)
+        .await
+        .map_err(ChatroomServiceError::Database)?;
+    Ok(())
+}
+
 /// Every room in a project, newest last.
 pub async fn list_rooms(
     pool: &MySqlPool,
@@ -222,7 +280,9 @@ pub async fn list_rooms(
     let project_id = project_id_for(pool, organization_id, project_public_id).await?;
     let rows = sqlx::query_as::<_, Room>(
         "SELECT id, public_id, organization_id, project_id, name, visibility, origin_pool, \
-                created_at, updated_at \
+                created_at, updated_at, \
+                (SELECT MAX(m.created_at) FROM chat_messages m WHERE m.room_id = chat_rooms.id) \
+                    AS last_activity_at \
          FROM chat_rooms WHERE organization_id = ? AND project_id = ? \
          ORDER BY created_at ASC, id ASC",
     )
@@ -248,7 +308,9 @@ pub async fn rooms_for_principal(
     let (kind, user_id, session_id) = principal_columns(pool, organization_id, principal).await?;
     let rows = sqlx::query_as::<_, Room>(
         "SELECT r.id, r.public_id, r.organization_id, r.project_id, r.name, r.visibility, \
-                r.origin_pool, r.created_at, r.updated_at \
+                r.origin_pool, r.created_at, r.updated_at, \
+                (SELECT MAX(msg.created_at) FROM chat_messages msg WHERE msg.room_id = r.id) \
+                    AS last_activity_at \
          FROM chat_rooms r \
          JOIN chat_room_members m ON m.room_id = r.id \
          WHERE r.organization_id = ? AND m.member_kind = ? \

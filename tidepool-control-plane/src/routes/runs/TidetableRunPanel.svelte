@@ -7,6 +7,7 @@
    * seconds while the pool says it is queued or running.
    */
   import { onDestroy, onMount } from 'svelte';
+  import FormField from '../../components/FormField.svelte';
   import { canUseControl, controlById, denialReason } from '../../auth/roles';
   import type { Role } from '../../auth/types';
   import { isPoolConfigured, poolClient, type PoolConfig } from '$lib/api/pool';
@@ -168,69 +169,120 @@
     <p class="run-panel__notice" role="alert">{loadFailure}</p>
   {/if}
 
-  <form class="run-panel__form" onsubmit={start} data-tidetable-run-form="true">
+  <form class="run-panel__form" onsubmit={start} data-tidetable-run-form="true" data-form="tidetable_run">
     <div class="run-panel__grid">
-      <div class="run-field">
-        <label for="run-project">Project</label>
-        <select id="run-project" bind:value={form.projectId} required>
-          <option value="" disabled>{projects.length ? 'Choose a project' : 'No projects yet'}</option>
-          {#each projects as project (project.id)}
-            <option value={project.id}>{project.name} ({project.slug})</option>
-          {/each}
-        </select>
-      </div>
+      <FormField form="tidetable_run" field="project" label="Project" required>
+        {#snippet children(id, described)}
+          <select class="tp-field__control" {id} aria-describedby={described} bind:value={form.projectId} required>
+            <option value="" disabled>{projects.length ? 'Choose a project' : 'No projects yet'}</option>
+            {#each projects as project (project.id)}
+              <option value={project.id}>{project.name} ({project.slug})</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
 
-      <div class="run-field">
-        <label for="run-host">Host</label>
-        <select id="run-host" bind:value={form.host} required>
-          <option value="" disabled>{usableHosts.length ? 'Choose a host' : 'No hosts enrolled'}</option>
-          {#each usableHosts as host (host.id)}
-            <option value={host.id}>{host.slug} · {host.status}</option>
-          {/each}
-        </select>
-        <p class="run-field__help">The host that will run the job. Only enrolled hosts are listed.</p>
-      </div>
+      <FormField
+        form="tidetable_run"
+        field="host"
+        label="Host"
+        required
+        help="The host that will run the job. Only enrolled hosts are listed."
+      >
+        {#snippet children(id, described)}
+          <select class="tp-field__control" {id} aria-describedby={described} bind:value={form.host} required>
+            <option value="" disabled>{usableHosts.length ? 'Choose a host' : 'No hosts enrolled'}</option>
+            {#each usableHosts as host (host.id)}
+              <option value={host.id}>{host.slug} · {host.status}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </FormField>
 
-      <div class="run-field">
-        <label for="run-checkout">Checkout name</label>
-        <input
-          id="run-checkout"
-          type="text"
-          list="run-checkout-options"
-          bind:value={form.checkout}
-          autocomplete="off"
-          required
-        />
-        <datalist id="run-checkout-options">
-          {#each checkoutSuggestions as name (name)}
-            <option value={name}></option>
-          {/each}
-        </datalist>
-        <p class="run-field__help">The name the host uses for its checkout, such as the project slug.</p>
-      </div>
+      <FormField
+        form="tidetable_run"
+        field="checkout"
+        label="Checkout name"
+        required
+        help="The name the host uses for its checkout, such as the project slug."
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            type="text"
+            list="run-checkout-options"
+            bind:value={form.checkout}
+            autocomplete="off"
+            aria-describedby={described}
+            required
+          />
+          <datalist id="run-checkout-options">
+            {#each checkoutSuggestions as name (name)}
+              <option value={name}></option>
+            {/each}
+          </datalist>
+        {/snippet}
+      </FormField>
     </div>
 
-    <div class="run-field">
-      <label for="run-tasks">Tasks</label>
-      <textarea id="run-tasks" bind:value={form.tasks} rows="2" placeholder="1.22.6 1.22.7"></textarea>
-      <p class="run-field__help">Task ids separated by spaces or commas, such as 1.22.6. Up to 16.</p>
-    </div>
+    <FormField
+      form="tidetable_run"
+      field="tasks"
+      label="Tasks"
+      help="Task ids separated by spaces or commas, such as 1.22.6. Up to 16."
+    >
+      {#snippet children(id, described)}
+        <textarea
+          class="tp-field__control"
+          {id}
+          bind:value={form.tasks}
+          rows="2"
+          placeholder="1.22.6 1.22.7"
+          aria-describedby={described}
+        ></textarea>
+      {/snippet}
+    </FormField>
 
     <div class="run-panel__grid">
-      <div class="run-field">
-        <label for="run-hours">Hours</label>
-        <input id="run-hours" type="number" min="1" max="12" step="1" bind:value={form.hours} />
-      </div>
-      <div class="run-field">
-        <label for="run-jobs">Parallel jobs</label>
-        <input id="run-jobs" type="number" min="1" max="4" step="1" bind:value={form.jobs} />
-      </div>
-      <div class="run-field run-field--check">
-        <label>
-          <input type="checkbox" bind:checked={form.dryRun} />
-          <span>Dry run: show what would happen, change nothing</span>
-        </label>
-      </div>
+      <FormField form="tidetable_run" field="hours" label="Hours">
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            type="number"
+            min="1"
+            max="12"
+            step="1"
+            aria-describedby={described}
+            bind:value={form.hours}
+          />
+        {/snippet}
+      </FormField>
+
+      <FormField form="tidetable_run" field="jobs" label="Parallel jobs">
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            type="number"
+            min="1"
+            max="4"
+            step="1"
+            aria-describedby={described}
+            bind:value={form.jobs}
+          />
+        {/snippet}
+      </FormField>
+
+      <FormField form="tidetable_run" field="dry_run" label="Dry run" group>
+        {#snippet children()}
+          <label class="run-panel__check">
+            <input type="checkbox" bind:checked={form.dryRun} />
+            <span>Show what would happen, change nothing</span>
+          </label>
+        {/snippet}
+      </FormField>
     </div>
 
     {#if problems.length > 0}
@@ -241,7 +293,7 @@
       </ul>
     {/if}
 
-    <div class="run-panel__actions">
+    <div class="tp-field__actions">
       <button type="submit" class="run-panel__submit" disabled={denial !== null || busy || client === null}>
         {busy ? 'Starting…' : form.dryRun ? 'Check the run' : 'Start the run'}
       </button>
@@ -322,45 +374,14 @@
     gap: 1rem;
     grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   }
-  .run-field {
-    display: grid;
-    gap: 0.35rem;
-    align-content: start;
-  }
-  .run-field label {
-    font-weight: 600;
-  }
-  .run-field input,
-  .run-field select,
-  .run-field textarea {
-    font: inherit;
-    padding: 0.45rem 0.6rem;
-    border: 1px solid currentColor;
-    border-radius: 6px;
-    background: transparent;
-    color: inherit;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .run-field__help {
-    margin: 0;
-    font-size: 0.85rem;
-  }
-  .run-field--check label {
+  .run-panel__check {
     display: flex;
     gap: 0.5rem;
     align-items: center;
-    font-weight: 400;
   }
   .run-panel__problems {
     margin: 0;
     padding-left: 1.2rem;
-  }
-  .run-panel__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    flex-wrap: wrap;
   }
   .run-panel__submit,
   .run-panel__secondary,
@@ -372,6 +393,12 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
+  }
+  .run-panel__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
   .run-panel__submit {
     font-weight: 600;

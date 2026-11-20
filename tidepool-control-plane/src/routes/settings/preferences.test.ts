@@ -125,17 +125,20 @@ describe('the palette renders every page after a reload', () => {
       );
       // The page itself is rendered, not only the shell.
       expect(rendered.text).toContain(route.label);
-      expect(rendered.html).toContain(`data-palette-option="${reloadedPalette}" aria-pressed="true"`);
+      expect(rendered.html).toContain(`data-palette-selected="${reloadedPalette}"`);
+      expect(rendered.html).toContain(`<option value="${reloadedPalette}" selected`);
     }
   });
 
-  it('renders the settings page in every palette, with the default marked', () => {
+  it('renders the settings page in every palette, with the default selected', () => {
     for (const name of PALETTE_NAMES) {
       const rendered = renderComponent(App, { palette: name, path: '/settings' });
       expect(rendered.html).toContain(`data-palette="${name}"`);
       expect(rendered.html).toContain('data-settings-preferences="true"');
-      expect(rendered.html).toContain(`data-palette-option="${name}" aria-pressed="true"`);
-      expect(rendered.html).toContain('data-palette-option="biolume"');
+      // The header's one dropdown carries the choice; the page has no panel.
+      expect(rendered.html).toContain(`data-palette-selected="${name}"`);
+      expect(rendered.html).toContain(`<option value="${name}" selected`);
+      expect(rendered.html).not.toContain('data-prefs-group="palette"');
       expect(rendered.text).toContain('default');
     }
   });
@@ -278,9 +281,9 @@ describe('the panel and its about block', () => {
     expect(rendered.html).toContain('data-prefs-group="pool"');
     expect(rendered.html).toContain('data-effective-pool-url');
     expect(rendered.text).toContain('https://pool.example.com');
-    expect(rendered.html).toContain('data-prefs-group="palette"');
-    expect(rendered.html.match(/data-palette-option=/g)).toHaveLength(5);
-    expect(rendered.html).toContain('data-palette-option="sea-glass" aria-pressed="true"');
+    // The palette is the header's dropdown, not a block of this page.
+    expect(rendered.html).not.toContain('data-prefs-group="palette"');
+    expect(rendered.html).not.toContain('<select');
     expect(rendered.html).toContain('data-time-format-option="12h"');
     expect(rendered.html).toContain('data-time-zone-option="utc"');
     expect(rendered.html).toContain('data-density-option="compact"');
@@ -328,13 +331,14 @@ describe('the palette name type is the five Clawffice palettes', () => {
 });
 
 describe('the settings page exposes the preferences in the shell', () => {
-  it('renders the pool form and the palette with no pool, so first run can set one', () => {
+  it('renders the pool form and the one header palette dropdown with no pool', () => {
     const rendered = renderComponent(App, { path: '/settings', auth: null });
     expect(rendered.html).toContain('data-settings-preferences="true"');
     expect(rendered.html).toContain('data-pool-url-input="true"');
     expect(rendered.html).toContain('Save pool URL');
-    // Two switches: the shell's header and the settings panel's.
-    expect(rendered.html.match(/data-palette-option=/g)?.length).toBeGreaterThanOrEqual(5);
+    // One palette control, in the header; the page itself has no palette panel.
+    expect(rendered.html.match(/<select[^>]*data-palette-select/g)).toHaveLength(1);
+    expect(rendered.html).not.toContain('data-prefs-group="palette"');
     // Members and keys still say the pool is missing rather than showing empties.
     expect(rendered.html).toContain('data-settings-state="unconfigured"');
   });

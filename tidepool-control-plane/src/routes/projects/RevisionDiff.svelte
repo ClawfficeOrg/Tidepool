@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
-   * The diff between two revisions, over the authored files.
+   * The diff between two revisions, over the files each revision holds.
    *
-   * Each file is listed by its authored path and status; a changed file shows
-   * its aligned lines with both line numbers, so the author reads exactly the
-   * text they wrote and exactly what moved. There is no normalisation step
+   * Each file is listed by its path and status; a changed file shows
+   * its aligned lines with both line numbers, so a reader sees exactly the
+   * text that was stored and exactly what moved. There is no normalisation step
    * between the stored revision and this view.
    */
   import type { FileDiff, RevisionComparison } from '$lib/configuration';
@@ -50,7 +50,7 @@
       {#if comparison.from}
         Changes from v{comparison.from.version} to v{comparison.to.version}
       {:else}
-        Authored files in v{comparison.to.version}
+        Files in v{comparison.to.version}
       {/if}
     </h3>
     {#if onClose}
@@ -68,7 +68,7 @@
 
   {#if files.length === 0}
     <p class="tp-page__state" data-diff-empty="true">
-      The two revisions hold the same authored files.
+      The two revisions hold the same files.
     </p>
   {:else}
     <ul class="tp-diff__files">

@@ -4,11 +4,13 @@
    *
    * The form sends the role the inviter chose, and says what each role can do
    * so "admin" is not a guess. Validation is local first; the pool still
-   * enforces the owner-only rule and the email rules.
+   * enforces the owner-only rule and the email rules. The error appears under
+   * the field that caused it, like every other form here.
    */
   import { ROLES, type Role } from '../../auth/types';
   import { roleDescription, roleLabel } from '../../auth/roles';
   import { validateInviteInput } from '$lib/keys';
+  import FormField from '../../components/FormField.svelte';
 
   interface Props {
     /** True while an invite is in flight. */
@@ -25,16 +27,17 @@
   // The initial role seeds the form once; the person drives it afterwards.
   // svelte-ignore state_referenced_locally
   let role = $state<Role>(initialRole);
-  let localError = $state<string | null>(null);
+  /** The one validation failure, tied to the field it names. */
+  let failure = $state<{ field: 'email' | 'role'; message: string } | null>(null);
 
   /** Validate here first, so a malformed address never leaves the browser. */
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (busy) return;
-    localError = null;
+    failure = null;
     const validation = validateInviteInput({ email, role });
     if (!validation.ok) {
-      localError = validation.message;
+      failure = { field: validation.field, message: validation.message };
       return;
     }
     onSubmit?.(validation.input);
@@ -48,38 +51,60 @@
     acceptance token to the person you invited.
   </p>
 
-  {#if localError}
-    <p class="tp-invite__error" role="alert">{localError}</p>
-  {/if}
+  <form class="tp-invite__form" onsubmit={submit} data-form="invite">
+    <FormField
+      form="invite"
+      field="email"
+      label="Email address"
+      required
+      help="The address the person signs in with."
+      error={failure?.field === 'email' ? failure.message : null}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="email"
+          name="email"
+          autocomplete="off"
+          spellcheck="false"
+          required
+          aria-invalid={failure?.field === 'email'}
+          aria-describedby={described}
+          bind:value={email}
+        />
+      {/snippet}
+    </FormField>
 
-  <form class="tp-invite__form" onsubmit={submit}>
-    <label class="tp-invite__field">
-      <span class="tp-invite__label">Email address</span>
-      <input
-        class="tp-invite__input"
-        type="email"
-        name="email"
-        autocomplete="off"
-        spellcheck="false"
-        required
-        bind:value={email}
-      />
-      <span class="tp-invite__hint">The address the person signs in with.</span>
-    </label>
+    <FormField
+      form="invite"
+      field="role"
+      label="Role"
+      required
+      help={roleDescription(role)}
+      error={failure?.field === 'role' ? failure.message : null}
+    >
+      {#snippet children(id, described)}
+        <select
+          class="tp-field__control"
+          {id}
+          name="role"
+          aria-invalid={failure?.field === 'role'}
+          aria-describedby={described}
+          bind:value={role}
+        >
+          {#each ROLES as option (option)}
+            <option value={option}>{roleLabel(option)}</option>
+          {/each}
+        </select>
+      {/snippet}
+    </FormField>
 
-    <label class="tp-invite__field">
-      <span class="tp-invite__label">Role</span>
-      <select class="tp-invite__input" name="role" bind:value={role}>
-        {#each ROLES as option (option)}
-          <option value={option}>{roleLabel(option)}</option>
-        {/each}
-      </select>
-      <span class="tp-invite__hint">{roleDescription(role)}</span>
-    </label>
-
-    <button class="tp-button" type="submit" disabled={busy}>
-      {busy ? 'Sending the invitation…' : 'Send the invitation'}
-    </button>
+    <div class="tp-field__actions">
+      <button class="tp-button" type="submit" disabled={busy}>
+        {busy ? 'Sending the invitation…' : 'Send the invitation'}
+      </button>
+    </div>
   </form>
 </section>
 
@@ -99,40 +124,15 @@
     color: var(--tp-text-strong);
   }
 
-  .tp-invite__lede,
-  .tp-invite__hint,
-  .tp-invite__error {
+  .tp-invite__lede {
     margin: 0;
     max-width: 68ch;
     color: var(--tp-text-muted);
     font-size: var(--tp-font-caption);
   }
 
-  .tp-invite__error {
-    color: var(--tp-text-strong);
-    border-left: 3px solid var(--tp-status-danger);
-    padding-left: var(--tp-space-2);
-  }
-
-  .tp-invite__form,
-  .tp-invite__field {
+  .tp-invite__form {
     display: grid;
-    gap: var(--tp-space-1);
-  }
-
-  .tp-invite__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-invite__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
+    gap: var(--tp-space-2);
   }
 </style>

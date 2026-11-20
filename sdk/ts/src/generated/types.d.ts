@@ -276,6 +276,21 @@ export interface CreateProjectRequest {
 }
 
 /**
+ * Create a room in a project
+ */
+export interface CreateRoomBody {
+  name: string;
+  /**
+   * Public id of the project the room belongs to
+   */
+  project: string;
+  /**
+   * Who may read the room; private when omitted
+   */
+  visibility?: "private" | "unlisted" | "public";
+}
+
+/**
  * Dispatch one tkrun job to a connected host
  */
 export interface DispatchJobRequest {
@@ -788,6 +803,10 @@ export interface RoomMemberViewList {
 export interface RoomView {
   created_at: string;
   id: string;
+  /**
+   * When the newest message was posted; null while the room is empty
+   */
+  last_activity_at?: string | null;
   name: string;
   origin_pool?: string | null;
   updated_at: string;

@@ -7,6 +7,9 @@
  * model never rewrites a file the author did not touch.
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import ProjectsPage from './ProjectsPage.svelte';
 import IssueList from './IssueList.svelte';
@@ -448,7 +451,7 @@ describe('the history says which revision is in force', () => {
 });
 
 describe('the page shows the editor over real files', () => {
-  it('renders the authored manifest text in the textarea', () => {
+  it('renders the manifest text in the textarea', () => {
     const rendered = renderPage();
     expect(rendered.html).toContain('data-file-content-path="tidepool.json"');
     expect(rendered.text).toContain('"studio-mac"');
@@ -465,5 +468,67 @@ describe('the page shows the editor over real files', () => {
     });
     expect(rendered.html).toContain('data-editor-empty="true"');
     expect(rendered.text).toContain('No revision is active yet');
+  });
+});
+
+describe('the page defines a manifest in plain words', () => {
+  const page = () => renderPage();
+
+  it('says a manifest is the file list a run uses', () => {
+    const text = page().text;
+    expect(text).toContain('A manifest is the file list');
+    expect(text).toContain('tells Tidepool what a project');
+    expect(text).toContain('run uses');
+  });
+
+  it('names what a run reads and writes', () => {
+    const text = page().text;
+    expect(text).toContain('working directory it reads from and writes to');
+    expect(text).toContain('prompt files it reads');
+    expect(text).toContain('hosts and connections');
+    expect(text).toContain('agents it may start');
+  });
+
+  it('says tidepool.json is the manifest itself', () => {
+    expect(page().text).toContain('tidepool.json is the manifest itself');
+  });
+
+  it('never uses the word authored on the page', () => {
+    const rendered = page();
+    expect(rendered.text.toLowerCase()).not.toContain('authored');
+    expect(rendered.html.toLowerCase()).not.toContain('authored');
+  });
+
+  it('names the next step for an organization with no projects', () => {
+    const rendered = renderPage({ phase: 'ready', projects: [], selectedProjectId: null });
+    expect(rendered.html).toContain('data-projects-state="empty"');
+    expect(rendered.text).toContain('Create a project first');
+    expect(rendered.text).toContain('POST /v1/projects');
+    expect(rendered.text).toContain('write its manifest');
+  });
+
+  it('names the next step in the editor when a project has no files', () => {
+    const rendered = renderPage({
+      draft: { files: [] },
+      activeRevision: null,
+      activeRevisionId: null,
+      history: [],
+      activeProblem: null,
+    });
+    const text = rendered.text.toLowerCase();
+    expect(text).toContain('start with the manifest');
+    expect(text).toContain('add tidepool.json');
+    expect(text).not.toContain('authored');
+  });
+
+  it('keeps the projects sources free of the word authored', () => {
+    const root = fileURLToPath(new URL('./', import.meta.url));
+    const sources = readdirSync(root)
+      .filter((name) => name.endsWith('.svelte'))
+      .map((name) => [name, readFileSync(join(root, name), 'utf8')] as const);
+    expect(sources.length).toBeGreaterThan(0);
+    for (const [name, source] of sources) {
+      expect(source.toLowerCase(), name).not.toContain('authored');
+    }
   });
 });

@@ -15,22 +15,36 @@
    * and token when it has no supplied state, and accepts a transport and stream
    * factory so the component tests and the two-browser end-to-end can run
    * without a live pool or socket.
+   *
+   * The create panel is one form: a project, a name and a visibility, all on the
+   * shared field component. Creating reloads the pool's list rather than
+   * appending a guess, and each row shows the room's name and its last activity —
+   * the newest message's time, or "No messages yet" for an empty room.
    */
   import ProblemDetails from '../../components/ProblemDetails.svelte';
+  import FormField from '../../components/FormField.svelte';
   import StatusBadge from '../../components/StatusBadge.svelte';
   import CatchUpBanner from './CatchUpBanner.svelte';
   import MessageComposer from './MessageComposer.svelte';
   import MessageList from './MessageList.svelte';
   import RoomMembers from './RoomMembers.svelte';
   import { isPoolConfigured, poolClient, type PoolConfig } from '$lib/api/pool';
+  import type { RoomView } from '@clawffice/tidepool-sdk';
   import {
+    DEFAULT_ROOM_VISIBILITY,
+    ROOM_VISIBILITIES,
+    ROOM_CREATING,
     RoomsController,
     canLoadRooms,
     canPostInRoom,
+    defaultProjectId,
     emptyRoomsState,
+    lastActivityView,
     presenceSentence,
     roomStreamFactory,
     roomsTransport,
+    validateRoomInput,
+    visibilityDescription,
     visibilityLabel,
     type OpenRoomStream,
     type RoomsTransport,
@@ -50,6 +64,8 @@
     transport?: RoomsTransport | null;
     /** Stream factory override, for tests. */
     openStream?: OpenRoomStream | null;
+    /** The instant relative activity is measured against; defaults to now. */
+    now?: number | null;
   }
 
   let {
@@ -59,10 +75,24 @@
     initial = emptyRoomsState(),
     transport = null,
     openStream = null,
+    now = null,
   }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let view = $state<RoomsViewState>(initial);
+
+  /** The instant activity ages are measured against. */
+  function currentInstant(): number {
+    return now ?? Date.now();
+  }
+
+  /** The create form's own state; it never lives in the shared view state. */
+  // svelte-ignore state_referenced_locally
+  let project = $state(defaultProjectId(initial.projects));
+  let name = $state('');
+  let visibility = $state<RoomView['visibility']>(DEFAULT_ROOM_VISIBILITY);
+  /** The one validation failure, tied to the field it names. */
+  let failure = $state<{ field: 'project' | 'name'; message: string } | null>(null);
 
   /** Build the controller once: the page keeps one view of one pool. */
   const controller: RoomsController | null = (() => {
@@ -99,6 +129,40 @@
     adopt(await controller.loadRooms());
   }
 
+  /** Create a room from the form, then adopt the reloaded list. */
+  async function submitCreate(): Promise<void> {
+    if (!controller || view.createPhase === 'creating') return;
+    failure = null;
+    const validation = validateRoomInput({ project, name, visibility });
+    if (!validation.ok) {
+      failure = { field: validation.field, message: validation.message };
+      return;
+    }
+    const next = await controller.createRoom(validation.input);
+    adopt(next);
+    if (next.createPhase === 'created') {
+      name = '';
+      if (next.projects.length > 1) project = '';
+    }
+  }
+
+  /** The form's submit handler: never leave the page. */
+  async function create(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    await submitCreate();
+  }
+
+  /** Retry a failed create with the same form values. */
+  async function createByForm(): Promise<void> {
+    await submitCreate();
+  }
+
+  /** Retry the project list. */
+  async function loadProjectsAgain(): Promise<void> {
+    if (!controller) return;
+    adopt(await controller.loadProjects());
+  }
+
   /** Open one room. */
   async function open(roomId: string): Promise<void> {
     if (!controller) return;
@@ -133,6 +197,14 @@
     // A page with a pool and no supplied state loads the room list once.
     if (controller && initial.phase === 'idle' && controller.snapshot().phase === 'idle') {
       void controller.loadRooms().then(adopt);
+      void controller.loadProjects().then(adopt);
+    }
+  });
+
+  $effect(() => {
+    // Once the projects arrive, a lone project is the obvious default.
+    if (project === '' && view.projects.length === 1) {
+      project = defaultProjectId(view.projects);
     }
   });
 
@@ -157,6 +229,117 @@
       </span>
     </p>
   {:else}
+    <section class="tp-rooms__create-panel" aria-labelledby="tp-rooms-create-title">
+      <h2 class="tp-rooms__section-title" id="tp-rooms-create-title">Create a room</h2>
+      <p class="tp-rooms__create-lede">
+        A room belongs to one project. You are added as its owner, so it appears
+        in the list right away.
+      </p>
+
+      {#if view.projectsProblem}
+        <ProblemDetails problem={view.projectsProblem} onRetry={() => void loadProjectsAgain()} />
+      {/if}
+
+      {#if view.createProblem}
+        <ProblemDetails problem={view.createProblem} onRetry={() => void createByForm()} />
+      {/if}
+
+      {#if view.createNotice}
+        <p class="tp-rooms__notice" role="status" data-room-created={view.createdRoomId ?? ''}>
+          <StatusBadge kind="success" />
+          <span>{view.createNotice}</span>
+        </p>
+      {/if}
+
+      <form class="tp-rooms__create-form" onsubmit={create} data-form="room_create">
+        <FormField
+          form="room_create"
+          field="project"
+          label="Project"
+          required
+          help={view.projects.length === 0
+            ? 'No projects exist yet, so a room cannot belong to one.'
+            : 'The project the room and its messages belong to.'}
+          error={failure?.field === 'project' ? failure.message : null}
+        >
+          {#snippet children(id, described)}
+            <select
+              class="tp-field__control"
+              {id}
+              name="room_project"
+              aria-invalid={failure?.field === 'project'}
+              aria-describedby={described}
+              required
+              bind:value={project}
+            >
+              <option value="" disabled>
+                {view.projects.length ? 'Choose a project' : 'No projects yet'}
+              </option>
+              {#each view.projects as candidate (candidate.id)}
+                <option value={candidate.id}>{candidate.name} ({candidate.slug})</option>
+              {/each}
+            </select>
+          {/snippet}
+        </FormField>
+
+        <FormField
+          form="room_create"
+          field="name"
+          label="Room name"
+          required
+          help="Unique inside the project, at most 120 characters, e.g. builds."
+          error={failure?.field === 'name' ? failure.message : null}
+        >
+          {#snippet children(id, described)}
+            <input
+              class="tp-field__control"
+              {id}
+              type="text"
+              name="room_name"
+              autocomplete="off"
+              spellcheck="false"
+              required
+              aria-invalid={failure?.field === 'name'}
+              aria-describedby={described}
+              bind:value={name}
+            />
+          {/snippet}
+        </FormField>
+
+        <FormField
+          form="room_create"
+          field="visibility"
+          label="Visibility"
+          help={visibilityDescription(visibility)}
+        >
+          {#snippet children(id, described)}
+            <select
+              class="tp-field__control"
+              {id}
+              name="room_visibility"
+              aria-describedby={described}
+              bind:value={visibility}
+            >
+              {#each ROOM_VISIBILITIES as option (option)}
+                <option value={option}>{visibilityLabel(option)}</option>
+              {/each}
+            </select>
+          {/snippet}
+        </FormField>
+
+        <div class="tp-field__actions">
+          <button
+            class="tp-button"
+            type="submit"
+            data-rooms-action="create"
+            disabled={view.createPhase === 'creating' || view.busy}
+          >
+            {view.createPhase === 'creating' ? ROOM_CREATING : 'Create the room'}
+          </button>
+        </div>
+      </form>
+    </section>
+
     <div class="tp-rooms__layout">
       <section class="tp-rooms__list-panel" aria-labelledby="tp-rooms-list-title">
         <div class="tp-rooms__section-header">
@@ -199,8 +382,15 @@
                   onclick={() => void open(room.id)}
                 >
                   <span class="tp-rooms__room-name">{room.name}</span>
-                  <span class="tp-rooms__room-meta">
-                    {visibilityLabel(room.visibility)} · updated {room.updated_at}
+                  <span
+                    class="tp-rooms__room-meta"
+                    data-room-last-activity={lastActivityView(room.last_activity_at, currentInstant())
+                      .at ?? 'none'}
+                  >
+                    {visibilityLabel(room.visibility)} · {lastActivityView(
+                      room.last_activity_at,
+                      currentInstant(),
+                    ).text}
                   </span>
                 </button>
               </li>
@@ -222,7 +412,10 @@
                 {view.room.name}
               </h2>
               <p class="tp-rooms__room-facts" data-room-visibility={view.room.visibility}>
-                {visibilityLabel(view.room.visibility)} room · created {view.room.created_at}
+                {visibilityLabel(view.room.visibility)} room · created {view.room.created_at} · {lastActivityView(
+                  view.room.last_activity_at,
+                  currentInstant(),
+                ).text}
               </p>
             </div>
             <div class="tp-rooms__room-actions">
@@ -301,6 +494,42 @@
   .tp-rooms {
     display: grid;
     gap: var(--tp-space-3);
+  }
+
+  .tp-rooms__create-panel {
+    display: grid;
+    gap: var(--tp-space-2);
+    padding: var(--tp-space-3);
+    background: var(--tp-surface);
+    border: 1px solid var(--tp-border);
+    border-radius: var(--tp-radius-panel);
+  }
+
+  .tp-rooms__create-lede {
+    margin: 0;
+    max-width: 68ch;
+    color: var(--tp-text-muted);
+    font-size: var(--tp-font-caption);
+  }
+
+  .tp-rooms__create-form {
+    display: grid;
+    gap: var(--tp-space-2);
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  }
+
+  .tp-rooms__create-form .tp-field__actions {
+    grid-column: 1 / -1;
+  }
+
+  .tp-rooms__notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--tp-space-2);
+    margin: 0;
+    color: var(--tp-text-strong);
+    font-size: var(--tp-font-caption);
   }
 
   .tp-rooms__layout {

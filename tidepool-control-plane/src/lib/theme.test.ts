@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import {
   THEME_STORAGE_KEY,
   createTheme,
+  paletteChoice,
   paletteFromStorage,
   type ThemeStorage,
 } from './theme';
@@ -71,6 +72,21 @@ describe('theme store', () => {
     theme.setPalette('boiled');
     theme.reset();
     expect(get(theme)).toBe(DEFAULT_PALETTE);
+  });
+
+  it('notifies a subscriber at once, so the page repaints without a reload', () => {
+    const theme = createTheme(memoryStorage());
+    const seen: string[] = [];
+    const unsubscribe = theme.subscribe((name) => seen.push(name));
+    theme.setPalette('deep-tide');
+    unsubscribe();
+    expect(seen).toEqual([DEFAULT_PALETTE, 'deep-tide']);
+  });
+
+  it('reads a chooser value as a palette, or nothing', () => {
+    expect(paletteChoice('phosphor')).toBe('phosphor');
+    expect(paletteChoice('not-a-palette')).toBeNull();
+    expect(paletteChoice(null)).toBeNull();
   });
 
   it('keeps working when storage throws', () => {

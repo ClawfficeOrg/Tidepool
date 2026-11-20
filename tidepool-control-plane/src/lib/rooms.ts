@@ -32,9 +32,12 @@
 
 import type {
   ChatFrame,
+  CreateRoomBody,
   HistoryResponse,
   MessageView,
   Principal,
+  ProjectView,
+  ProjectsResponse,
   RoomMemberView,
   RoomView,
   SendMessageBody,
@@ -42,6 +45,7 @@ import type {
 } from '@clawffice/tidepool-sdk';
 import { presentProblem, type PoolProblem } from './api/problem';
 import { isPoolConfigured, type PoolConfig } from './api/pool';
+import { relativeAge } from './hosts';
 
 // ── constants ──────────────────────────────────────────────────────────────
 
@@ -75,6 +79,24 @@ export const VIEWER_CANNOT_POST =
 /** The sentence shown when there is no cached history. */
 export const NO_CACHED_HISTORY =
   'No cached history for this room yet; the first page arrives from the pool.';
+
+/** The word the room list uses for a room with no messages. */
+export const NO_ACTIVITY_YET = 'No messages yet';
+
+/** How many characters a room name may hold; mirrors the pool's validation. */
+export const MAX_ROOM_NAME_CHARS = 120;
+
+/** The default visibility a new room gets when the person does not choose. */
+export const DEFAULT_ROOM_VISIBILITY: RoomView['visibility'] = 'private';
+
+/** The sentence shown while a create is in flight. */
+export const ROOM_CREATING = 'Creating the room…';
+
+/** The sentence shown after a room was created. */
+export function roomCreatedSentence(name: string): string {
+  return `Created the room ${name.trim()}. It is in your room list below.`;
+}
+
 
 // ── author descriptors ─────────────────────────────────────────────────────
 
@@ -219,6 +241,10 @@ export type OpenRoomStream = (
 export interface RoomsTransport {
   /** The rooms this member belongs to. */
   listRooms(): Promise<RoomView[]>;
+  /** The organization's projects, for the create form's chooser. */
+  listProjects(): Promise<ProjectsResponse>;
+  /** Create a room and join it as its owner. */
+  create(body: CreateRoomBody): Promise<RoomView>;
   /** The members of one room. */
   members(room: string): Promise<RoomMemberView[]>;
   /** One page of history after a cursor. */
@@ -242,6 +268,8 @@ export function roomsTransport(client: TidepoolClient): RoomsTransport {
   return {
     listRooms: async () =>
       asRoomList(await client.api.chatrooms.list()),
+    listProjects: () => client.api.projects.list(),
+    create: (body) => client.api.chatrooms.create(body),
     members: async (room) =>
       asMemberList(await client.api.chatrooms.members(room)),
     history: (room, query) => client.api.chatrooms.messages(room, { query }),
@@ -376,6 +404,20 @@ export interface RoomsViewState {
   rooms: RoomView[];
   /** A failure loading the room list. */
   roomsProblem: PoolProblem | null;
+  /** The organization's projects, for the create form's chooser. */
+  projects: ProjectView[];
+  /** The project list's load state. */
+  projectsPhase: 'idle' | 'loading' | 'ready' | 'error';
+  /** A failure loading the projects. */
+  projectsProblem: PoolProblem | null;
+  /** Where a create is. */
+  createPhase: 'idle' | 'creating' | 'created' | 'failed';
+  /** A failure from a create. */
+  createProblem: PoolProblem | null;
+  /** The one sentence shown after a create succeeded. */
+  createNotice: string | null;
+  /** The room the last create returned, so the page can open it. */
+  createdRoomId: string | null;
   /** The room the reader opened. */
   selectedRoomId: string | null;
   /** The selected room's projection. */
@@ -424,6 +466,13 @@ export function emptyRoomsState(): RoomsViewState {
     phase: 'idle',
     rooms: [],
     roomsProblem: null,
+    projects: [],
+    projectsPhase: 'idle',
+    projectsProblem: null,
+    createPhase: 'idle',
+    createProblem: null,
+    createNotice: null,
+    createdRoomId: null,
     selectedRoomId: null,
     room: null,
     members: [],
@@ -564,6 +613,105 @@ export function visibilityLabel(visibility: RoomView['visibility']): string {
   }
 }
 
+/** The visibility choices the create form offers, in reading order. */
+export const ROOM_VISIBILITIES: readonly RoomView['visibility'][] = [
+  'private',
+  'unlisted',
+  'public',
+];
+
+/** One sentence per visibility, so the choice is not a bare word. */
+export function visibilityDescription(visibility: RoomView['visibility']): string {
+  switch (visibility) {
+    case 'private':
+      return 'Only the members you add can read it. This is the default.';
+    case 'unlisted':
+      return 'Anyone with the id can read it, but it is not listed for the organization.';
+    case 'public':
+      return 'Every member of the organization can find and read it.';
+    default:
+      return 'Unknown visibility.';
+  }
+}
+
+/** One room's last-activity field, as the list shows it. */
+export interface LastActivityView {
+  /** The words a person reads; never empty. */
+  text: string;
+  /** The ISO instant the pool reported, or null for an empty room. */
+  at: string | null;
+  /** True when the room has at least one message. */
+  hasActivity: boolean;
+}
+
+/**
+ * Build the last-activity field for one room.
+ *
+ * The pool reports `last_activity_at` as the newest message's timestamp, or
+ * null while the room has none. An empty room says so in words instead of
+ * showing its creation time, which is not activity.
+ */
+export function lastActivityView(
+  value: string | null | undefined,
+  now: number | Date,
+): LastActivityView {
+  if (value === null || value === undefined || value.trim() === '') {
+    return { text: NO_ACTIVITY_YET, at: null, hasActivity: false };
+  }
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) {
+    return { text: NO_ACTIVITY_YET, at: null, hasActivity: false };
+  }
+  return {
+    text: `Last activity ${relativeAge(then, now)}`,
+    at: then.toISOString(),
+    hasActivity: true,
+  };
+}
+
+/** A validated create-room input, or the one reason it was refused. */
+export type CreateRoomValidation =
+  | { ok: true; input: CreateRoomBody }
+  | { ok: false; field: 'project' | 'name'; message: string };
+
+/**
+ * Validate a create-room form before it becomes a request.
+ *
+ * The pool validates the same things again; this only stops an obviously
+ * incomplete form from spending a round trip.
+ */
+export function validateRoomInput(input: {
+  project: string;
+  name: string;
+  visibility: RoomView['visibility'];
+}): CreateRoomValidation {
+  const project = input.project.trim();
+  if (project === '') {
+    return {
+      ok: false,
+      field: 'project',
+      message: 'Choose the project the room belongs to.',
+    };
+  }
+  const name = input.name.trim();
+  if (name === '') {
+    return { ok: false, field: 'name', message: 'Give the room a name, so people can find it.' };
+  }
+  if (name.length > MAX_ROOM_NAME_CHARS) {
+    return {
+      ok: false,
+      field: 'name',
+      message: `A room name is at most ${MAX_ROOM_NAME_CHARS} characters.`,
+    };
+  }
+  return { ok: true, input: { project, name, visibility: input.visibility } };
+}
+
+/** The project a new room defaults to: the only one, when there is exactly one. */
+export function defaultProjectId(projects: readonly ProjectView[]): string {
+  return projects.length === 1 ? (projects[0]?.id ?? '') : '';
+}
+
 // ── scheduler ──────────────────────────────────────────────────────────────
 
 /** One timer the controller can schedule; injectable so tests are deterministic. */
@@ -676,6 +824,97 @@ export class RoomsController {
         busy: false,
       };
     }
+    return this.state;
+  }
+
+  /** Load the organization's projects, for the create form's chooser. */
+  async loadProjects(): Promise<RoomsViewState> {
+    this.state = {
+      ...this.state,
+      projectsPhase: this.state.projectsPhase === 'ready' ? 'ready' : 'loading',
+      projectsProblem: null,
+    };
+    try {
+      const response = await this.transport.listProjects();
+      const projects = Array.isArray(response?.projects) ? response.projects : [];
+      this.state = {
+        ...this.state,
+        projectsPhase: 'ready',
+        projects,
+        projectsProblem: null,
+      };
+    } catch (error) {
+      this.state = {
+        ...this.state,
+        projectsPhase: 'error',
+        projectsProblem: presentProblem(error),
+      };
+    }
+    return this.state;
+  }
+
+  /**
+   * Create a room, then reload the list so the new room is shown.
+   *
+   * The list is the pool's answer, not a guess: the page appends nothing on its
+   * own, because a room the pool did not keep must not appear in it.
+   */
+  async createRoom(input: {
+    project: string;
+    name: string;
+    visibility: RoomView['visibility'];
+  }): Promise<RoomsViewState> {
+    const validation = validateRoomInput(input);
+    if (!validation.ok) {
+      this.state = {
+        ...this.state,
+        createPhase: 'failed',
+        createProblem: {
+          kind: 'app',
+          title: 'That room is not complete',
+          message: validation.message,
+          requestId: null,
+          status: null,
+          code: 'invalid_room_input',
+          type: null,
+          retryAfterMs: null,
+        },
+        createNotice: null,
+        createdRoomId: null,
+      };
+      return this.state;
+    }
+    this.state = {
+      ...this.state,
+      createPhase: 'creating',
+      createProblem: null,
+      createNotice: null,
+      createdRoomId: null,
+      busy: true,
+    };
+    let created: RoomView;
+    try {
+      created = await this.transport.create(validation.input);
+    } catch (error) {
+      this.state = {
+        ...this.state,
+        createPhase: 'failed',
+        createProblem: presentProblem(error),
+        createNotice: null,
+        createdRoomId: null,
+        busy: false,
+      };
+      return this.state;
+    }
+    this.state = {
+      ...this.state,
+      createPhase: 'created',
+      createProblem: null,
+      createNotice: roomCreatedSentence(created.name),
+      createdRoomId: created.id,
+    };
+    // The new room belongs to the caller, so the pool's list now includes it.
+    await this.loadRooms();
     return this.state;
   }
 

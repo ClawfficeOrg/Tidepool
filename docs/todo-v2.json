@@ -911,7 +911,8 @@
           "Session handling, parity with the CLI and scripting mode",
           "Console identity: banner and palette",
           "Chatrooms and talking to a session",
-          "Menu bar and tray surfaces"
+          "Menu bar and tray surfaces",
+          "Contrast cleanup"
         ]
       }
     },
@@ -926,7 +927,7 @@
         {
           "id": "2.4.1",
           "title": "Responsive shell with a hamburger menu",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Below tablet width the sidebar collapses into a hamburger menu that opens the same navigation. Content uses a 16px side gutter and never scrolls horizontally.",
           "touches": [
             "tidepool-control-plane/src/components/",
@@ -941,12 +942,14 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T09:55:16Z",
+          "human_look": "375px no horizontal scroll needs a person looking; menu opens/closes by button and Escape with focus return needs a person clicking; every page reachable from menu needs a person clicking"
         },
         {
           "id": "2.4.2",
           "title": "Palette chooser as a top-right dropdown",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Replace the palette picker that takes a block of the page with one compact dropdown in the header, top right. The choice applies at once and is remembered per viewer.",
           "touches": [
             "tidepool-control-plane/src/components/",
@@ -960,12 +963,14 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T10:11:45Z",
+          "human_look": "choosing a palette repaints the page without a reload (click not exercised in a browser); the choice survives a reload (real tab reload not exercised)"
         },
         {
           "id": "2.4.3",
           "title": "Projects page explains manifests in plain words",
-          "status": "pending",
+          "status": "in_progress",
           "goal": "Replace 'authored files' jargon with a definition of the manifest: the file list that tells Tidepool what a project's run uses, what it reads and what it writes. The empty state says what to do next.",
           "touches": [
             "tidepool-control-plane/src/routes/projects/"
@@ -978,12 +983,16 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T10:11:46Z",
+          "claimed_by": "tkrun-2026-11-04",
+          "claimed_at": "2026-11-04T10:11:46Z",
+          "lease_expires_at": "2026-11-04T18:11:46Z"
         },
         {
           "id": "2.4.4",
           "title": "Form consistency pass",
-          "status": "pending",
+          "status": "in_progress",
           "goal": "One pattern for every form: label above field, help text under the field, required marked the same way, errors under the field, primary action last and on the right.",
           "touches": [
             "tidepool-control-plane/src/routes/",
@@ -996,12 +1005,16 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T10:24:50Z",
+          "claimed_by": "tkrun-2026-11-04",
+          "claimed_at": "2026-11-04T10:24:50Z",
+          "lease_expires_at": "2026-11-04T18:24:50Z"
         },
         {
           "id": "2.4.5",
           "title": "Contrast cleanup",
-          "status": "pending",
+          "status": "done",
           "goal": "Check every text and control colour in the light and dark palettes against WCAG AA (4.5:1 body text, 3:1 controls and large text) and fix the failures.",
           "touches": [
             "tidepool-control-plane/src/app.css",
@@ -1014,12 +1027,14 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T11:37:57Z",
+          "changelog": "Contrast cleanup"
         },
         {
           "id": "2.4.6",
           "title": "Triggers page that says what a trigger is",
-          "status": "pending",
+          "status": "needs_human_look",
           "goal": "Explain what a trigger is, when it fires and what it runs, in plain words. One list shows each trigger's status and next run. The create flow asks for the same things in the same order as the forms pass.",
           "touches": [
             "tidepool-control-plane/src/routes/triggers/"
@@ -1031,12 +1046,14 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T11:55:09Z",
+          "human_look": "A trigger's card shows what fires it, what it runs and when it runs next."
         },
         {
           "id": "2.4.7",
           "title": "Chat rooms: create and list",
-          "status": "pending",
+          "status": "in_progress",
           "goal": "There is no way to create a chat room. Add a create flow and a room list, backed by the existing rooms routes; add the missing route if none exists.",
           "touches": [
             "tidepool-control-plane/src/routes/rooms/",
@@ -1049,7 +1066,11 @@
           "prerequisites": [],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T09:00:00Z"
+          "created_at": "2026-11-03T09:00:00Z",
+          "updated_at": "2026-11-04T11:55:09Z",
+          "claimed_by": "tkrun-2026-11-04",
+          "claimed_at": "2026-11-04T11:55:09Z",
+          "lease_expires_at": "2026-11-04T19:55:09Z"
         }
       ]
     },
@@ -1391,7 +1412,7 @@
         {
           "id": "2.7.1",
           "title": "Start a TKRun job from the control plane",
-          "status": "pending",
+          "status": "done",
           "goal": "A page where the user picks a project, its tasks, hours, parallel jobs and the host, then dispatches a tkrun job through the existing jobs endpoint. Dry run is the default.",
           "touches": [
             "tidepool-control-plane/src/routes/runs/",
@@ -1407,12 +1428,13 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T22:00:00Z"
+          "created_at": "2026-11-03T22:00:00Z",
+          "updated_at": "2026-11-04T09:13:46Z"
         },
         {
           "id": "2.7.2",
           "title": "Monitor a job's status and output",
-          "status": "pending",
+          "status": "done",
           "goal": "Show a job's status, owner, pid, summary and output, and refresh while it runs. The output is the tkrun log; it stops refreshing once the job is finished.",
           "touches": [
             "tidepool-control-plane/src/routes/runs/",
@@ -1428,7 +1450,8 @@
           ],
           "complexity": "Medium",
           "agent": "mid_dev_agent",
-          "created_at": "2026-11-03T22:00:00Z"
+          "created_at": "2026-11-03T22:00:00Z",
+          "updated_at": "2026-11-04T09:13:46Z"
         },
         {
           "id": "2.7.3",

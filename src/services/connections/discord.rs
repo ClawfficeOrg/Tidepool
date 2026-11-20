@@ -426,11 +426,7 @@ impl DiscordIngestContext {
         {
             return Err(DiscordError::NotFound);
         }
-        if !material
-            .values
-            .get("bot_token")
-            .is_some_and(|value| !value.is_empty())
-        {
+        if !material.has_all(&["bot_token"]) {
             return Err(DiscordError::MissingCredential("bot_token"));
         }
         let bot_user_id = material

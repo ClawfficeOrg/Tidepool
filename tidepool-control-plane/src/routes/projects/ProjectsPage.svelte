@@ -2,11 +2,11 @@
   /**
    * Projects and the configuration editor.
    *
-   * Pick a project, edit its authored file bundle as text, and save through the
-   * pool's own validate/install endpoint. The page shows the active revision,
-   * the history, and a diff between revisions over the authored files. A save
-   * that the pool refuses keeps the active revision where it was and pins each
-   * named field error to the offending line of the manifest.
+   * Pick a project, edit its manifest and the files it lists as text, and save
+   * through the pool's own validate/install endpoint. The page shows the active
+   * revision, the history, and a diff between revisions over those files. A
+   * save that the pool refuses keeps the active revision where it was and pins
+   * each named field error to the offending line of the manifest.
    *
    * The page renders from a `ProjectsViewState`. It loads itself on mount when
    * it has a pool and a session token (or an injected transport), and it can be
@@ -152,10 +152,13 @@
 <section class="tp-projects tp-page" aria-labelledby="tp-projects-title" data-projects-page="true">
   <h1 class="tp-page__title" id="tp-projects-title">Projects</h1>
   <p class="tp-page__lede">
-    A project's configuration is the bundle of files its author wrote. Edit the
-    files as text and save through the pool's own validation; the pool stores
-    the exact authored bytes as an immutable revision. The editor never
-    reorders, normalises or reformats a file.
+    A manifest is the file list that tells Tidepool what a project's run uses:
+    the hosts and connections it may reach, the working directory it reads from
+    and writes to, the agents it may start, and the prompt files it reads.
+    <code>tidepool.json</code> is the manifest itself; every other file in the
+    list is one a run reads. Edit the files as text and save: the pool checks
+    them and stores exactly what you wrote as a new revision. Nothing is
+    reordered, normalised or reformatted.
   </p>
 
   {#if view.problem}
@@ -180,8 +183,10 @@
       <p class="tp-page__state" data-projects-state="empty">
         <StatusBadge kind="neutral" />
         <span>
-          No projects exist in this organization yet. Create one with the pool
-          API and its configuration can be authored here.
+          No projects exist in this organization yet, so there is nothing to
+          describe. Create a project first — through the pool's
+          <code>POST /v1/projects</code> API or the CLI — then come back here to
+          write its manifest.
         </span>
       </p>
     {:else if view.projects.length > 0}
@@ -207,7 +212,7 @@
       {#if selectedProject === null}
         <p class="tp-page__state" data-projects-state="no-selection">
           <StatusBadge kind="neutral" />
-          <span>Choose a project to edit its configuration.</span>
+          <span>Choose a project to see and edit the files its runs use.</span>
         </p>
       {:else}
         <section class="tp-projects__panel" aria-labelledby="tp-project-title">

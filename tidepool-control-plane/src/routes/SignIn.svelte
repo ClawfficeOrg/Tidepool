@@ -8,6 +8,7 @@
    * fields stay usable.
    */
   import ProblemDetails from '../components/ProblemDetails.svelte';
+  import FormField from '../components/FormField.svelte';
   import type { PoolProblem } from '$lib/api/problem';
   import type { LoginInput } from '../auth/types';
 
@@ -59,34 +60,48 @@
     <ProblemDetails {problem} />
   {/if}
 
-  <form class="tp-auth__form" onsubmit={submit}>
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Email</span>
-      <input
-        class="tp-auth__input"
-        type="email"
-        name="email"
-        autocomplete="username"
-        required
-        bind:value={email}
-      />
-    </label>
+  <form class="tp-auth__form" onsubmit={submit} data-form="signin">
+    <FormField form="signin" field="email" label="Email" required help="The address you sign in with.">
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="email"
+          name="email"
+          autocomplete="username"
+          required
+          aria-describedby={described}
+          bind:value={email}
+        />
+      {/snippet}
+    </FormField>
 
-    <label class="tp-auth__field">
-      <span class="tp-auth__label">Password</span>
-      <input
-        class="tp-auth__input"
-        type="password"
-        name="password"
-        autocomplete="current-password"
-        required
-        bind:value={password}
-      />
-    </label>
+    <FormField
+      form="signin"
+      field="password"
+      label="Password"
+      required
+      help="The password set for this account."
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          required
+          aria-describedby={described}
+          bind:value={password}
+        />
+      {/snippet}
+    </FormField>
 
-    <button class="tp-button" type="submit" disabled={busy}>
-      {busy ? 'Signing in…' : 'Sign in'}
-    </button>
+    <div class="tp-field__actions">
+      <button class="tp-button" type="submit" disabled={busy}>
+        {busy ? 'Signing in…' : 'Sign in'}
+      </button>
+    </div>
   </form>
 </section>
 
@@ -124,26 +139,5 @@
   .tp-auth__form {
     display: grid;
     gap: var(--tp-space-2);
-  }
-
-  .tp-auth__field {
-    display: grid;
-    gap: 2px;
-  }
-
-  .tp-auth__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-auth__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
   }
 </style>

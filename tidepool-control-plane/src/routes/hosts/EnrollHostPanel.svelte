@@ -8,6 +8,7 @@
    * built from the pool URL and the token; it is not a summary of one.
    */
   import HostStatusBadge from './HostStatusBadge.svelte';
+  import FormField from '../../components/FormField.svelte';
   import type { EnrollmentResult } from '$lib/hosts';
   import { validateEnrollInput } from '$lib/hosts';
 
@@ -28,17 +29,17 @@
 
   let hostname = $state('');
   let displayName = $state('');
-  let localError = $state<string | null>(null);
+  let failure = $state<{ field: string; message: string } | null>(null);
   let copied = $state(false);
 
   /** Validate here first, so an empty form never becomes a round trip. */
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (busy) return;
-    localError = null;
+    failure = null;
     const validation = validateEnrollInput({ hostname, display_name: displayName });
     if (!validation.ok) {
-      localError = validation.message;
+      failure = { field: validation.field, message: validation.message };
       return;
     }
     onSubmit?.(validation.input);
@@ -108,43 +109,56 @@
       it run agents.
     </p>
 
-    {#if localError}
-      <p class="tp-enrol__error" role="alert">{localError}</p>
-    {/if}
+    <form class="tp-enrol__form" onsubmit={submit} data-form="enrol_host">
+      <FormField
+        form="enrol_host"
+        field="hostname"
+        label="Hostname"
+        required
+        help="The name the machine reports, e.g. swaygent.local. The pool derives the slug from it."
+        error={failure?.field === 'hostname' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            type="text"
+            name="hostname"
+            autocomplete="off"
+            spellcheck="false"
+            aria-invalid={failure?.field === 'hostname'}
+            aria-describedby={described}
+            bind:value={hostname}
+          />
+        {/snippet}
+      </FormField>
 
-    <form class="tp-enrol__form" onsubmit={submit}>
-      <label class="tp-enrol__field">
-        <span class="tp-enrol__label">Hostname</span>
-        <input
-          class="tp-enrol__input"
-          type="text"
-          name="hostname"
-          autocomplete="off"
-          spellcheck="false"
-          required
-          bind:value={hostname}
-        />
-        <span class="tp-enrol__hint">
-          The name the machine reports, e.g. <code>swaygent.local</code>. The pool
-          derives the slug from it.
-        </span>
-      </label>
+      <FormField
+        form="enrol_host"
+        field="display_name"
+        label="Display name"
+        help="What the hosts list calls this machine."
+        error={failure?.field === 'display_name' ? failure.message : null}
+      >
+        {#snippet children(id, described)}
+          <input
+            class="tp-field__control"
+            {id}
+            type="text"
+            name="display_name"
+            autocomplete="off"
+            aria-invalid={failure?.field === 'display_name'}
+            aria-describedby={described}
+            bind:value={displayName}
+          />
+        {/snippet}
+      </FormField>
 
-      <label class="tp-enrol__field">
-        <span class="tp-enrol__label">Display name (optional)</span>
-        <input
-          class="tp-enrol__input"
-          type="text"
-          name="display_name"
-          autocomplete="off"
-          bind:value={displayName}
-        />
-        <span class="tp-enrol__hint">What the hosts list calls this machine.</span>
-      </label>
-
-      <button class="tp-button" type="submit" disabled={busy}>
-        {busy ? 'Minting the token…' : 'Enrol and mint the token'}
-      </button>
+      <div class="tp-field__actions">
+        <button class="tp-button" type="submit" disabled={busy}>
+          {busy ? 'Minting the token…' : 'Enrol and mint the token'}
+        </button>
+      </div>
     </form>
   {/if}
 </section>
@@ -188,38 +202,20 @@
     gap: var(--tp-space-1);
   }
 
-  .tp-enrol__field {
-    display: grid;
-    gap: 2px;
-  }
-
-  .tp-enrol__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-enrol__hint {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-  }
-
-  .tp-enrol__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
-  }
-
   .tp-enrol__state {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--tp-space-2);
     margin: 0;
+  }
+
+  /* A label over a read-only result block, not a form field. */
+  .tp-enrol__label {
+    color: var(--tp-text-muted);
+    font-size: var(--tp-font-caption);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
   .tp-enrol__secret {
@@ -240,13 +236,6 @@
     border: 1px solid var(--tp-border);
     border-radius: var(--tp-radius-control);
     font-size: var(--tp-font-code);
-  }
-
-  .tp-enrol__error {
-    margin: 0;
-    color: var(--tp-text-strong);
-    border-left: 3px solid var(--tp-status-danger);
-    padding-left: var(--tp-space-2);
   }
 
   .tp-enrol__buttons {

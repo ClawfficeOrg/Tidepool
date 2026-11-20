@@ -2860,3 +2860,261 @@ load, palette apply), `settings_window.rs` (the settings UI),
 `main_window.rs`/`popover_view.rs` (`theme::follow_theme`),
 `tests/tray.rs` (mounting `settings` and `theme`) and a new
 `tests/packaging.rs`; `docs/CHANGES.md` and this file are updated per AGENTS.md.
+
+### 2026-11-04 - Task 2.4.1, the menu is the sidebar at narrow widths
+
+**Decision:** below 52rem the control plane does not hide a separate mobile
+navigation behind a button. The sidebar list itself becomes the menu: one
+component, one route table, one set of links. The shell adds only the button and
+the open/closed state.
+
+**Why:** a second navigation tree is the usual way a menu drifts from the
+sidebar (a page added to one and not the other). With one list, "every page is
+reachable from the menu" is structural, and `Nav.test.ts` can assert that each
+menu link resolves to a route that `App.svelte` actually renders.
+
+**Testable rules live in `src/components/menu.ts`, not the component:** the
+open/closed transitions, Escape's focus-return, and field-owned Escape are a
+pure reducer. The suite renders components through `svelte/server` (no DOM), so
+a reducer is what makes the menu's behaviour provable headlessly.
+
+**Consequence: "no sideways scroll at 375px" is a stylesheet contract.** There
+is no layout engine in the suite, so `responsive.test.ts` reads `app.css` and
+every `src/**/*.svelte` and fails on a fixed `width`/`min-width`/grid track
+wider than 23.4375rem (375px). The shell supplies `overflow-x: clip`,
+`min-width: 0` on the grid children, and wrapping/shrinking content. A new page
+that pins itself wide fails the suite instead of the phone.
+
+### 2026-11-04 - Line endings are pinned in the repository, not in git config
+
+**Decision:** `.gitattributes` sets `* text=auto eol=lf` and marks the icon and
+image assets `binary`.
+
+**Why:** `src/api/openapi.rs` proves the committed OpenAPI artifacts are exactly
+what the tables generate, by comparing `include_str!` of the committed file
+against the generator's output byte for byte. The generator emits LF. With no
+`eol` policy, a Windows checkout with `core.autocrlf=true` writes CRLF, so both
+drift tests failed on the checkout alone: no source change was involved. A
+byte-exact comparison across platforms needs a checkout that is byte-stable, and
+that belongs in the repository rather than in each machine's git config.
+
+**Consequence:** a worktree cloned before this file needs renormalising once
+(`git add --renormalize .`); a fresh clone is correct on every platform.
+
+### 2026-11-04 - Test harnesses find Python instead of assuming it
+
+**Decision:** `tests/conformance_suite.rs` resolves an interpreter by probing
+(`PYTHON` first, then `python3`, `python`, `py`) instead of hard-coding
+`python3`.
+
+**Why:** on Windows `python3` is a Microsoft Store alias that exists on `PATH`
+but prints an install notice and exits non-zero. The gate failed for a reason
+that had nothing to do with the conformance suite's behaviour. `PYTHON` stays
+the explicit override, which is what CI already sets elsewhere.
+
+### 2026-11-04 - Task 2.4.2, the palette is one dropdown in the header
+
+**Decision:** the palette choice is a single native `<select>` in the header's
+top-right tool group (`components/PaletteMenu.svelte`), and no page renders a
+palette panel.
+
+**Why:** a fieldset of five preview cards cost a block of the page on every
+settings visit for a preference that is set once and forgotten. A native select
+gives keyboard use, screen-reader semantics and the platform picker for free,
+needs no open/closed state to test, and is compact enough to live beside the
+session bar. A bare `<select>` also cannot be mistaken for a decorative row of
+swatches: the palette is named in words and Biolume carries `(default)`.
+
+**Consequence: one owner, one render site.** `Root` still owns the theme store
+and writes the preference; `App` renders the dropdown in the header and passes
+`onPaletteSelect` through. `PreferencesPanel` lost its palette props and
+`SettingsPage` stopped forwarding them, so there is no second switch to fall
+behind. The old `.tp-palettes*` rules went with the component; a new palette
+control brings its own scoped styles.
+
+**Consequence: the value is validated where it enters.** `paletteChoice` in
+`$lib/theme` turns a control's raw string into a `PaletteName` or null, so a
+stale option cannot repaint into a palette that does not exist. The store would
+also refuse it, but the control should not ask.
+
+### 2026-11-04 - Task 2.4.3, the projects page speaks about manifests
+
+**Decision:** the projects page defines its terms instead of assuming them. A
+manifest is described on the page as the file list that tells Tidepool what a
+project's run uses — hosts and connections it may reach, the working directory
+it reads from and writes to, the agents it may start, the prompt files it
+reads — with `tidepool.json` named as the manifest itself. "Authored files" is
+gone from every `.svelte` under `routes/projects`, and a test fails if it
+returns.
+
+**Why:** "authored" described our storage model, not the reader's job. A person
+who has never seen Tidepool could not tell from the page what the files were
+for or what to do first. Empty states now name the next step: create a project
+(`POST /v1/projects`), then add `tidepool.json` before the prompt files it
+lists.
+
+**Consequence: the vocabulary is enforced by a test, not a review.** The guard
+reads the route's `.svelte` files and lowercases them, so jargon cannot drift
+back in one commit at a time.
+
+### 2026-11-04 - Task 2.4.4, one form pattern with one owner
+
+**Decision:** every field on the control plane is rendered by
+`components/FormField.svelte`, which takes its class names and marker words from
+`components/form.ts`. The order is fixed inside that one component: the label
+with a `Required` or `Optional` chip, the control, the help text, the error as
+`role="alert"`. A form ends in a `tp-field__actions` row justified right, with
+quiet actions before the primary one.
+
+**Why:** the forms had drifted into five spellings — an uppercase `<span>` label
+here, a `<label>` wrapping the control there, `tp-field__hint` beside
+`tp-field__help`, a single error banner at the top of the form — so the same act
+looked different on every page and the pattern could not be learned once. The
+duplicated CSS also meant a fix on one page never reached the others.
+
+**Consequence: the caller supplies only the control.** `FormField` owns the
+markup around it and passes the control id and its `aria-describedby` down, so a
+select, input or textarea keeps its own props without the form re-deciding where
+the label goes. A checkbox or radio set uses `group`, which turns the label into
+a `role="group"` name instead of a `for` attribute pointing at one element.
+
+**Consequence: validators name a field, not a form.** `errorsFor` turns the one
+`{ field, message }` a validator returns into the list a form hands its fields;
+`EnrollHostPanel` and `ConnectionForm` render the message under the field it
+names instead of in a banner, so the error sits where the fix is.
+
+**Consequence: the pattern is enforced by a test, not by review.**
+`components/form-pattern.test.ts` scans every `.svelte` file and fails if a
+component redefines `.tp-field*`, if any of the twenty retired local class
+names come back, if a `routes/` component writes a bare `<label>` beside a field
+span, or if a `<form>` lacks a `data-form` name or an actions row holding its
+submit button.
+
+### 2026-11-04 - Task 2.4.5, contrast floors enforced when the palette is rendered
+
+**Decision:** WCAG AA is enforced in `lib/design/tokens.ts` at the moment a
+palette becomes CSS custom properties, not by editing the clawffice-design
+snapshot. Every role that is read as text, drawn as a control edge or used as a
+focus ring passes through `readableColor` in `lib/theme.contrast.ts` against the
+three opaque grounds the app paints on (`window-background`, `surface`,
+`terminal-background`). A role that already passes comes through unchanged; a
+failing one is mixed toward `text-strong` in 1% steps and the first passing value
+is used.
+
+**Floors:** 4.5:1 for body text (`--tp-text`, `--tp-text-muted`,
+`--tp-text-strong`, `--tp-primary` read as text, the four status colours,
+`--tp-primary-text` on `--tp-primary`, and `--tp-selection-text` on the painted
+selection tint); 3:1 for controls and large text (`--tp-border-strong` as a
+control outline, `--tp-focus` as the focus ring, `--tp-second` as an accent
+edge).
+
+**Why not the design system:** the snapshot is pinned to a clawffice-design
+commit and `design.drift.test.ts` asserts it verbatim, so editing a grey inside
+it would break that check and silently fork the design system. Repairing on the
+way out keeps one source of hue and identity per palette while guaranteeing what
+the app actually paints.
+
+**Audit result:** every text role already cleared 4.5:1 in all five palettes.
+The one systematic failure was `--tp-border-strong`, which outlines every input,
+select and button: 1.68:1 to 2.66:1 against `--tp-surface`, well under 3:1, so
+controls had no visible edge. It is now repaired per palette (e.g. Biolume
+`#24505E` -> `#476F79`). Sea Glass's `--tp-primary` also moved 1/100 toward
+`text-strong` (`#C7410C` -> `#C5410C`) to clear 4.5:1 as text.
+
+**Consequence: the audit is a test, not a review step.**
+`lib/theme.contrast.test.ts` runs `contrastReport` over the variables of all five
+palettes, asserts no finding fails, and additionally asserts that a passing role
+still equals its design-system value (so the repair cannot repaint a legible
+palette) and that an injected failing value is reported. It also scans
+`app.css`: the only literal colours allowed are the two pre-mount fallbacks, and
+that pair is itself contrast-checked.
+
+**Known gap, out of this task's scope:** `routes/rooms/MessageList.svelte` sets
+`opacity: 0.75` on `.tp-messages__id`, which paints muted text at 3.2:1 to
+3.7:1. It belongs to the rooms page, not to `app.css` or the theme layer, so it
+is recorded here rather than edited.
+
+## 2026-11-04 - Task 2.4.6, a trigger page that says what a trigger is
+
+**Decision: the card is derived from the same `TriggerDocument` the form and
+the YAML edit, never from a second copy.** `routes/triggers/triggerCards.ts`
+takes `{ document, hosts, installed }` and returns the three answers as strings.
+`TriggersPage.svelte` renders it with `$derived`, so a keystroke in the form
+changes the card on the same tick, and the card cannot describe a document the
+pool would not receive. The alternative - a card built from the saved install
+only - would have shown the previous version's meaning while a person was
+editing, which is the exact confusion the task exists to remove.
+
+**Decision: "when it runs next" answers with the event, and says outright that
+nothing is scheduled.** The pool has no trigger-list route and no next-run
+field: a trigger is evaluated when a provider event arrives, and there is no
+clock, cron or queue behind it (`docs/memory.md` records the same gap for the
+CLI and the console). Rather than print an empty column or invent a timestamp,
+`nextRunPhrase` says "the next matching GitHub event" and then "nothing is
+scheduled: a trigger has no clock, cron or queue". A test asserts no `HH:MM` or
+ISO date appears inside the next-run answer, so a future author cannot quietly
+fabricate one.
+
+**Decision: the whole editor is one `<form data-form="trigger">`.** Task 2.4.4's
+review found the install action sitting in a left-aligned `tp-triggers__save`
+outside any `<form>`, which is why `components/form-pattern.test.ts` - it only
+scans `<form>` elements - never covered it. Wrapping the project picker, the
+agent-source panel, the card, the toggle, the fields and the issues in the form
+makes the create flow take the same steps as every other form: fields through
+`FormField`, quiet actions first, one `tp-field__actions` row, the submit last.
+The structural tests now assert exactly that on the rendered page.
+
+**Decision: the card list is honest about being one trigger.** The goal says
+"one list shows each trigger's status and next run", but no route can enumerate
+a project's triggers, so the page lists the trigger it edits and states in a
+note that the pool has no route listing every trigger. Showing a real list
+becomes possible without a redesign once a trigger-list route lands.
+
+**Consequence: the card owns the plain-words vocabulary.** `EVENT_PHRASES` maps
+known provider events to sentences and falls back to the event id, because an
+invented sentence about an unrecognised event is worse than the id. An empty
+allowlist is reported as "nobody may start it yet" rather than as a blank field,
+since the pool refuses such a trigger anyway.
+
+**Not done, and why:** the card does not show a next-run time, a run history or
+a per-trigger list. None of the three exists in the contract; adding them needs a
+pool route first. Criteria that depend on a person looking at the rendered page
+in a browser are still open and are flagged for a human check.
+
+### 2026-11-04 - Task 2.4.7, a room is created with its owner and listed by its activity
+
+**Decision: creating a room also writes the creator's owner membership.**
+`GET /v1/chatrooms` lists the rooms the caller belongs to, so a room created
+without a membership is invisible to the person who made it - the create flow
+would show a 201 and then an unchanged list. `create_room_as` therefore writes
+the owner row in the same call, and deletes the room if that write fails, so an
+ownerless room cannot be left behind. The non-transactional cleanup is
+deliberate: the alternative is a second table write inside the create path,
+which the service does not otherwise do.
+
+**Decision: a viewer may not create a room (403).** Creation is a write, and
+the pool already refuses writes from a viewer on the message route. Keeping the
+same rule here means the control plane's create form and its composer fail for
+the same principals, instead of one being silently permissive.
+
+**Decision: last activity is the newest message, computed in SQL, not
+`updated_at`.** The task asks the list to show each room's last activity;
+`updated_at` moves on any row change and would claim activity an empty room never
+had. `RoomView.last_activity_at` is a `MAX(chat_messages.created_at)` subquery in
+every room query and is null for an empty room, which the page renders as "No
+messages yet" rather than as a timestamp.
+
+**Consequence: the create form lives inside the shared form pattern.** The
+project picker, the name and the visibility all go through `FormField`, the form
+carries `data-form="room_create"`, and the submit is the last control in the one
+`tp-field__actions` row, so `components/form-pattern.test.ts` covers it without a
+new rule. The project list is read from `GET /v1/projects`; when exactly one
+project exists it is chosen for the person.
+
+**Not done, and why:** the Rust and Python SDK generators still have no `NAMES`
+mapping for `post_v1_chatrooms` (nor for the pre-existing job, TideTable and
+host-grant routes), so `sdk/rust` and `sdk/python` generated code is stale and
+`cargo test -p tidepool-client --test contract` fails. Fixing that means editing
+`sdk/rust/scripts/generate.mjs` and `sdk/python/scripts/generate.py`, which are
+outside the files this task owns; the default workspace `cargo test` (pool, CLI,
+console, host agent) passes.

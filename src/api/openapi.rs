@@ -275,7 +275,6 @@ const ROUTES: &[RouteSpec] = &[
         errors: &["404"],
         ..HUB
     },
-
     // ---------------------------------------------------------------- game
     RouteSpec {
         method: HttpMethod::Post,
@@ -974,6 +973,17 @@ const ROUTES: &[RouteSpec] = &[
         tag: "chatrooms",
         summary: "List rooms visible to the operator",
         response: Some("RoomViewList"),
+        ..HUB
+    },
+    RouteSpec {
+        method: HttpMethod::Post,
+        path: "/v1/chatrooms",
+        tag: "chatrooms",
+        summary: "Create a room and join it as its owner",
+        request: Some("CreateRoomBody"),
+        response: Some("RoomView"),
+        success: "201",
+        errors: &["403", "404", "409", "422"],
         ..HUB
     },
     RouteSpec {
@@ -2118,6 +2128,28 @@ const SCHEMAS: &[SchemaSpec] = &[
             o("origin_pool", Kind::NullableStr),
             f("created_at", Kind::DateTime),
             f("updated_at", Kind::DateTime),
+            od(
+                "last_activity_at",
+                Kind::NullableDateTime,
+                "When the newest message was posted; null while the room is empty",
+            ),
+        ],
+    ),
+    s(
+        "CreateRoomBody",
+        "Create a room in a project",
+        &[
+            fd(
+                "project",
+                Kind::Str,
+                "Public id of the project the room belongs to",
+            ),
+            f("name", Kind::Str),
+            od(
+                "visibility",
+                Kind::Enum(&["private", "unlisted", "public"]),
+                "Who may read the room; private when omitted",
+            ),
         ],
     ),
     sa("RoomViewList", "Rooms visible to the caller", "RoomView"),
@@ -2889,22 +2921,22 @@ mod tests {
         const SYSTEM_PATHS: &[&str] =
             &["/healthz", "/metrics", "/openapi.json", "/openapi/v1.json"];
 
-        assert_eq!(ROUTES.len(), 92, "ROUTES must describe all 92 routes");
+        assert_eq!(ROUTES.len(), 93, "ROUTES must describe all 93 routes");
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.surface == Surface::Hub)
                 .count(),
-            69,
-            "the hub contract documents 69 operations"
+            70,
+            "the hub contract documents 70 operations"
         );
         assert_eq!(
             ROUTES
                 .iter()
                 .filter(|route| route.path.starts_with("/v1/"))
                 .count(),
-            88,
-            "19 game and 69 hub operations must stay under /v1/"
+            89,
+            "19 game and 70 hub operations must stay under /v1/"
         );
 
         let system: BTreeSet<&str> = ROUTES
@@ -3346,7 +3378,7 @@ mod tests {
             registered, documented,
             "hub routes registered in code and documented in ROUTES must match"
         );
-        assert_eq!(registered.len(), 69, "expected 69 hub operations");
+        assert_eq!(registered.len(), 70, "expected 70 hub operations");
     }
 
     /// The published, commit-tracked artifact must be exactly what the tables

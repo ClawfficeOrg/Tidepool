@@ -1,6 +1,7 @@
-//! Chatroom HTTP surface (task 1.5.2).
+//! Chatroom HTTP surface (task 1.5.2, create room added by task 2.4.7).
 //!
 //! - `GET /v1/chatrooms` — the rooms the signed-in member belongs to.
+//! - `POST /v1/chatrooms` — create a room in a project and own it.
 //! - `GET /v1/chatrooms/{room}/members` — who is in a room.
 //! - `GET /v1/chatrooms/{room}/messages?after=&limit=` — cursor-paged history.
 //! - `POST /v1/chatrooms/{room}/messages` — send a message.
@@ -15,10 +16,10 @@
 //! An empty page is the currentness signal: there is nothing newer to read.
 
 use crate::api::problem::{Problem, ProblemCode};
-use crate::entities::chatroom::Principal;
+use crate::entities::chatroom::{Principal, RoomVisibility};
 use crate::middleware::auth::OperatorAuth;
-use crate::services::chatrooms::{self as chatroom_svc, ChatroomServiceError};
-use actix_web::{HttpRequest, HttpResponse, web};
+use crate::services::chatrooms::{self as chatroom_svc, ChatroomServiceError, NewRoom};
+use actix_web::{Error, HttpRequest, HttpResponse, web};
 use serde::{Deserialize, Serialize};
 use sqlx::MySqlPool;
 
@@ -27,6 +28,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/v1/chatrooms")
             .route("", web::get().to(list_rooms))
+            .route("", web::post().to(create_room))
             .route("/{room}/members", web::get().to(list_members))
             .route("/{room}/messages", web::get().to(history))
             .route("/{room}/messages", web::post().to(post_message))
@@ -35,6 +37,19 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 web::get().to(crate::sockets::chatroom_ws::stream),
             ),
     );
+}
+
+/// Body of a create-room request.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateRoomBody {
+    /// Public id of the project the room belongs to.
+    pub project: String,
+    /// Room name, unique within the project.
+    pub name: String,
+    /// Who may read the room; private when the caller does not say.
+    #[serde(default)]
+    pub visibility: Option<RoomVisibility>,
 }
 
 /// Cursor and page size for a history read.
@@ -142,6 +157,47 @@ async fn list_rooms(
         Ok(rooms) => HttpResponse::Ok().json(rooms),
         Err(error) => map_error(error, &req),
     }
+}
+
+/// Create a room in a project and join it as its owner.
+///
+/// A viewer may not create rooms; the pool refuses with 403 rather than
+/// silently creating a room the account cannot write in.
+#[tracing::instrument(skip(pool, auth, body))]
+async fn create_room(
+    pool: Option<web::Data<MySqlPool>>,
+    auth: OperatorAuth,
+    body: web::Json<CreateRoomBody>,
+    req: HttpRequest,
+) -> HttpResponse {
+    if let Err(error) = auth.require_mutating() {
+        return error_response(error);
+    }
+    let Some(pool) = pool else {
+        return db_unavailable(&req);
+    };
+    let new = NewRoom {
+        name: body.name.clone(),
+        visibility: body.visibility.unwrap_or(RoomVisibility::Private),
+        origin_pool: None,
+    };
+    match chatroom_svc::create_room_as(
+        pool.get_ref(),
+        auth.organization_id(),
+        &body.project,
+        new,
+        &caller(&auth),
+    )
+    .await
+    {
+        Ok(room) => HttpResponse::Created().json(room),
+        Err(error) => map_error(error, &req),
+    }
+}
+
+/// A 403 (or other extractor failure) produced by the auth layer.
+fn error_response(error: Error) -> HttpResponse {
+    error.error_response()
 }
 
 #[tracing::instrument(skip(pool, auth))]
@@ -258,5 +314,24 @@ mod tests {
         let ok: SendMessageBody =
             serde_json::from_str(r#"{"body":"hi","replyTo":"m-1"}"#).expect("parse");
         assert_eq!(ok.reply_to.as_deref(), Some("m-1"));
+    }
+
+    #[test]
+    fn create_bodies_take_camel_case_and_default_visibility() {
+        let parsed: Result<CreateRoomBody, _> =
+            serde_json::from_str(r#"{"project":"p-1","name":"builds"}"#);
+        let body = parsed.expect("parse");
+        assert_eq!(body.project, "p-1");
+        assert_eq!(body.name, "builds");
+        assert!(body.visibility.is_none());
+
+        let explicit: CreateRoomBody =
+            serde_json::from_str(r#"{"project":"p-1","name":"builds","visibility":"unlisted"}"#)
+                .expect("parse");
+        assert_eq!(explicit.visibility, Some(RoomVisibility::Unlisted));
+
+        let unknown: Result<CreateRoomBody, _> =
+            serde_json::from_str(r#"{"project":"p-1","name":"builds","owner":"someone"}"#);
+        assert!(unknown.is_err());
     }
 }

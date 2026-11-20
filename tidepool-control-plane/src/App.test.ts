@@ -37,10 +37,13 @@ describe('App shell', () => {
     }
   });
 
-  it('shows the palette switch on the shell, with the default marked', () => {
+  it('shows the palette dropdown in the header, with the default selected', () => {
     const { html } = renderComponent(App, {});
-    expect(html).toContain(`data-palette-option="${DEFAULT_PALETTE}" aria-pressed="true"`);
-    expect(html.match(/data-palette-option=/g)).toHaveLength(5);
+    const header = /<header[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
+    expect(header.match(/<select/g)).toHaveLength(1);
+    expect(header).toContain('data-palette-control');
+    expect(header).toContain(`<option value="${DEFAULT_PALETTE}" selected`);
+    expect(html).not.toContain('tp-palettes');
   });
 
   it('switches palette from the shell without losing the page', () => {

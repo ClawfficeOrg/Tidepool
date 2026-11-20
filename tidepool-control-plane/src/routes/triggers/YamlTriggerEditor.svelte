@@ -7,6 +7,8 @@
    * error is stated plainly and the form is not allowed to claim the broken
    * text: the last parsed document is what the form still describes.
    */
+  import FormField from '../../components/FormField.svelte';
+
   interface Props {
     /** The authored YAML text. */
     value: string;
@@ -27,31 +29,38 @@
 
 <section class="tp-yaml" data-yaml-view="true" aria-labelledby="tp-yaml-title">
   <h3 class="tp-yaml__title" id="tp-yaml-title">YAML</h3>
-  <p class="tp-yaml__hint">
-    The same trigger document as the form, in the pool's field names. Switching
-    to the form adopts this text only when it parses; a pattern, channel or id
-    is never rewritten.
-  </p>
-  <textarea
-    class="tp-input tp-yaml__editor"
-    rows="24"
-    spellcheck="false"
-    value={value}
-    disabled={disabled}
-    aria-invalid={error !== null}
-    aria-describedby={error ? 'tp-yaml-error' : undefined}
-    data-yaml-editor="true"
-    oninput={(event) => onInput(textOf(event))}
-  ></textarea>
-  {#if error}
-    <p class="tp-yaml__error" id="tp-yaml-error" role="alert" data-yaml-error="true">
-      {error}
-    </p>
-    <p class="tp-yaml__hint">
-      The form still describes the last YAML that parsed. Fix the text above
-      before switching views.
-    </p>
-  {/if}
+  <FormField
+    form="trigger_yaml"
+    field="document"
+    label="YAML"
+    required
+    error={error}
+    help="The same trigger document as the form, in the pool's field names. Switching to the form adopts this text only when it parses; a pattern, channel or id is never rewritten."
+  >
+    {#snippet children(id, described)}
+      <textarea
+        class="tp-field__control tp-yaml__editor"
+        {id}
+        rows="24"
+        spellcheck="false"
+        value={value}
+        disabled={disabled}
+        aria-invalid={error !== null}
+        aria-describedby={described}
+        data-yaml-editor="true"
+        data-yaml-error={error !== null ? 'true' : undefined}
+        oninput={(event) => onInput(textOf(event))}
+      ></textarea>
+    {/snippet}
+    {#snippet extra()}
+      {#if error}
+        <p class="tp-yaml__hint">
+          The form still describes the last YAML that parsed. Fix the text above
+          before switching views.
+        </p>
+      {/if}
+    {/snippet}
+  </FormField>
 </section>
 
 <style>
@@ -78,10 +87,5 @@
     font-size: var(--tp-font-caption);
     line-height: 1.5;
     resize: vertical;
-  }
-
-  .tp-yaml__error {
-    margin: 0;
-    color: var(--tp-status-danger);
   }
 </style>

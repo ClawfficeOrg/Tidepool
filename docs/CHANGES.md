@@ -2,6 +2,304 @@
 
 # CHANGES.md
 
+## [Unreleased] - 2026-11-04 - Creating a chat room, and knowing when it last spoke (task 2.4.7)
+
+### Added
+- `src/api/chatrooms.rs` - `POST /v1/chatrooms` and `CreateRoomBody`
+  (`project`, `name`, optional `visibility`). The handler refuses a non-mutating
+  operator with 403 and answers 201 with the created `RoomView`.
+- `src/services/chatrooms.rs` - `create_room_as` creates the room and writes the
+  caller's owner membership in the same call, because the room list is the rooms
+  a principal belongs to; if the membership write fails the room is deleted so no
+  ownerless room survives. `delete_room` is the cleanup it uses.
+- `tidepool-control-plane/src/routes/rooms/RoomsPage.svelte` - a create panel
+  (`data-form="room_create"`) with project, name and visibility fields on the
+  shared `FormField`, ending in a `tp-field__actions` row whose submit button is
+  last, plus a success sentence and the pool's problem details on failure.
+- `tidepool-control-plane/src/lib/rooms.ts` - `validateRoomInput`,
+  `defaultProjectId`, `visibilityDescription`, `ROOM_VISIBILITIES`,
+  `lastActivityView`, `NO_ACTIVITY_YET`, and `RoomsController.createRoom` /
+  `loadProjects`. `RoomsTransport` gained `create` and `listProjects`.
+
+### Changed
+- The room list shows each room's name and its **last activity**: the newest
+  message's time, or "No messages yet" for an empty room. `RoomView` (and the
+  entity `Room`) gained `last_activity_at`, filled by a `MAX(created_at)`
+  subquery in every room query. The list no longer shows `updated_at`, which was
+  never activity.
+- `tidepool-control-plane/src/routes/rooms/rooms.test.ts` and `e2e.test.ts` -
+  the fake transports and the fake pool now serve `POST /v1/chatrooms` and
+  `GET /v1/projects`; the end-to-end case creates a room through the real SDK
+  and reads it back from the same list.
+- `docs/api/openapi-v1.json`, `docs/API_REFERENCE.md` and the TypeScript SDK
+  generated artifacts regenerated. Contract counts: 93 routes, 70 hub
+  operations.
+
+### Tests
+- `rooms.test.ts` gained 14 tests: last-activity wording for a live and an empty
+  room, create-input validation, the visibility sentences, the project default,
+  a create that posts the right body and shows the room in the reloaded list,
+  a read-only create that never reaches the pool, a pool refusal that leaves the
+  list alone, and the rendered create form and last-activity markup.
+- `e2e.test.ts` gained the create-through-the-SDK step.
+
+### Known
+- The Rust and Python SDK generators still lack `NAMES` mappings for
+  `post_v1_chatrooms` and for the pre-existing job/TideTable/host-grant routes,
+  so `sdk/rust` and `sdk/python` generated code is stale and
+  `cargo test -p tidepool-client --test contract` fails. The default
+  `cargo test` workspace members (pool, CLI, console, host agent) pass. Recorded
+  in `docs/memory.md`.
+
+## [Unreleased] - 2026-11-04 - A trigger page that says what a trigger is (task 2.4.6)
+
+### Added
+- `tidepool-control-plane/src/routes/triggers/triggerCards.ts` - the plain-words
+  model behind a trigger card. `firesPhrase`, `runsPhrase` and `nextRunPhrase`
+  answer the three questions from the same `TriggerDocument` the form and the
+  YAML edit, plus `eventPhrase`, `filterPhrases`, `allowlistSentence`,
+  `agentPhrase` and `triggerCard`. `triggerCards` is the list the page renders.
+- `tidepool-control-plane/src/routes/triggers/TriggerCard.svelte` - one trigger,
+  described: name, install state as a badge **and** a sentence, then "What fires
+  it", "What it runs" and "When it runs next" in that order, over a small list
+  of the settings a person matches against the project.
+- `tidepool-control-plane/src/routes/triggers/TriggerCard.test.ts` - 25 tests for
+  the wording, the state words, the answer order and the absence of an invented
+  clock.
+
+### Changed
+- `tidepool-control-plane/src/routes/triggers/TriggersPage.svelte` - the whole
+  editor is now one `<form data-form="trigger">`: project picker, agent-source
+  panel, the card list, the form/YAML toggle, the fields and the issues, ending
+  in a `tp-field__actions` row whose only button is `type="submit"`. The save
+  summary sits in that row ahead of the button. This closes the gap task 2.4.4's
+  review named: the install action was a left-aligned `tp-triggers__save` outside
+  any `<form>`, so the shared form-pattern test could not see it.
+- The page shows "This trigger, in words" above the editor, with the card and a
+  note that the pool has no route listing every trigger in a project.
+
+### Tests
+- `TriggersPage.test.ts` gained 11 tests: the three answers on the page, the card
+  following a form edit, the saved install state on the card, the plain
+  statement about the missing list route, no scheduled time, the host blocker,
+  and four structural checks on the create flow (one form, one actions row, the
+  submit last, every field inside the form carrying its required/optional mark).
+
+### Known
+- There is still no trigger-list route and no next-run time in the pool, so the
+  "one list shows each trigger's status and next run" half of the goal is
+  answered honestly rather than literally: the page lists the one trigger it
+  edits, and says its next run is the next matching event because a trigger has
+  no clock. Recorded in `docs/memory.md`.
+
+## [Unreleased] - 2026-11-04 - Palette contrast cleanup (task 2.4.5)
+
+### Added
+- `tidepool-control-plane/src/lib/theme.contrast.ts` - WCAG AA contrast maths
+  (`relativeLuminance`, `contrastRatio`, `meetsContrast`, `blend`, `composite`,
+  `readableColor`) plus `contrastReport`, which audits the CSS custom properties
+  a palette actually ships. `BODY_TEXT_MIN` (4.5) and `CONTROL_MIN` (3) are the
+  only floors in the app.
+- `tidepool-control-plane/src/lib/theme.contrast.test.ts` - the contrast check
+  now runs in the test suite. It audits all five palettes (four dark, one light),
+  asserts no text or control colour fails, proves a passing role is still its
+  exact design-system value, proves an injected failure is reported, and scans
+  `app.css` for literal colours (only the two pre-mount fallbacks remain).
+
+### Changed
+- `tidepool-control-plane/src/lib/design/tokens.ts` - `themeVars` now repairs
+  each palette role on the way out: a role that clears its WCAG floor is used
+  verbatim, a failing one is shaded toward `text-strong` only as far as needed.
+  The design snapshot is untouched, so `design.drift.test.ts` still holds it
+  verbatim.
+
+### Fixed
+- `--tp-border-strong`, the outline of every input, select and button, sat
+  between 1.68:1 and 2.66:1 against `--tp-surface` in all five palettes. It now
+  clears 3:1 everywhere; Biolume, for example, moves `#24505E` to `#476F79`.
+- Sea Glass `--tp-primary` moved one step (`#C7410C` to `#C5410C`) so that when
+  it is drawn as text it clears 4.5:1 rather than 4.47:1.
+
+### Known
+- `routes/rooms/MessageList.svelte` paints `.tp-messages__id` at `opacity: 0.75`
+  (3.2:1 to 3.7:1). Out of this task's owned paths; recorded in `docs/memory.md`.
+
+## [Unreleased] - 2026-11-04 - One form pattern everywhere (task 2.4.4)
+
+### Added
+- `tidepool-control-plane/src/components/form.ts` - the pattern's source of
+  truth: the class names of one field (`tp-field`, `tp-field__label`,
+  `tp-field__requirement`, `tp-field__control`, `tp-field__help`,
+  `tp-field__error`, `tp-field__actions`), the two marker words `Required` and
+  `Optional`, and the pure helpers `fieldId`, `helpId`, `errorId`,
+  `describedBy`, `errorForField` and `errorsFor`.
+- `tidepool-control-plane/src/components/FormField.svelte` - the one field.
+  It lays out, in a fixed order: the label with its required/optional marker,
+  the caller's control, the help text, then the error as `role="alert"`. It
+  derives the control id and the matching `aria-describedby`, supports a
+  `group` variant for checkbox and radio sets (`role="group"` plus
+  `aria-labelledby`), a `wide` variant for multi-column forms, and an `extra`
+  snippet for secondary help paragraphs.
+
+### Changed
+- Every form on the control plane now renders through `FormField`, so the parts
+  cannot drift: `routes/SignIn.svelte`, `routes/Setup.svelte`,
+  `routes/settings/InviteMemberForm.svelte`,
+  `routes/settings/CreateKeyForm.svelte`,
+  `routes/settings/PreferencesPanel.svelte` (pool URL plus the clock, time-zone
+  and density choice groups), `routes/settings/MemberRow.svelte` (role select),
+  `routes/connections/ConnectionForm.svelte` (including the resources group),
+  `routes/connections/SecretField.svelte`,
+  `routes/connections/ConnectionCard.svelte` (rename form and transport select),
+  `routes/hosts/EnrollHostPanel.svelte`, `routes/rooms/MessageComposer.svelte`,
+  `routes/projects/FileEditor.svelte` (content and add-path forms),
+  `routes/runs/RunsPage.svelte` (dispatch), `routes/runs/TidetableRunPanel.svelte`,
+  `routes/runs/ActivityFilters.svelte`, `routes/triggers/TriggerForm.svelte`,
+  `routes/triggers/TriggersPage.svelte` (project picker) and
+  `routes/triggers/YamlTriggerEditor.svelte`.
+- Primary actions are last, in a `tp-field__actions` row that justifies to the
+  right; quiet actions (Cancel, Clear) come first.
+- Local validators now name the field their message belongs to instead of
+  printing one banner: `EnrollHostPanel` keeps a `{ field, message }` failure
+  and renders it under `hostname` or `display_name`, and
+  `ConnectionForm` gained a local `validateConnectionInput` call so
+  `credential_ref` and `resources` report in place. `PreferencesPanel` moved its
+  rejected-URL sentence onto the field, beside the control.
+- The per-page copies of the field CSS are gone: `.tp-enrol__field/label/hint/
+  input`, `.tp-secret__label/input/help/actions`, `.tp-prefs__field/label/input`,
+  `.tp-member__field/label/select`, `.tp-connection__input/select`,
+  `.tp-editor__label/input`, `run-field*`, and the local `.tp-field*` rules in
+  `ActivityFilters`, `TriggerForm`, `MessageComposer` and `RunsPage`.
+
+### Tests
+- `src/components/form.test.ts` - the pure rules: the class names, both marker
+  words, id derivation (including names with spaces, underscores and dots),
+  `aria-describedby` composition, and one validator failure becoming one
+  field's error.
+- `src/components/FormField.test.ts` - the rendered order (label, control,
+  help, error), required versus optional, the label's `for` and a fixed id,
+  `role="alert"`, the `group` and `wide` variants and the `extra` snippet.
+- `src/components/form-pattern.test.ts` - a source scan across every `.svelte`
+  file: no component redefines `.tp-field*`, no page-local field/label/hint
+  class survives (20 removed spellings are named), every `<form>` has a
+  `data-form` name and a `tp-field__actions` row containing its submit button.
+- `npx vitest run` in `tidepool-control-plane`: 43 files, 525 tests, all pass.
+  `npx tsc -p tsconfig.json`: clean. `npx vite build`: builds.
+- Repo gates: `cargo fmt --check` clean, `cargo clippy --all-targets
+  --all-features -- -D warnings` clean, `cargo test` 890 passed / 185 ignored.
+
+## [Unreleased] - 2026-11-04 - Projects page explains manifests in plain words (task 2.4.3)
+
+### Changed
+- `tidepool-control-plane/src/routes/projects/ProjectsPage.svelte` - the lede
+  now defines a manifest instead of saying "bundle of files its author wrote":
+  the file list that tells Tidepool what a project's run uses (hosts and
+  connections it may reach, the working directory it reads from and writes to,
+  the agents it may start, the prompt files it reads). `tidepool.json` is named
+  as the manifest itself. The no-projects state now says to create a project
+  first (`POST /v1/projects`), and the no-selection state says what selecting a
+  project shows.
+- `routes/projects/FileEditor.svelte` - the editor heading is now "Files this
+  project's runs use"; the empty state tells the reader to start with the
+  manifest and add `tidepool.json` before the prompt files it names.
+- `routes/projects/RevisionDiff.svelte`, `routes/projects/IssueList.svelte` and
+  `$lib/configuration.ts` - the remaining user-facing "authored files" wording
+  is gone ("Files in v2", "the same files", "identical files").
+
+### Tests
+- `routes/projects/ProjectsPage.test.ts` - a new block pins the plain-words
+  definition: the manifest sentence, the reads/writes list, `tidepool.json` as
+  the manifest, the no-projects next step, the editor's empty-state next step,
+  and a source guard that no `.svelte` file under `routes/projects` contains the
+  word "authored" (case-insensitive).
+- `npx vitest run` in `tidepool-control-plane`: 40 files, 499 tests, all pass.
+  `npx tsc -p tsconfig.json`: clean.
+
+## [Unreleased] - 2026-11-04 - Palette chooser as a header dropdown (task 2.4.2)
+
+### Added
+- `tidepool-control-plane/src/components/PaletteMenu.svelte` - the palette
+  choice as one compact native `<select>` (plus a decorative swatch) in the
+  header's top-right tool group. Native select means the keyboard, the screen
+  reader and the platform picker all work without extra state; the palettes are
+  named in words and Biolume is marked `(default)`.
+- `PaletteMenu.test.ts` - one `<select>` and no option row, all five palettes
+  offered and named, exactly one option selected, the choice wired to
+  `onSelect` through a validated `paletteChoice`, and the shell/root wiring
+  checked at the source.
+- `paletteChoice` in `$lib/theme` - reads a control's raw string as a palette,
+  or null for a value the design system no longer defines.
+
+### Changed
+- `App.svelte` - the header renders `PaletteMenu` instead of `PaletteSwitcher`.
+- `routes/settings/PreferencesPanel.svelte` - the palette block is gone: the
+  palette is chosen in the header only, so no page spends a panel on it.
+  `SettingsPage`/`Settings` no longer pass `onPaletteSelect` down, and
+  `PreferencesPanel` no longer takes it.
+- `app.css` - the `.tp-palettes*` rules are removed; the dropdown's rules ship
+  with its component.
+- Removed `components/PaletteSwitcher.svelte` and its test.
+
+### Tests
+- `npx vitest run` in `tidepool-control-plane`: 40 files, 492 tests, all pass.
+- `npx tsc -p tsconfig.json`: clean. `npx vite build`: clean.
+
+### Still a person's check
+- The criteria "choosing a palette repaints the page without a reload" and "the
+  choice survives a reload" are driven by the browser: a change event on the
+  select and a real page reload. Their whole chain is covered headlessly (the
+  store notifies subscribers at once, the root writes the preference, a fresh
+  store restores it, and every route renders in the restored palette), but
+  clicking the select and reloading the tab needs a human.
+- Seeing the dropdown sit in the header's top right in the running app.
+
+## [Unreleased] - 2026-11-04 - Responsive shell with a hamburger menu (task 2.4.1)
+
+### Added
+- `tidepool-control-plane/src/components/menu.ts` - the narrow-width menu as a
+  pure state machine (`menuReducer`, `escapeOutcome`), plus the breakpoint it
+  collapses at. The rules that matter are testable without a browser: the
+  button toggles, Escape closes and asks for focus back on the button, and
+  following a link closes the menu without stealing focus from the page.
+- `Nav.svelte` now renders the sidebar and the menu from one list. Below tablet
+  width a `Menu` button with `aria-expanded`/`aria-controls` opens the same
+  navigation; Escape closes it and returns focus to the button, and a link
+  press closes it for the page it moved to.
+- `Nav.test.ts`, `menu.test.ts` and `responsive.test.ts` - every page is
+  reachable from the menu, the button is named and marked closed, Escape's
+  outcome is pinned, and the stylesheet keeps the shell one column with a 16px
+  gutter and no fixed track wider than a 375px viewport.
+
+### Changed
+- `app.css` - the 52rem breakpoint now sets a 16px (`--tp-space-4`) side
+  gutter on the header and the shell, the shell is one column, and the page
+  never scrolls sideways (`overflow-x: clip`, `min-width: 0` on the grid
+  children, `overflow-wrap: break-word` and shrinking images in the content).
+  The menu button is hidden where the sidebar is already visible.
+
+### Still a person's check
+- Watching the menu open and close in the running app at 375px, and confirming
+  by eye that the page itself does not scroll sideways there. The rules behind
+  both are pinned by tests; the rendered pixels need a human.
+
+### Fixed while getting the gate green
+- `.gitattributes` - the repository had no line-ending policy, so a Windows
+  checkout with `core.autocrlf=true` materialised CRLF while the OpenAPI
+  generator emits LF. `api_reference_matches_generated_document` and
+  `published_contract_matches_generated_document` compare bytes through
+  `include_str!`, so they failed on the checkout alone. The text convention is
+  now pinned in the repo (`* text=auto eol=lf`) with binaries marked `binary`.
+- `src/services/connections/discord.rs` - `DiscordIngestContext::from_connection`
+  reimplemented a check that `CredentialMaterial::has_all` already provides;
+  clippy's `nonminimal_bool` rejected the negated `is_some_and`.
+- `tests/conformance_suite.rs` - the harness hard-coded `python3`, which on
+  Windows is the Microsoft Store stub that exits with an error. It now probes
+  interpreters, keeps `PYTHON` as the override, and falls back to `python`.
+- `sdk/ts/src/client.d.ts` - `allows` declared only `role`/`scopes` while
+  `client.js` documents and accepts `authenticated`, so the control plane's
+  `roles.test.ts` failed typecheck. The declaration now matches the
+  implementation.
+
 ## [Unreleased] — 2026-11-02 — TideTable job dispatch (phase 1)
 
 ### Added

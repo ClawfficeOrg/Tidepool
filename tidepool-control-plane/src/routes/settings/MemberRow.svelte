@@ -9,6 +9,7 @@
    * that a person reads why, not that a button silently refuses them.
    */
   import { canUseControl, controlById } from '../../auth/roles';
+  import FormField from '../../components/FormField.svelte';
   import { ROLES, type Role } from '../../auth/types';
   import { roleLabel } from '../../auth/roles';
   import type { MemberRow } from '$lib/keys';
@@ -116,20 +117,24 @@
   {#if canChange || canRemove}
     <div class="tp-member__controls" data-member-controls="true">
       {#if canChange}
-        <label class="tp-member__field">
-          <span class="tp-member__label">Role</span>
-          <select
-            class="tp-member__select"
-            value={member.role}
-            disabled={busy || locked}
-            aria-describedby={locked ? `tp-member-${member.id}-last-owner` : undefined}
-            onchange={change}
-          >
-            {#each ROLES as option (option)}
-              <option value={option}>{roleLabel(option)}</option>
-            {/each}
-          </select>
-        </label>
+        <FormField form={`member_${member.id}`} field="role" label="Role" required>
+          {#snippet children(id, described)}
+            <select
+              class="tp-field__control"
+              {id}
+              value={member.role}
+              disabled={busy || locked}
+              aria-describedby={[described, locked ? `tp-member-${member.id}-last-owner` : null]
+                .filter((entry) => entry !== null)
+                .join(' ') || undefined}
+              onchange={change}
+            >
+              {#each ROLES as option (option)}
+                <option value={option}>{roleLabel(option)}</option>
+              {/each}
+            </select>
+          {/snippet}
+        </FormField>
       {/if}
 
       {#if canRemove}
@@ -270,27 +275,6 @@
     flex-wrap: wrap;
     align-items: end;
     gap: var(--tp-space-3);
-  }
-
-  .tp-member__field {
-    display: grid;
-    gap: 2px;
-  }
-
-  .tp-member__label {
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-member__select {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
   }
 
   .tp-member__remove {

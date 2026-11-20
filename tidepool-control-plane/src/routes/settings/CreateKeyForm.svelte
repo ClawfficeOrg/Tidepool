@@ -9,6 +9,7 @@
    * pool still validates the body.
    */
   import { API_KEY_SCOPES, validateKeyInput } from '$lib/keys';
+  import FormField from '../../components/FormField.svelte';
 
   interface Props {
     /** True while a create is in flight. */
@@ -25,16 +26,17 @@
   // The initial scopes seed the form once; the person drives them afterwards.
   // svelte-ignore state_referenced_locally
   let scopes = $state<string[]>([...initialScopes]);
-  let localError = $state<string | null>(null);
+  /** The one validation failure, tied to the field it names. */
+  let failure = $state<{ field: 'name' | 'scopes'; message: string } | null>(null);
 
   /** Validate here first, so an empty form never becomes a request. */
   function submit(event: SubmitEvent): void {
     event.preventDefault();
     if (busy) return;
-    localError = null;
+    failure = null;
     const validation = validateKeyInput({ name, scopes });
     if (!validation.ok) {
-      localError = validation.message;
+      failure = { field: validation.field, message: validation.message };
       return;
     }
     onSubmit?.(validation.input);
@@ -48,45 +50,61 @@
     secret is shown once, immediately after it is created.
   </p>
 
-  {#if localError}
-    <p class="tp-create-key__error" role="alert">{localError}</p>
-  {/if}
+  <form class="tp-create-key__form" onsubmit={submit} data-form="create-key">
+    <FormField
+      form="create-key"
+      field="name"
+      label="Key name"
+      required
+      help="What this key is for, e.g. nightly-config-sync. Names are for people; the key itself is the prefix."
+      error={failure?.field === 'name' ? failure.message : null}
+    >
+      {#snippet children(id, described)}
+        <input
+          class="tp-field__control"
+          {id}
+          type="text"
+          name="key_name"
+          autocomplete="off"
+          spellcheck="false"
+          required
+          aria-invalid={failure?.field === 'name'}
+          aria-describedby={described}
+          bind:value={name}
+        />
+      {/snippet}
+    </FormField>
 
-  <form class="tp-create-key__form" onsubmit={submit}>
-    <label class="tp-create-key__field">
-      <span class="tp-create-key__label">Key name</span>
-      <input
-        class="tp-create-key__input"
-        type="text"
-        name="key_name"
-        autocomplete="off"
-        spellcheck="false"
-        required
-        bind:value={name}
-      />
-      <span class="tp-create-key__hint">
-        What this key is for, e.g. <code>nightly-config-sync</code>. Names are
-        for people; the key itself is the prefix.
-      </span>
-    </label>
+    <FormField
+      form="create-key"
+      field="scopes"
+      label="Scopes"
+      required
+      group
+      help="Every scope you tick is a power the key holds. Nothing is ticked in advance."
+      error={failure?.field === 'scopes' ? failure.message : null}
+    >
+      {#snippet children(id)}
+        <div class="tp-create-key__scope-list" id={id}>
+          {#each API_KEY_SCOPES as scope (scope.scope)}
+            <label class="tp-create-key__scope">
+              <input type="checkbox" value={scope.scope} bind:group={scopes} />
+              <span>
+                <span class="tp-create-key__scope-label">{scope.label}</span>
+                <code class="tp-create-key__scope-name">{scope.scope}</code>
+                <span class="tp-create-key__scope-help">{scope.description}</span>
+              </span>
+            </label>
+          {/each}
+        </div>
+      {/snippet}
+    </FormField>
 
-    <fieldset class="tp-create-key__scopes">
-      <legend class="tp-create-key__label">Scopes</legend>
-      {#each API_KEY_SCOPES as scope (scope.scope)}
-        <label class="tp-create-key__scope">
-          <input type="checkbox" value={scope.scope} bind:group={scopes} />
-          <span>
-            <span class="tp-create-key__scope-label">{scope.label}</span>
-            <code class="tp-create-key__scope-name">{scope.scope}</code>
-            <span class="tp-create-key__hint">{scope.description}</span>
-          </span>
-        </label>
-      {/each}
-    </fieldset>
-
-    <button class="tp-button" type="submit" disabled={busy}>
-      {busy ? 'Creating the key…' : 'Create the key'}
-    </button>
+    <div class="tp-field__actions">
+      <button class="tp-button" type="submit" disabled={busy}>
+        {busy ? 'Creating the key…' : 'Create the key'}
+      </button>
+    </div>
   </form>
 </section>
 
@@ -106,46 +124,17 @@
     color: var(--tp-text-strong);
   }
 
-  .tp-create-key__lede,
-  .tp-create-key__hint,
-  .tp-create-key__error {
+  .tp-create-key__lede {
     margin: 0;
     max-width: 68ch;
     color: var(--tp-text-muted);
     font-size: var(--tp-font-caption);
   }
 
-  .tp-create-key__error {
-    color: var(--tp-text-strong);
-    border-left: 3px solid var(--tp-status-danger);
-    padding-left: var(--tp-space-2);
-  }
-
   .tp-create-key__form,
-  .tp-create-key__field,
-  .tp-create-key__scopes {
+  .tp-create-key__scope-list {
     display: grid;
     gap: var(--tp-space-1);
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-
-  .tp-create-key__label {
-    padding: 0;
-    color: var(--tp-text-muted);
-    font-size: var(--tp-font-caption);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .tp-create-key__input {
-    padding: var(--tp-space-1) var(--tp-space-2);
-    border: 1px solid var(--tp-border-strong);
-    border-radius: var(--tp-radius-control);
-    background: var(--tp-terminal-background);
-    color: var(--tp-text-strong);
-    font: inherit;
   }
 
   .tp-create-key__scope {
@@ -166,5 +155,11 @@
     display: block;
     color: var(--tp-text-muted);
     font-size: var(--tp-font-code);
+  }
+
+  .tp-create-key__scope-help {
+    display: block;
+    color: var(--tp-text-muted);
+    font-size: var(--tp-font-caption);
   }
 </style>
